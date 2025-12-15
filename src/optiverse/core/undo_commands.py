@@ -760,3 +760,337 @@ class ImportAsLayerCommand(Command):
         for item in self._items:
             if item.scene() is not None:
                 self._scene.removeItem(item)
+
+
+# --- Layer Tree Model Commands (new architecture) ---
+
+
+class MoveLayerCommand(Command):
+    """Command to move an item/group to a new position in the layer tree."""
+
+    def __init__(
+        self,
+        model: Any,  # LayerTreeModel
+        uuid: str,
+        old_parent: str | None,
+        old_index: int,
+        new_parent: str | None,
+        new_index: int,
+    ):
+        """
+        Initialize MoveLayerCommand.
+
+        Args:
+            model: The LayerTreeModel
+            uuid: UUID of item/group to move
+            old_parent: Old parent group UUID (None for root)
+            old_index: Old index within parent
+            new_parent: New parent group UUID (None for root)
+            new_index: New index within new parent
+        """
+        self._model = model
+        self._uuid = uuid
+        self._old_parent = old_parent
+        self._old_index = old_index
+        self._new_parent = new_parent
+        self._new_index = new_index
+
+    def execute(self) -> None:
+        """Move to new position."""
+        self._model.move_item(self._uuid, self._new_parent, self._new_index)
+
+    def undo(self) -> None:
+        """Move back to old position."""
+        self._model.move_item(self._uuid, self._old_parent, self._old_index)
+
+
+class AddLayerItemCommand(Command):
+    """Command to add an item to the layer model."""
+
+    def __init__(
+        self,
+        model: Any,  # LayerTreeModel
+        uuid: str,
+        parent_group: str | None = None,
+        index: int = 0,
+    ):
+        """
+        Initialize AddLayerItemCommand.
+
+        Args:
+            model: The LayerTreeModel
+            uuid: Item UUID to add
+            parent_group: Parent group UUID (None for root)
+            index: Position within parent
+        """
+        self._model = model
+        self._uuid = uuid
+        self._parent_group = parent_group
+        self._index = index
+
+    def execute(self) -> None:
+        """Add item to model."""
+        self._model.add_item(self._uuid, self._parent_group, self._index)
+
+    def undo(self) -> None:
+        """Remove item from model."""
+        self._model.remove_item(self._uuid)
+
+
+class RemoveLayerItemCommand(Command):
+    """Command to remove an item from the layer model."""
+
+    def __init__(
+        self,
+        model: Any,  # LayerTreeModel
+        uuid: str,
+    ):
+        """
+        Initialize RemoveLayerItemCommand.
+
+        Args:
+            model: The LayerTreeModel
+            uuid: Item UUID to remove
+        """
+        self._model = model
+        self._uuid = uuid
+        self._old_parent: str | None = None
+        self._old_index: int = 0
+
+        # Store current position for undo
+        node = model.get_node(uuid)
+        if node:
+            if node.parent:
+                self._old_parent = node.parent.uuid
+                self._old_index = node.parent.children.index(node)
+            else:
+                self._old_index = model.get_root_nodes().index(node) if node in model.get_root_nodes() else 0
+
+    def execute(self) -> None:
+        """Remove item from model."""
+        self._model.remove_item(self._uuid)
+
+    def undo(self) -> None:
+        """Restore item to model."""
+        self._model.add_item(self._uuid, self._old_parent, self._old_index)
+
+
+class CreateLayerGroupCommand(Command):
+    """Command to create a group in the layer model."""
+
+    def __init__(
+        self,
+        model: Any,  # LayerTreeModel
+        name: str,
+        item_uuids: list[str],
+        parent_group: str | None = None,
+    ):
+        """
+        Initialize CreateLayerGroupCommand.
+
+        Args:
+            model: The LayerTreeModel
+            name: Group name
+            item_uuids: UUIDs of items to include
+            parent_group: Parent group UUID (None for root)
+        """
+        self._model = model
+        self._name = name
+        self._item_uuids = list(item_uuids)
+        self._parent_group = parent_group
+        self._group_uuid: str | None = None
+
+        # Store original positions for undo
+        self._original_positions: list[tuple[str | None, int]] = []
+        for uuid in item_uuids:
+            node = model.get_node(uuid)
+            if node:
+                if node.parent:
+                    self._original_positions.append((node.parent.uuid, node.parent.children.index(node)))
+                else:
+                    roots = model.get_root_nodes()
+                    self._original_positions.append((None, roots.index(node) if node in roots else 0))
+
+    def execute(self) -> None:
+        """Create the group."""
+        self._group_uuid = self._model.create_group(self._name, self._item_uuids, self._parent_group)
+
+    def undo(self) -> None:
+        """Delete the group and restore items to original positions."""
+        if self._group_uuid:
+            self._model.delete_group(self._group_uuid, emit=False)
+
+            # Restore items to original positions
+            for i, uuid in enumerate(self._item_uuids):
+                if i < len(self._original_positions):
+                    parent, index = self._original_positions[i]
+                    self._model.move_item(uuid, parent, index, emit=False)
+
+            self._model.structureChanged.emit()
+
+
+class DeleteLayerGroupCommand(Command):
+    """Command to delete a group from the layer model."""
+
+    def __init__(
+        self,
+        model: Any,  # LayerTreeModel
+        group_uuid: str,
+    ):
+        """
+        Initialize DeleteLayerGroupCommand.
+
+        Args:
+            model: The LayerTreeModel
+            group_uuid: Group UUID to delete
+        """
+        self._model = model
+        self._group_uuid = group_uuid
+
+        # Store group info for undo
+        node = model.get_node(group_uuid)
+        if node and node.is_group():
+            self._name = node.name or ""
+            self._collapsed = node.collapsed
+            self._item_uuids = [child.uuid for child in node.children if child.is_item()]
+            self._parent: str | None = node.parent.uuid if node.parent else None
+            roots = model.get_root_nodes()
+            self._index = roots.index(node) if node in roots else 0
+        else:
+            self._name = ""
+            self._collapsed = False
+            self._item_uuids = []
+            self._parent = None
+            self._index = 0
+
+    def execute(self) -> None:
+        """Delete the group."""
+        self._model.delete_group(self._group_uuid)
+
+    def undo(self) -> None:
+        """Recreate the group."""
+        new_uuid = self._model.create_group(self._name, self._item_uuids, self._parent, emit=False)
+        if new_uuid:
+            # Note: UUID will be different, but structure is restored
+            node = self._model.get_node(new_uuid)
+            if node:
+                node.collapsed = self._collapsed
+        self._model.structureChanged.emit()
+
+
+class RenameLayerGroupCommand(Command):
+    """Command to rename a group in the layer model."""
+
+    def __init__(
+        self,
+        model: Any,  # LayerTreeModel
+        group_uuid: str,
+        new_name: str,
+    ):
+        """
+        Initialize RenameLayerGroupCommand.
+
+        Args:
+            model: The LayerTreeModel
+            group_uuid: Group UUID to rename
+            new_name: New name for the group
+        """
+        self._model = model
+        self._group_uuid = group_uuid
+        self._new_name = new_name
+
+        # Store old name for undo
+        node = model.get_node(group_uuid)
+        self._old_name = node.name if node else ""
+
+    def execute(self) -> None:
+        """Rename the group."""
+        self._model.rename_group(self._group_uuid, self._new_name)
+
+    def undo(self) -> None:
+        """Restore old name."""
+        self._model.rename_group(self._group_uuid, self._old_name or "")
+
+
+class AddToLayerGroupCommand(Command):
+    """Command to add an item to a group in the layer model."""
+
+    def __init__(
+        self,
+        model: Any,  # LayerTreeModel
+        item_uuid: str,
+        group_uuid: str,
+        index: int | None = None,
+    ):
+        """
+        Initialize AddToLayerGroupCommand.
+
+        Args:
+            model: The LayerTreeModel
+            item_uuid: Item UUID to add
+            group_uuid: Group UUID to add to
+            index: Position in group (None for end)
+        """
+        self._model = model
+        self._item_uuid = item_uuid
+        self._group_uuid = group_uuid
+        self._index = index
+
+        # Store original position for undo
+        node = model.get_node(item_uuid)
+        if node:
+            if node.parent:
+                self._old_parent: str | None = node.parent.uuid
+                self._old_index = node.parent.children.index(node)
+            else:
+                self._old_parent = None
+                roots = model.get_root_nodes()
+                self._old_index = roots.index(node) if node in roots else 0
+        else:
+            self._old_parent = None
+            self._old_index = 0
+
+    def execute(self) -> None:
+        """Add item to group."""
+        self._model.add_item_to_group(self._item_uuid, self._group_uuid, self._index)
+
+    def undo(self) -> None:
+        """Restore item to original position."""
+        self._model.move_item(self._item_uuid, self._old_parent, self._old_index)
+
+
+class RemoveFromLayerGroupCommand(Command):
+    """Command to remove an item from its group in the layer model."""
+
+    def __init__(
+        self,
+        model: Any,  # LayerTreeModel
+        item_uuid: str,
+    ):
+        """
+        Initialize RemoveFromLayerGroupCommand.
+
+        Args:
+            model: The LayerTreeModel
+            item_uuid: Item UUID to remove from its group
+        """
+        self._model = model
+        self._item_uuid = item_uuid
+
+        # Store group info for undo
+        node = model.get_node(item_uuid)
+        if node and node.parent and node.parent.is_group():
+            self._group_uuid: str | None = node.parent.uuid
+            self._index = node.parent.children.index(node)
+        else:
+            self._group_uuid = None
+            self._index = 0
+
+    def execute(self) -> None:
+        """Remove item from group."""
+        self._model.remove_item_from_group(self._item_uuid)
+
+    def undo(self) -> None:
+        """Restore item to group."""
+        if self._group_uuid:
+            self._model.add_item_to_group(self._item_uuid, self._group_uuid, self._index)

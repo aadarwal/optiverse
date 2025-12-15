@@ -66,9 +66,8 @@ class BaseObj(QtWidgets.QGraphicsObject):
         self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
         self.setTransformOriginPoint(0.0, 0.0)
         
-        # New items start with high z-value so they appear at top of layer tree
-        # Layer panel normalizes z-values to sequential integers on refresh
-        self.setZValue(float('inf'))
+        # Note: Z-value is assigned by LayerZValueManager based on LayerTreeModel order.
+        # No initial z-value is set here.
         
         self._ready = False  # Set to True after full initialization
 
