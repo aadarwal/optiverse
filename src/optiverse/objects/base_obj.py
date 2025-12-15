@@ -75,68 +75,39 @@ class BaseObj(QtWidgets.QGraphicsObject):
     def itemChange(self, change, value):
         """Sync params when position or rotation changes, and apply magnetic snap."""
 
-        # Block position changes if locked
+        # Handle position changes: locked check and magnetic snap
         if change == QtWidgets.QGraphicsItem.GraphicsItemChange.ItemPositionChange:
+            # Block position changes if locked
             if self._locked:
-                return self.pos()  # Return current position (no change)
+                return self.pos()
 
-        # Magnetic snap: intercept position changes during interactive moves
-        if change == QtWidgets.QGraphicsItem.GraphicsItemChange.ItemPositionChange:
-            if getattr(self, "_ready", False) and self.scene() is not None:
-                # For secondary items in multi-selection drag:
-                # BLOCK Qt's automatic movement by returning current position.
-                # The ItemDragHandler.update_group_positions() will set the correct
-                # position based on primary.pos() + offset to preserve relative positions.
-                from ..ui.controllers.item_drag_handler import ItemDragHandler
+            # Skip snap if item not ready or not in scene
+            if not getattr(self, "_ready", False) or self.scene() is None:
+                return super().itemChange(change, value)
 
-                if ItemDragHandler.is_secondary_drag_item(self):
-                    # For secondary items, return position relative to primary
-                    # This ensures they stay locked to primary even when primary snaps
-                    target_pos = ItemDragHandler.get_secondary_item_target_pos(self)
-                    if target_pos is not None:
-                        return target_pos
-                    # Fallback to current position if target not available
-                    return self.pos()
+            # Skip snap for items being moved programmatically (secondary items
+            # in multi-selection drag have ItemIsMovable disabled by ItemDragHandler)
+            is_movable = bool(
+                self.flags() & QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            )
+            if not is_movable:
+                return super().itemChange(change, value)
 
-                # Get the main window to check if magnetic snap is enabled
-                scene = self.scene()
-                if scene:
-                    views = scene.views()
-                    if views:
-                        main_window = views[0].window()
-                        # Check if this is the primary drag item
-                        is_primary = ItemDragHandler._current_primary_item is self
-
-                        # Check if magnetic snap is enabled and this is an interactive move
-                        if isinstance(main_window, HasSnapping) and main_window.magnetic_snap:
-                            # value is the new position being proposed
-                            new_pos = value
-
-                            # Calculate snap
-                            snap_result = main_window._snap_helper.calculate_snap(
-                                new_pos, self, scene, views[0]
-                            )
-
-                            if snap_result.snapped:
-                                # Update guide lines
-                                views[0].set_snap_guides(snap_result.guide_lines)
-                                # Set primary target position so secondary items can use it
-                                if is_primary:
-                                    ItemDragHandler.set_primary_target_position(snap_result.position)
-                                # Return snapped position instead of proposed position
-                                return snap_result.position
-                            else:
-                                # Clear guides if not snapping
-                                # Set primary target position to proposed position (no snap)
-                                if is_primary:
-                                    ItemDragHandler.set_primary_target_position(new_pos)
-                                views[0].clear_snap_guides()
-                        elif is_primary:
-                            # Magnetic snap disabled, but still set target position
-                            # for secondary items
-                            ItemDragHandler.set_primary_target_position(
-                                value
-                            )
+            # Apply magnetic snap if enabled
+            scene = self.scene()
+            if scene:
+                views = scene.views()
+                if views:
+                    main_window = views[0].window()
+                    if isinstance(main_window, HasSnapping) and main_window.magnetic_snap:
+                        snap_result = main_window._snap_helper.calculate_snap(
+                            value, self, scene, views[0]
+                        )
+                        if snap_result.snapped:
+                            views[0].set_snap_guides(snap_result.guide_lines)
+                            return snap_result.position
+                        else:
+                            views[0].clear_snap_guides()
 
         if change in (
             QtWidgets.QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged,
