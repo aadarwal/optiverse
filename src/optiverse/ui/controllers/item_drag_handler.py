@@ -181,7 +181,14 @@ class ItemDragHandler:
         # Walk up parent hierarchy to find the actual draggable item
         while clicked_item is not None:
             if isinstance(clicked_item, (BaseObj, RulerItem, TextNoteItem, RectangleItem)):
+                # KEY FIX: If clicking on a NEW item without Shift modifier,
+                # don't include previously selected items in the drag.
+                # This prevents the bug where clicking on item B while A is selected
+                # would cause both A and B to move together.
                 if clicked_item not in selected_items:
+                    if not (modifiers & QtCore.Qt.KeyboardModifier.ShiftModifier):
+                        # Clear previous selection - only drag the new item
+                        selected_items = []
                     selected_items.append(clicked_item)
                 self._primary_drag_item = clicked_item
                 break
