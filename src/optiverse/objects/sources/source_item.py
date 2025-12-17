@@ -62,13 +62,14 @@ class SourceItem(BaseObj):
         self._arrow.lineTo(18.0, 0.0)
 
     def boundingRect(self) -> QtCore.QRectF:
-        r = 22
-        return QtCore.QRectF(-r, -self._half - 2, r + 2, self._half + 2)
+        # Must encompass the hitbox (40px wide) plus some margin
+        return QtCore.QRectF(-2, -self._half - 2, 44, self._half * 2 + 4)
 
     def shape(self) -> QtGui.QPainterPath:
-        s = QtGui.QPainterPathStroker()
-        s.setWidth(10)
-        return s.createStroke(self._bar).united(self._arrow)
+        # Rectangular hitbox: height of aperture, 40px wide in beam direction
+        path = QtGui.QPainterPath()
+        path.addRect(QtCore.QRectF(0, -self._half, 40, self._half * 2))
+        return path
 
     def paint(self, p: QtGui.QPainter | None, opt, widget=None):
         if p is None:
