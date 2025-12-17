@@ -201,6 +201,105 @@ class LayerTreeState(QtCore.QObject):
         if emit:
             self._emit_changed()
 
+    def move_node_up(self, uuid: str, emit: bool = True) -> bool:
+        """Move node earlier in sibling list (higher z-order). Returns True if moved."""
+        node = self._uuid_to_node.get(uuid)
+        if not node:
+            return False
+        siblings = node.parent.children if node.parent else self._roots
+        try:
+            idx = siblings.index(node)
+        except ValueError:
+            return False
+        if idx == 0:
+            return False  # Already at top
+        # Swap with previous sibling
+        siblings[idx], siblings[idx - 1] = siblings[idx - 1], siblings[idx]
+        if emit:
+            self._emit_changed()
+        return True
+
+    def move_node_down(self, uuid: str, emit: bool = True) -> bool:
+        """Move node later in sibling list (lower z-order). Returns True if moved."""
+        node = self._uuid_to_node.get(uuid)
+        if not node:
+            return False
+        siblings = node.parent.children if node.parent else self._roots
+        try:
+            idx = siblings.index(node)
+        except ValueError:
+            return False
+        if idx >= len(siblings) - 1:
+            return False  # Already at bottom
+        # Swap with next sibling
+        siblings[idx], siblings[idx + 1] = siblings[idx + 1], siblings[idx]
+        if emit:
+            self._emit_changed()
+        return True
+
+    def move_node_to_front(self, uuid: str, emit: bool = True) -> bool:
+        """Move node to first position in sibling list (highest z-order). Returns True if moved."""
+        node = self._uuid_to_node.get(uuid)
+        if not node:
+            return False
+        siblings = node.parent.children if node.parent else self._roots
+        try:
+            idx = siblings.index(node)
+        except ValueError:
+            return False
+        if idx == 0:
+            return False  # Already at front
+        siblings.pop(idx)
+        siblings.insert(0, node)
+        if emit:
+            self._emit_changed()
+        return True
+
+    def move_node_to_back(self, uuid: str, emit: bool = True) -> bool:
+        """Move node to last position in sibling list (lowest z-order). Returns True if moved."""
+        node = self._uuid_to_node.get(uuid)
+        if not node:
+            return False
+        siblings = node.parent.children if node.parent else self._roots
+        try:
+            idx = siblings.index(node)
+        except ValueError:
+            return False
+        if idx >= len(siblings) - 1:
+            return False  # Already at back
+        siblings.pop(idx)
+        siblings.append(node)
+        if emit:
+            self._emit_changed()
+        return True
+
+    def apply_z_order_operation(self, uuids: list[str], operation: str) -> None:
+        """Apply a z-order operation to multiple items.
+        
+        Args:
+            uuids: List of item UUIDs to move
+            operation: One of "bring_forward", "send_backward", "bring_to_front", "send_to_back"
+        """
+        if not uuids:
+            return
+        
+        self.begin_update()
+        try:
+            if operation == "bring_forward":
+                for uuid in reversed(uuids):
+                    self.move_node_up(uuid, emit=False)
+            elif operation == "send_backward":
+                for uuid in uuids:
+                    self.move_node_down(uuid, emit=False)
+            elif operation == "bring_to_front":
+                for uuid in reversed(uuids):
+                    self.move_node_to_front(uuid, emit=False)
+            elif operation == "send_to_back":
+                for uuid in uuids:
+                    self.move_node_to_back(uuid, emit=False)
+        finally:
+            self.end_update()
+
     def get_group_for_item(self, item_uuid: str) -> str | None:
         node = self._uuid_to_node.get(item_uuid)
         if not node:

@@ -25,7 +25,7 @@ from ...core.ui_constants import (
     ANGLE_MEASURE_LINE_WIDTH,
     SELECTION_INDICATOR_COLOR,
 )
-from ...core.zorder_utils import handle_z_order_from_menu
+from ...core.protocols import HasLayerState
 
 
 class AngleMeasureItem(QtWidgets.QGraphicsObject):
@@ -401,17 +401,20 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
                 # Emit signal for undoable deletion
                 self.requestDelete.emit(self)
             else:
-                # Handle z-order actions via utility
-                handle_z_order_from_menu(
-                    self,
-                    action,
-                    {
-                        act_bring_to_front: "bring_to_front",
-                        act_bring_forward: "bring_forward",
-                        act_send_backward: "send_backward",
-                        act_send_to_back: "send_to_back",
-                    },
-                )
+                # Handle z-order actions
+                action_map = {
+                    act_bring_to_front: "bring_to_front",
+                    act_bring_forward: "bring_forward",
+                    act_send_backward: "send_backward",
+                    act_send_to_back: "send_to_back",
+                }
+                if (op := action_map.get(action)) and self.scene() and self.scene().views():
+                    main_window = self.scene().views()[0].window()
+                    if isinstance(main_window, HasLayerState) and main_window.layer_state:
+                        items = list(self.scene().selectedItems()) if self.isSelected() else [self]
+                        uuids = [it.item_uuid for it in items if hasattr(it, "item_uuid")]
+                        if uuids:
+                            main_window.layer_state.apply_z_order_operation(uuids, op)
 
             event.accept()
             return

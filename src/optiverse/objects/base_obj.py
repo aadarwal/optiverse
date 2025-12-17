@@ -418,43 +418,34 @@ class BaseObj(QtWidgets.QGraphicsObject):
         act_send_backward,
         act_send_to_back,
     ):
-        """Handle z-order menu actions."""
-        from ..core.zorder_utils import apply_z_order_change
+        """Handle z-order menu actions via LayerTreeState."""
+        from ..core.protocols import HasLayerState
 
         if not self.scene():
             return
 
-        # Get items to operate on: if this item is selected, use all selected items
-        # Otherwise, just use this item
-        if self.isSelected():
-            items = [item for item in self.scene().selectedItems() if hasattr(item, "setZValue")]
-        else:
-            items = [self]
-
-        if not items:
-            return
-
-        # Determine operation
-        if selected_action == act_bring_to_front:
-            operation = "bring_to_front"
-        elif selected_action == act_bring_forward:
-            operation = "bring_forward"
-        elif selected_action == act_send_backward:
-            operation = "send_backward"
-        elif selected_action == act_send_to_back:
-            operation = "send_to_back"
-        else:
-            return
-
-        # Get undo stack from main window
-        undo_stack = None
+        layer_state = None
         if self.scene().views():
             main_window = self.scene().views()[0].window()
-            if isinstance(main_window, HasUndoStack):
-                undo_stack = main_window.undo_stack
+            if isinstance(main_window, HasLayerState):
+                layer_state = main_window.layer_state
 
-        # Apply z-order change
-        apply_z_order_change(items, operation, self.scene(), undo_stack)
+        if not layer_state:
+            return
+
+        items = list(self.scene().selectedItems()) if self.isSelected() else [self]
+        uuids = [it.item_uuid for it in items if hasattr(it, "item_uuid")]
+        if not uuids:
+            return
+
+        action_map = {
+            act_bring_to_front: "bring_to_front",
+            act_bring_forward: "bring_forward",
+            act_send_backward: "send_backward",
+            act_send_to_back: "send_to_back",
+        }
+        if op := action_map.get(selected_action):
+            layer_state.apply_z_order_operation(uuids, op)
 
     # Abstract interface methods (subclasses should override)
     def open_editor(self):

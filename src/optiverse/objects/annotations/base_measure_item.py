@@ -12,7 +12,7 @@ from typing import Any
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from ...core.zorder_utils import handle_z_order_from_menu
+from ...core.protocols import HasLayerState
 
 
 class BaseMeasureItem(QtWidgets.QGraphicsObject):
@@ -106,8 +106,13 @@ class BaseMeasureItem(QtWidgets.QGraphicsObject):
             actions.get("send_to_back"): "send_to_back",
         }
 
-        if selected_action in z_order_map:
-            handle_z_order_from_menu(self, selected_action, z_order_map)
+        if (op := z_order_map.get(selected_action)) and self.scene() and self.scene().views():
+            main_window = self.scene().views()[0].window()
+            if isinstance(main_window, HasLayerState) and main_window.layer_state:
+                items = list(self.scene().selectedItems()) if self.isSelected() else [self]
+                uuids = [it.item_uuid for it in items if hasattr(it, "item_uuid")]
+                if uuids:
+                    main_window.layer_state.apply_z_order_operation(uuids, op)
             return True
 
         return False

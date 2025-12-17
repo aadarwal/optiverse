@@ -18,6 +18,7 @@ from ...core.constants import (
 )
 from ...core.editor_state import EditorState
 from ...core.layer_tree_state import LayerTreeState
+from ...core.layer_zorder_applier import LayerZOrderApplier
 from ...core.protocols import Editable
 from ...core.snap_helper import SnapHelper
 from ...core.ui_constants import (
@@ -163,6 +164,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Layer tree state for layer hierarchy and grouping
         self.layer_state = LayerTreeState()
+        
+        # Z-order applier keeps scene z-values in sync with layer tree order
+        self._zorder_applier = LayerZOrderApplier(self.layer_state, self.scene, parent=self)
 
         # Load saved preferences
         self.magnetic_snap = self.settings_service.get_value("magnetic_snap", True, bool)
