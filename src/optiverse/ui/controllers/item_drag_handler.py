@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 if TYPE_CHECKING:
-    from ...core.layer_group import GroupManager
+    from ...core.layer_tree_state import LayerTreeState
     from ...core.undo_stack import UndoStack
 
 
@@ -59,7 +59,7 @@ class DragContext:
         default_factory=set
     )
     
-    # Whether this is a group drag (LayerGroup)
+    # Whether this is a group drag (LayerTreeState group)
     is_group_drag: bool = False
     
     # Whether this is a multi-selection drag
@@ -102,7 +102,7 @@ class ItemDragHandler:
         undo_stack: UndoStack,
         snap_to_grid_getter: Callable[[], bool],
         schedule_retrace: Callable[[], None],
-        group_manager: GroupManager | None = None,
+        layer_state: LayerTreeState | None = None,
     ):
         """
         Initialize the drag handler.
@@ -113,21 +113,21 @@ class ItemDragHandler:
             undo_stack: Undo stack for command creation
             snap_to_grid_getter: Callable returning whether snap to grid is enabled
             schedule_retrace: Callable to schedule ray retracing
-            group_manager: Optional group manager for group movement
+            layer_state: Optional layer state for group movement
         """
         self.scene = scene
         self.view = view
         self.undo_stack = undo_stack
         self._get_snap_to_grid = snap_to_grid_getter
         self._schedule_retrace = schedule_retrace
-        self._group_manager = group_manager
+        self._layer_state = layer_state
 
         # All drag state encapsulated in DragContext
         self._drag = DragContext()
 
-    def set_group_manager(self, group_manager: GroupManager) -> None:
-        """Set the group manager for group movement support."""
-        self._group_manager = group_manager
+    def set_layer_state(self, layer_state: LayerTreeState) -> None:
+        """Set the layer state for group movement support."""
+        self._layer_state = layer_state
 
     def handle_mouse_press(self, event: QtGui.QMouseEvent):
         """
@@ -195,17 +195,16 @@ class ItemDragHandler:
             return
 
         # Check for group membership and expand selection
-        if self._group_manager:
-            grouped_items = self._group_manager.get_grouped_items(self._drag.primary_item)
-            if len(grouped_items) > 1:
-                self._drag.is_group_drag = True
-                # Add all grouped items to selection for tracking
-                for item in grouped_items:
-                    if (
-                        isinstance(item, (BaseObj, RulerItem, TextNoteItem, RectangleItem))
-                        and item not in selected_items
-                    ):
-                        selected_items.append(item)
+        if self._layer_state and hasattr(self._drag.primary_item, "item_uuid"):
+            group_uuid = self._layer_state.get_group_for_item(self._drag.primary_item.item_uuid)
+            if group_uuid:
+                uuids = set(self._layer_state.get_group_items_recursive(group_uuid))
+                if len(uuids) > 1:
+                    self._drag.is_group_drag = True
+                    for it in self.scene.items():
+                        if hasattr(it, "item_uuid") and it.item_uuid in uuids:
+                            if isinstance(it, (BaseObj, RulerItem, TextNoteItem, RectangleItem)) and it not in selected_items:
+                                selected_items.append(it)
 
         # Identify secondary items and calculate offsets
         primary_pos = self._drag.primary_item.pos()

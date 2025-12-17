@@ -8,10 +8,8 @@ from .interface_widgets import (
     InterfaceTreeWidget,
 )
 from .layer_panel import (
-    ClickableLabel,
-    LayerItemWidget,
     LayerPanel,
-    LayerTreeWidget,
+    LayerTreeView,
 )
 from .library_tree import LibraryTree
 from .ruler_widget import CanvasWithRulers, RulerWidget
@@ -35,7 +33,5 @@ __all__ = [
     "EditableLabel",
     "ColoredCircleLabel",
     # Layer widgets
-    "ClickableLabel",
-    "LayerItemWidget",
-    "LayerTreeWidget",
+    "LayerTreeView",
 ]

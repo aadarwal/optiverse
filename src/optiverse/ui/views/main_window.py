@@ -17,7 +17,7 @@ from ...core.constants import (
     SCENE_SIZE_MM,
 )
 from ...core.editor_state import EditorState
-from ...core.layer_group import GroupManager
+from ...core.layer_tree_state import LayerTreeState
 from ...core.protocols import Editable
 from ...core.snap_helper import SnapHelper
 from ...core.ui_constants import (
@@ -161,8 +161,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.log_service = get_log_service()
         self.log_service.debug("MainWindow.__init__ called", "Init")
 
-        # Group manager for layer grouping
-        self.group_manager = GroupManager(self.scene)
+        # Layer tree state for layer hierarchy and grouping
+        self.layer_state = LayerTreeState()
 
         # Load saved preferences
         self.magnetic_snap = self.settings_service.get_value("magnetic_snap", True, bool)
@@ -230,7 +230,7 @@ class MainWindow(QtWidgets.QMainWindow):
             get_ray_data=self._get_ray_data,
             parent_widget=self,
             connect_item_signals=self._connect_item_signals,
-            group_manager=self.group_manager,
+            layer_state=self.layer_state,
             settings_service=self.settings_service,
         )
         # Connect file controller signals
@@ -278,7 +278,7 @@ class MainWindow(QtWidgets.QMainWindow):
             undo_stack=self.undo_stack,
             snap_to_grid_getter=self._get_snap_to_grid,
             schedule_retrace=self._schedule_retrace,
-            group_manager=self.group_manager,
+            layer_state=self.layer_state,
         )
 
         # Component operations handler - copy, paste, delete, drop
@@ -346,27 +346,25 @@ class MainWindow(QtWidgets.QMainWindow):
         self.layerDock.setObjectName("layerDock")
         self.layer_panel = LayerPanel(self)
         self.layer_panel.set_scene(self.scene)
-        self.layer_panel.set_group_manager(self.group_manager)
+        self.layer_panel.set_layer_state(self.layer_state)
         self.layerDock.setWidget(self.layer_panel)
         self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.layerDock)
 
         # Connect layer panel selection to scene selection sync
         self.scene.selectionChanged.connect(self._sync_layer_panel_selection)
 
-        # Connect group manager to layer panel refresh
-        self.group_manager.groupsChanged.connect(self.layer_panel.refresh)
-
         # Connect z-order changes to retrace (so rays update their z-values)
         self.layer_panel.zOrderChanged.connect(self._schedule_retrace)
 
-        # Set group manager on component ops for delete operations
-        self.component_ops.set_group_manager(self.group_manager)
+        # Set layer state on component ops for delete operations
+        self.component_ops.set_layer_state(self.layer_state)
 
         # Initial refresh to show any existing items
         QtCore.QTimer.singleShot(100, self.layer_panel.refresh)
 
     def _sync_layer_panel_selection(self):
         """Sync layer panel selection when scene selection changes."""
+        print("[MainWindow] _sync_layer_panel_selection called - scene selection changed", flush=True)
         self.layer_panel.sync_from_scene_selection()
 
     def _refresh_layer_panel(self):

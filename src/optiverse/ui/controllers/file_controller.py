@@ -19,7 +19,7 @@ from ...services.error_handler import ErrorContext
 from ...services.scene_file_manager import SceneFileManager
 
 if TYPE_CHECKING:
-    from ...core.layer_group import GroupManager
+    from ...core.layer_tree_state import LayerTreeState
     from ...core.undo_stack import UndoStack
     from ...services.log_service import LogService
     from ...services.settings_service import SettingsService
@@ -47,7 +47,7 @@ class FileController(QtCore.QObject):
         get_ray_data: Callable,
         parent_widget: QtWidgets.QWidget,
         connect_item_signals: Callable | None = None,
-        group_manager: GroupManager | None = None,
+        layer_state: LayerTreeState | None = None,
         settings_service: SettingsService | None = None,
     ):
         super().__init__(parent_widget)
@@ -55,7 +55,7 @@ class FileController(QtCore.QObject):
         self._parent = parent_widget
         self._undo_stack = undo_stack
         self._is_modified = False
-        self._group_manager = group_manager
+        self._layer_state = layer_state
         self._log_service = log_service
         self._scene = scene
         self._connect_item_signals = connect_item_signals
@@ -71,14 +71,14 @@ class FileController(QtCore.QObject):
             connect_item_signals=connect_item_signals,
         )
 
-        # Forward group_manager to file manager for saving/loading groups
-        if group_manager:
-            self.file_manager.set_group_manager(group_manager)
+        # Forward layer_state to file manager for saving/loading layer_state
+        if layer_state:
+            self.file_manager.set_layer_state(layer_state)
 
-    def set_group_manager(self, group_manager: GroupManager) -> None:
-        """Set the group manager for import-as-layer functionality."""
-        self._group_manager = group_manager
-        self.file_manager.set_group_manager(group_manager)
+    def set_layer_state(self, layer_state: LayerTreeState) -> None:
+        """Set the layer state for save/load/import-as-layer functionality."""
+        self._layer_state = layer_state
+        self.file_manager.set_layer_state(layer_state)
 
         # Autosave timer
         self._autosave_timer = QtCore.QTimer()
@@ -236,9 +236,9 @@ class FileController(QtCore.QObject):
 
     def _clear_scene(self) -> None:
         """Clear all items from the scene."""
-        # Clear groups first
-        if self._group_manager:
-            self._group_manager.clear()
+        # Clear layer state first
+        if self._layer_state:
+            self._layer_state.clear()
 
         # Remove all items from scene
         for item in list(self._scene.items()):
@@ -622,47 +622,62 @@ class FileController(QtCore.QObject):
             # Use filename (without extension) as parent group name
             group_name = os.path.splitext(os.path.basename(path))[0]
 
-            if self._group_manager:
-                from ...core.layer_group import LayerGroup
-                from ...core.undo_commands import ImportAsLayerCommand
-
-                # Get UUIDs of imported items
-                imported_uuids = [
-                    item.item_uuid for item in imported_items
-                    if hasattr(item, "item_uuid")
-                ]
-
-                # Find ungrouped items (items not in any group from the file)
-                ungrouped_uuids = [
-                    uuid for uuid in imported_uuids if uuid not in grouped_uuids
-                ]
-
-                # Create parent group data (but don't add yet)
-                parent_group = LayerGroup(name=group_name, item_uuids=ungrouped_uuids)
-                parent_group_data = parent_group.to_dict()
-
-                # Prepare imported groups data with parent relationships
-                imported_groups_data = []
-                for group_data in file_groups:
-                    # Set parent for root groups
-                    if group_data.get("parent_group_uuid") is None:
-                        group_data["parent_group_uuid"] = parent_group.group_uuid
-                    imported_groups_data.append(group_data)
-
-                # Create and execute the command (adds items and groups)
-                cmd = ImportAsLayerCommand(
-                    self._scene,
-                    self._group_manager,
-                    imported_items,
-                    parent_group_data,
-                    imported_groups_data,
-                )
-                self._undo_stack.push(cmd)
+            if self._layer_state:
+                # Add items to scene first
+                for item in imported_items:
+                    if item.scene() is None:
+                        self._scene.addItem(item)
 
                 # Connect signals for imported items
                 if self._connect_item_signals:
                     for item in imported_items:
                         self._connect_item_signals(item)
+
+                # Determine legacy ordering input from imported items' z
+                items_with_z: list[tuple[float, str]] = []
+                for item in imported_items:
+                    if hasattr(item, "item_uuid"):
+                        items_with_z.append((float(item.zValue()), str(item.item_uuid)))
+
+                # Build imported layer state from file (new layer_state preferred, else legacy groups)
+                from ...core.layer_tree_state import LayerTreeState
+
+                if "layer_state" in data:
+                    imported_state = LayerTreeState.from_dict(data.get("layer_state", {}))
+                else:
+                    imported_state = LayerTreeState.from_legacy(file_groups, items_with_z)
+
+                # Create parent group in current state
+                parent_uuid = self._layer_state.create_group(group_name, parent_group_uuid=None, index=0, emit=False)
+
+                # Attach imported roots under parent group
+                for root in imported_state.get_root_nodes():
+                    if root.is_group():
+                        # recreate group with same uuid under parent (preserve UUIDs from imported file)
+                        self._layer_state.create_group(root.name or "Group", parent_group_uuid=parent_uuid, index=10**9, group_uuid=root.uuid, emit=False)
+                        self._layer_state.set_group_collapsed(root.uuid, root.collapsed, emit=False)
+                        # attach children recursively by serializing subtree and merging
+                        from ...core.layer_tree_state import LayerNode
+
+                        def add_children(dst_parent_uuid: str, node: LayerNode) -> None:
+                            for ch in node.children:
+                                if ch.is_group():
+                                    self._layer_state.create_group(ch.name or "Group", parent_group_uuid=dst_parent_uuid, index=10**9, group_uuid=ch.uuid, emit=False)
+                                    self._layer_state.set_group_collapsed(ch.uuid, ch.collapsed, emit=False)
+                                    add_children(ch.uuid, ch)
+                                else:
+                                    self._layer_state.add_item(ch.uuid, dst_parent_uuid, index=10**9, emit=False)
+                        add_children(root.uuid, root)
+                    else:
+                        self._layer_state.add_item(root.uuid, parent_uuid, index=10**9, emit=False)
+
+                # Any imported items not referenced in groups: add under parent
+                imported_uuids = {uuid for _, uuid in items_with_z}
+                referenced = set(imported_state.get_all_items_in_order())
+                for uuid in imported_uuids - referenced:
+                    self._layer_state.add_item(uuid, parent_uuid, index=10**9, emit=False)
+
+                self._layer_state.changed.emit()
 
             # Mark as modified and retrace
             self.mark_modified()

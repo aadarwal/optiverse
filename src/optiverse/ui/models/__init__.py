@@ -1,8 +1,6 @@
 """UI models for Optiverse."""
 
-from .layer_model import LayerModel
-from .layer_tree_model import LayerNode, LayerTreeModel
-from .layer_zvalue_manager import LayerZValueManager
+from .layer_item_model import LayerItemModel
 
-__all__ = ["LayerModel", "LayerNode", "LayerTreeModel", "LayerZValueManager"]
+__all__ = ["LayerItemModel"]
 

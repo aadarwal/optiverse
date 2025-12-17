@@ -34,6 +34,7 @@ class ErrorHandler:
         """Initialize the error handler."""
         self.log_service = get_log_service()
         self._error_callback: Callable[[Exception, str], None] | None = None
+        self._handling_exception = False
 
         # Install global exception hook
         self._original_excepthook = sys.excepthook
@@ -62,26 +63,55 @@ class ErrorHandler:
             self._original_excepthook(exc_type, exc_value, exc_traceback)
             return
 
-        # Format traceback
-        tb_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
-        tb_str = "".join(tb_lines)
-
-        # Log the error
-        error_msg = f"Unhandled exception: {exc_type.__name__}: {exc_value}"
-        self.log_service.error(error_msg, "Error Handler")
-        self.log_service.debug(f"Traceback:\n{tb_str}", "Error Handler")
-
-        # Show error dialog
-        self.show_error_dialog(
-            "Unexpected Error", f"An unexpected error occurred:\n\n{exc_value}", tb_str
-        )
-
-        # Call custom callback if set
-        if self._error_callback:
+        # Guard against re-entrancy: if our own handling triggers another exception,
+        # don't recurse (this can lead to recursion + interpreter instability).
+        if self._handling_exception:
             try:
-                self._error_callback(exc_value, tb_str)
-            except Exception as e:
-                _logger.error("Error in error callback: %s", e)
+                sys.__stderr__.write(
+                    f"[optiverse] Recursive exception in excepthook: {exc_type.__name__}: {exc_value}\n"
+                )
+                sys.__stderr__.flush()
+            except Exception:
+                pass
+            try:
+                self._original_excepthook(exc_type, exc_value, exc_traceback)
+            except Exception:
+                pass
+            return
+
+        self._handling_exception = True
+        try:
+            # Format traceback
+            tb_lines = traceback.format_exception(exc_type, exc_value, exc_traceback)
+            tb_str = "".join(tb_lines)
+
+            # Log the error
+            error_msg = f"Unhandled exception: {exc_type.__name__}: {exc_value}"
+            self.log_service.error(error_msg, "Error Handler")
+            self.log_service.debug(f"Traceback:\n{tb_str}", "Error Handler")
+
+            # Show error dialog (best effort)
+            try:
+                self.show_error_dialog(
+                    "Unexpected Error", f"An unexpected error occurred:\n\n{exc_value}", tb_str
+                )
+            except Exception as dialog_ex:
+                # Never allow the error dialog to crash the app.
+                _logger.error("Failed to show error dialog: %s", dialog_ex, exc_info=True)
+                try:
+                    sys.__stderr__.write(f"[optiverse] {error_msg}\n{tb_str}\n")
+                    sys.__stderr__.flush()
+                except Exception:
+                    pass
+
+            # Call custom callback if set
+            if self._error_callback:
+                try:
+                    self._error_callback(exc_value, tb_str)
+                except Exception as e:
+                    _logger.error("Error in error callback: %s", e)
+        finally:
+            self._handling_exception = False
 
     def show_error_dialog(self, title: str, message: str, details: str = ""):
         """
@@ -205,7 +235,15 @@ class ErrorHandler:
 
         layout.addLayout(button_layout)
 
-        dialog.exec()
+        try:
+            dialog.exec()
+        except Exception as ex:
+            # If the modal dialog fails (e.g., invoked from a bad event context),
+            # fall back to logging rather than raising again.
+            _logger.error("Error dialog failed to exec: %s", ex, exc_info=True)
+            _logger.error("ERROR: %s - %s", title, message)
+            if details:
+                _logger.debug("Details:\n%s", details)
 
     def handle_error(self, error: Exception, context: str = "", show_dialog: bool = True):
         """

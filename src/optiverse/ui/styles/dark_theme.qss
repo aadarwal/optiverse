@@ -313,6 +313,25 @@ LayerTreeWidget::item:hover {
     background-color: #4a6fa5;
 }
 
+/* LayerTreeView (Model/View architecture replacement for LayerTreeWidget) */
+LayerTreeView {
+    background-color: #2b2d31;
+    border: 1px solid #3d3f46;
+}
+
+LayerTreeView::item {
+    padding: 4px 2px;
+}
+
+LayerTreeView::item:selected {
+    background-color: #3d5a80;
+    color: white;
+}
+
+LayerTreeView::item:hover {
+    background-color: #4a6fa5;
+}
+
 /* Interface Tree Panel */
 InterfaceTreeWidget::item:selected {
     background-color: #4d4f56;

@@ -20,7 +20,7 @@ from ..core.exceptions import AssemblyLoadError, AssemblySaveError
 from ..core.protocols import Serializable
 
 if TYPE_CHECKING:
-    from ..core.layer_group import GroupManager
+    from ..core.layer_tree_state import LayerTreeState
     from .log_service import LogService
 
 
@@ -64,11 +64,11 @@ class SceneFileManager:
         self._autosave_path: str | None = None
         self._unsaved_id: str | None = None
         self._is_modified = False
-        self._group_manager: GroupManager | None = None
+        self._layer_state: LayerTreeState | None = None
 
-    def set_group_manager(self, group_manager: GroupManager) -> None:
-        """Set the group manager for saving/loading groups."""
-        self._group_manager = group_manager
+    def set_layer_state(self, layer_state: "LayerTreeState") -> None:
+        """Set the authoritative layer state for saving/loading layer hierarchy/order."""
+        self._layer_state = layer_state
 
     @property
     def saved_file_path(self) -> str | None:
@@ -132,7 +132,7 @@ class SceneFileManager:
             "texts": [],  # type: ignore[assignment]
             "rectangles": [],  # type: ignore[assignment]
             "path_measures": [],  # type: ignore[assignment]
-            "groups": [],  # type: ignore[assignment]
+            "layer_state": {},  # type: ignore[assignment]
         }
 
         for it in self.scene.items():
@@ -147,9 +147,9 @@ class SceneFileManager:
             elif isinstance(it, PathMeasureItem):
                 data["path_measures"].append(it.to_dict())
 
-        # Serialize groups
-        if self._group_manager:
-            data["groups"] = self._group_manager.to_dict_list()
+        # Serialize layer state (single source of truth)
+        if self._layer_state:
+            data["layer_state"] = self._layer_state.to_dict()
 
         return data
 
@@ -199,22 +199,27 @@ class SceneFileManager:
         except OSError as e:
             self.log_service.error(f"Failed to clear autosave: {e}", "Autosave")
 
-    def load_from_data(self, data: dict):
-        """Load scene from data dict."""
+    def load_from_data(self, data: dict) -> bool:
+        """Load scene from data dict.
+
+        Returns:
+            True if legacy migration occurred (so caller can mark modified), else False.
+        """
         from optiverse.objects.annotations.path_measure_item import PathMeasureItem
 
         from ..objects import BaseObj, RectangleItem
         from ..objects.annotations import RulerItem, TextNoteItem
         from ..objects.type_registry import deserialize_item
+        from ..core.layer_tree_state import LayerTreeState
 
         # Clear scene
         for it in list(self.scene.items()):
             if isinstance(it, (BaseObj, RulerItem, TextNoteItem, RectangleItem)):
                 self.scene.removeItem(it)
 
-        # Clear groups
-        if self._group_manager:
-            self._group_manager.clear()
+        # Clear layer state
+        if self._layer_state:
+            self._layer_state.clear(emit=False)
 
         # Load items
         for item_data in data.get("items", []):
@@ -248,9 +253,28 @@ class SceneFileManager:
                 # KeyError: missing required fields, ValueError/TypeError: invalid data
                 self.log_service.error(f"Error loading path measure: {e}", "Load")
 
-        # Load groups
-        if self._group_manager and "groups" in data:
-            self._group_manager.from_dict_list(data.get("groups", []))
+        # Build ordering input for legacy migration from scene z-values
+        items_with_z: list[tuple[float, str]] = []
+        for it in self.scene.items():
+            if hasattr(it, "item_uuid") and hasattr(it, "type_name"):
+                items_with_z.append((float(it.zValue()), str(it.item_uuid)))
+
+        migrated = False
+        if self._layer_state:
+            if "layer_state" in data:
+                tmp = LayerTreeState.from_dict(data.get("layer_state", {}))
+                self._layer_state.replace_from(tmp, emit=True)
+            elif "groups" in data:
+                # One-way legacy migration
+                tmp = LayerTreeState.from_legacy(data.get("groups", []) or [], items_with_z)
+                self._layer_state.replace_from(tmp, emit=True)
+                migrated = True
+            else:
+                # No layer info; still establish a stable ordering from z-values
+                tmp = LayerTreeState.from_legacy([], items_with_z)
+                self._layer_state.replace_from(tmp, emit=True)
+
+        return migrated
 
     def _format_time_ago(self, delta: datetime.timedelta) -> str:
         """Format timedelta as human-readable string."""
@@ -390,10 +414,14 @@ class SceneFileManager:
         except (OSError, json.JSONDecodeError) as e:
             raise AssemblyLoadError(path, str(e)) from e
 
-        self.load_from_data(data)
+        migrated = self.load_from_data(data)
         self._saved_file_path = path
         self._unsaved_id = None
-        self.mark_clean()
+        if migrated:
+            # Loaded legacy, migrated in-memory; next save will write new format.
+            self.mark_modified()
+        else:
+            self.mark_clean()
         return True
 
     def prompt_save_changes(self) -> QtWidgets.QMessageBox.StandardButton:
