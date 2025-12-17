@@ -65,6 +65,12 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         finally:
             self.endResetModel()
 
+    def cleanup(self) -> None:
+        """Clear all cached references before shutdown."""
+        self._uuid_to_item.clear()
+        self._scene = None
+        self._layer_state = None
+
     def get_order(self) -> list[str]:
         return list(self._order)
 

@@ -371,7 +371,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _sync_layer_panel_selection(self):
         """Sync layer panel selection when scene selection changes."""
-        print("[MainWindow] _sync_layer_panel_selection called - scene selection changed", flush=True)
         self.layer_panel.sync_from_scene_selection()
 
     def _refresh_layer_panel(self):
@@ -831,6 +830,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._comp_editor.close()
             # Disconnect from collaboration (collab_controller always exists after __init__)
             self.collab_controller.cleanup()
+
+            # Clean up layer panel to prevent accessing deleted items
+            if hasattr(self, "layer_panel"):
+                self.layer_panel.cleanup()
         except (OSError, RuntimeError):
             # Ignore cleanup errors during shutdown
             pass

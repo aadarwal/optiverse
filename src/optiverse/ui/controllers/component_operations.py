@@ -102,31 +102,21 @@ class ComponentOperationsHandler:
             return
 
         # Connect signals
-        print("[on_drop] connecting signals...")
         self._connect_item_signals(item)
 
         # Add to scene with undo support
-        print("[on_drop] pushing command...")
         cmd = AddItemCommand(self.scene, item, self._layer_state)
         self.undo_stack.push(cmd)
-        print("[on_drop] command pushed")
 
         # Clear previous selection and select only the newly dropped item
-        print("[on_drop] clearing selection...")
         self.scene.clearSelection()
-        print("[on_drop] setting selected...")
         item.setSelected(True)
-        print("[on_drop] selected")
 
         # Broadcast addition to collaboration
-        print("[on_drop] broadcasting...")
         self.collaboration_manager.broadcast_add_item(item)
-        print("[on_drop] broadcast done")
 
         # Trigger ray tracing
-        print("[on_drop] scheduling retrace...")
         self._schedule_retrace()
-        print("[on_drop] COMPLETE - returning to event loop")
 
     def delete_selected(self):
         """Delete selected items using undo stack."""

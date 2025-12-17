@@ -146,6 +146,12 @@ class LayerPanel(QtWidgets.QWidget):
         window = views[0].window()
         return cast("UndoStack | None", getattr(window, "undo_stack", None))
 
+    def cleanup(self) -> None:
+        """Clean up before shutdown to prevent accessing deleted objects."""
+        self._refresh_timer.stop()
+        self._sync_timer.stop()
+        self._model.cleanup()
+
     # --- Refresh ---
 
     def refresh(self) -> None:
