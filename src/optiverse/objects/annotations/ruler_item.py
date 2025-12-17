@@ -45,6 +45,9 @@ class RulerItem(QtWidgets.QGraphicsObject):
     - point_count(): Get number of points
     """
 
+    # Type name for layer panel identification
+    type_name: str = "ruler"
+
     # Signal emitted when an undo command is created
     commandCreated = QtCore.pyqtSignal(object)
 
@@ -61,6 +64,8 @@ class RulerItem(QtWidgets.QGraphicsObject):
         super().__init__()
         # Generate or use provided UUID for collaboration
         self.item_uuid = item_uuid if item_uuid else str(uuid.uuid4())
+        # Custom display name for layer panel (None = use type_name)
+        self.display_name: str | None = None
         # Handle default values for p1 and p2
         if p1 is None:
             p1 = QtCore.QPointF(-50, 0)

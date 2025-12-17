@@ -13,10 +13,15 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
     Movable, editable text note. Double-click to edit; right-click → Delete/Edit.
     """
 
+    # Type name for layer panel identification
+    type_name: str = "text"
+
     def __init__(self, text: str = "Text", item_uuid: str | None = None):
         super().__init__(text)
         # Generate or use provided UUID for collaboration
         self.item_uuid = item_uuid if item_uuid else str(uuid.uuid4())
+        # Custom display name for layer panel (None = use type_name)
+        self.display_name: str | None = None
 
         self.setFlags(
             QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable

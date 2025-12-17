@@ -157,10 +157,24 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         if not node:
             return False
 
-        if role == int(QtCore.Qt.ItemDataRole.EditRole) and node.is_group() and self._layer_state:
-            self._layer_state.rename_group(node.uuid, str(value), emit=True)
-            self.dataChanged.emit(index, index, [int(QtCore.Qt.ItemDataRole.DisplayRole)])
-            return True
+        if role == int(QtCore.Qt.ItemDataRole.EditRole):
+            if node.is_group() and self._layer_state:
+                self._layer_state.rename_group(node.uuid, str(value), emit=True)
+                self.dataChanged.emit(index, index, [int(QtCore.Qt.ItemDataRole.DisplayRole)])
+                return True
+            elif node.is_item():
+                # Set display_name on the item
+                item = self._uuid_to_item.get(node.uuid)
+                if item:
+                    new_name = str(value).strip()
+                    # Set display_name for annotation items
+                    if hasattr(item, "display_name"):
+                        item.display_name = new_name if new_name else None
+                    # Set params.name for optical components
+                    elif hasattr(item, "params") and hasattr(item.params, "name"):
+                        item.params.name = new_name if new_name else None
+                    self.dataChanged.emit(index, index, [int(QtCore.Qt.ItemDataRole.DisplayRole)])
+                    return True
 
         if role == int(VISIBLE_ROLE) and self._scene:
             visible = bool(value)
@@ -192,6 +206,9 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         flags = QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsDragEnabled
         if node.is_group():
             flags |= QtCore.Qt.ItemFlag.ItemIsDropEnabled | QtCore.Qt.ItemFlag.ItemIsEditable
+        else:
+            # Allow editing item names via double-click
+            flags |= QtCore.Qt.ItemFlag.ItemIsEditable
         return flags
 
     def supportedDropActions(self) -> QtCore.Qt.DropAction:
@@ -271,8 +288,13 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         item = self._uuid_to_item.get(uuid)
         if not item:
             return "Item"
+        # Check display_name first (for annotation items)
+        if hasattr(item, "display_name") and item.display_name:
+            return str(item.display_name)
+        # Check params.name (for optical components)
         if hasattr(item, "params") and hasattr(item.params, "name") and item.params.name:
             return str(item.params.name)
+        # Fallback to type_name
         return item.type_name.replace("_", " ").title() if hasattr(item, "type_name") else "Item"
 
     def _uuids_from_indexes(self, indexes: list[QtCore.QModelIndex]) -> list[str]:

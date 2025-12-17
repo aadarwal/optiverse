@@ -38,6 +38,9 @@ class PathMeasureItem(QtWidgets.QGraphicsObject):
     - Undo/redo support via commandCreated signal
     """
 
+    # Type name for layer panel identification
+    type_name: str = "path_measure"
+
     # Signal emitted when an undo command is created
     commandCreated = QtCore.pyqtSignal(object)
 
@@ -68,6 +71,8 @@ class PathMeasureItem(QtWidgets.QGraphicsObject):
 
         # Generate or use provided UUID
         self.item_uuid = item_uuid if item_uuid else str(uuid.uuid4())
+        # Custom display name for layer panel (None = use type_name)
+        self.display_name: str | None = None
 
         self.setFlags(
             QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable

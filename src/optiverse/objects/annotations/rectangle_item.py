@@ -16,11 +16,16 @@ class RectangleItem(QtWidgets.QGraphicsObject):
     Supports Ctrl+drag and Ctrl+wheel for rotation.
     """
 
+    # Type name for layer panel identification
+    type_name: str = "rectangle"
+
     def __init__(
         self, width_mm: float = 60.0, height_mm: float = 40.0, item_uuid: str | None = None
     ):
         super().__init__()
         self.item_uuid = item_uuid if item_uuid else str(uuid.uuid4())
+        # Custom display name for layer panel (None = use type_name)
+        self.display_name: str | None = None
         self._w = float(width_mm)
         self._h = float(height_mm)
         self.setFlags(

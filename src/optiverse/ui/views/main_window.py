@@ -264,6 +264,7 @@ class MainWindow(QtWidgets.QMainWindow):
             get_ray_data=self._get_ray_data,
             parent_widget=self,
             on_complete=self._on_path_measure_complete,
+            layer_state=self.layer_state,
         )
 
         # Angle measure tool handler
@@ -273,6 +274,7 @@ class MainWindow(QtWidgets.QMainWindow):
             undo_stack=self.undo_stack,
             parent_widget=self,
             on_complete=self._on_angle_measure_complete,
+            layer_state=self.layer_state,
         )
 
         # Item drag handler - tracks positions/rotations for undo/redo
@@ -342,6 +344,7 @@ class MainWindow(QtWidgets.QMainWindow):
             connect_item_signals=self._connect_item_signals,
             schedule_retrace=self._schedule_retrace,
             broadcast_add_item=self.collaboration_manager.broadcast_add_item,
+            layer_state=self.layer_state,
         )
 
     def _build_layer_dock(self):
@@ -386,6 +389,7 @@ class MainWindow(QtWidgets.QMainWindow):
             undo_stack=self.undo_stack,
             get_ruler_action=lambda: self.act_add_ruler,
             finish_ruler_mode=self.tool_controller.finish_ruler_placement,
+            layer_state=self.layer_state,
         )
 
         # Scene event handler - routes events to appropriate handlers

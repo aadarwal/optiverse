@@ -368,6 +368,13 @@ class PlacementHandler:
 
             template_copy = dict(template)
             template_copy["image_path"] = ""  # Remove sprite to show interface lines only
+            # Set clean default name for toolbar placement (without size info)
+            if component_type == ComponentType.LENS:
+                template_copy["name"] = "Lens"
+            elif component_type == ComponentType.MIRROR:
+                template_copy["name"] = "Mirror"
+            elif component_type == ComponentType.BEAMSPLITTER:
+                template_copy["name"] = "Beamsplitter"
 
             created_item = ComponentFactory.create_item_from_dict(
                 template_copy, x_mm=scene_pos.x(), y_mm=scene_pos.y()
