@@ -68,7 +68,8 @@ class ErrorHandler:
         if self._handling_exception:
             try:
                 sys.__stderr__.write(
-                    f"[optiverse] Recursive exception in excepthook: {exc_type.__name__}: {exc_value}\n"
+                    f"[optiverse] Recursive exception in excepthook: "
+                    f"{exc_type.__name__}: {exc_value}\n"
                 )
                 sys.__stderr__.flush()
             except Exception:

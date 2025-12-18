@@ -65,10 +65,10 @@ class BaseObj(QtWidgets.QGraphicsObject):
         self.setAcceptHoverEvents(True)
         self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
         self.setTransformOriginPoint(0.0, 0.0)
-        
+
         # Note: Z-value is assigned by LayerZValueManager based on LayerTreeModel order.
         # No initial z-value is set here.
-        
+
         self._ready = False  # Set to True after full initialization
 
         # Rotation handlers (extracted for cleaner code)

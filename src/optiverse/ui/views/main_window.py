@@ -5,10 +5,10 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from optiverse import __version__
-
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
+
+from optiverse import __version__
 
 from ...core.constants import (
     DEFAULT_WINDOW_HEIGHT,
@@ -164,7 +164,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Layer tree state for layer hierarchy and grouping
         self.layer_state = LayerTreeState()
-        
+
         # Z-order applier keeps scene z-values in sync with layer tree order
         self._zorder_applier = LayerZOrderApplier(self.layer_state, self.scene, parent=self)
 

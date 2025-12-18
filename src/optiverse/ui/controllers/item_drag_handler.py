@@ -15,7 +15,7 @@ Architecture:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Callable
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
@@ -28,46 +28,46 @@ if TYPE_CHECKING:
 class DragContext:
     """
     Clean state container for an active drag operation.
-    
+
     Encapsulates all drag-related state in a single dataclass,
     making it easy to initialize and clean up.
     """
-    
+
     # The item being directly dragged by the mouse
     primary_item: QtWidgets.QGraphicsItem | None = None
-    
+
     # Initial positions of all dragged items (for undo)
     initial_positions: dict[QtWidgets.QGraphicsItem, QtCore.QPointF] = field(
         default_factory=dict
     )
-    
+
     # Initial rotations (for rotation mode)
     initial_rotations: dict[QtWidgets.QGraphicsItem, float] = field(
         default_factory=dict
     )
-    
+
     # Secondary items (all items except primary)
     secondary_items: list[QtWidgets.QGraphicsItem] = field(default_factory=list)
-    
+
     # Offsets of secondary items relative to primary (for coordinated movement)
     secondary_offsets: dict[QtWidgets.QGraphicsItem, QtCore.QPointF] = field(
         default_factory=dict
     )
-    
+
     # Items that had ItemIsMovable disabled (to restore later)
     items_with_movable_disabled: set[QtWidgets.QGraphicsItem] = field(
         default_factory=set
     )
-    
+
     # Whether this is a group drag (LayerTreeState group)
     is_group_drag: bool = False
-    
+
     # Whether this is a multi-selection drag
     is_multi_selection: bool = False
-    
+
     # Whether this is a group rotation (multiple items rotating together)
     is_group_rotation: bool = False
-    
+
     def clear(self) -> None:
         """Reset all drag state."""
         self.primary_item = None
@@ -87,7 +87,7 @@ class ItemDragHandler:
 
     This class tracks item positions on mouse press and creates appropriate
     undo commands on mouse release.
-    
+
     Key design principles:
     - No class-level/global state
     - Works with Qt's selection model, not against it
@@ -203,7 +203,9 @@ class ItemDragHandler:
                     self._drag.is_group_drag = True
                     for it in self.scene.items():
                         if hasattr(it, "item_uuid") and it.item_uuid in uuids:
-                            if isinstance(it, (BaseObj, RulerItem, TextNoteItem, RectangleItem)) and it not in selected_items:
+                            if isinstance(
+                                it, (BaseObj, RulerItem, TextNoteItem, RectangleItem)
+                            ) and it not in selected_items:
                                 selected_items.append(it)
 
         # Identify secondary items and calculate offsets

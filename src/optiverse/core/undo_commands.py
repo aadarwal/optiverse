@@ -130,7 +130,9 @@ class RemoveItemCommand(Command):
             if self._layer_state and self._item_uuid:
                 # Restore item placement
                 if self._old_parent_uuid and self._layer_state.get_node(self._old_parent_uuid):
-                    self._layer_state.add_item(self._item_uuid, self._old_parent_uuid, self._old_index, emit=True)
+                    self._layer_state.add_item(
+                        self._item_uuid, self._old_parent_uuid, self._old_index, emit=True
+                    )
                 else:
                     self._layer_state.add_item(self._item_uuid, None, self._old_index, emit=True)
             self._executed = False
@@ -261,10 +263,16 @@ class RemoveMultipleItemsCommand(Command):
                 node = self._layer_state.get_node(item_uuid)
                 if node:
                     if node.parent:
-                        self._placements[item_uuid] = (node.parent.uuid, node.parent.children.index(node))
+                        self._placements[item_uuid] = (
+                            node.parent.uuid,
+                            node.parent.children.index(node),
+                        )
                     else:
                         roots = self._layer_state.get_root_nodes()
-                        self._placements[item_uuid] = (None, roots.index(node) if node in roots else 0)
+                        self._placements[item_uuid] = (
+                            None,
+                            roots.index(node) if node in roots else 0,
+                        )
 
     def execute(self) -> None:
         """Remove all items from the scene and their groups."""
@@ -545,7 +553,8 @@ class CreateGroupCommand(Command):
             pos = layer_state.get_parent_and_index(uuid)
             if pos:
                 self._original_positions[uuid] = pos
-        # Insert group where the first item currently sits within the target parent (when applicable)
+        # Insert group where the first item currently sits within the target parent
+        # (when applicable)
         self._insert_index: int = 0
         if self._item_uuids:
             first_pos = layer_state.get_parent_and_index(self._item_uuids[0])
@@ -657,8 +666,15 @@ class DeleteGroupCommand(Command):
             for ch in children:
                 if ch["type"] == "group":
                     gid = ch["uuid"]
-                    self._layer_state.create_group(ch.get("name", "Group"), parent_group_uuid=parent_uuid, group_uuid=gid, emit=False)
-                    self._layer_state.set_group_collapsed(gid, bool(ch.get("collapsed", False)), emit=False)
+                    self._layer_state.create_group(
+                        ch.get("name", "Group"),
+                        parent_group_uuid=parent_uuid,
+                        group_uuid=gid,
+                        emit=False,
+                    )
+                    self._layer_state.set_group_collapsed(
+                        gid, bool(ch.get("collapsed", False)), emit=False
+                    )
                     add_children(gid, ch.get("children", []) or [])
                 else:
                     self._layer_state.add_item(ch["uuid"], parent_uuid, index=10**9, emit=False)

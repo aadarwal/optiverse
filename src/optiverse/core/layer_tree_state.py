@@ -18,7 +18,6 @@ from typing import Any, Literal
 
 from PyQt6 import QtCore
 
-
 NodeType = Literal["group", "item"]
 
 
@@ -28,8 +27,8 @@ class LayerNode:
     node_type: NodeType
     name: str | None = None
     collapsed: bool = False
-    parent: "LayerNode | None" = field(default=None, repr=False)
-    children: list["LayerNode"] = field(default_factory=list, repr=False)
+    parent: LayerNode | None = field(default=None, repr=False)
+    children: list[LayerNode] = field(default_factory=list, repr=False)
 
     def is_group(self) -> bool:
         return self.node_type == "group"
@@ -109,7 +108,13 @@ class LayerTreeState(QtCore.QObject):
         if emit:
             self._emit_changed()
 
-    def add_item(self, item_uuid: str, parent_group_uuid: str | None = None, index: int = 0, emit: bool = True) -> None:
+    def add_item(
+        self,
+        item_uuid: str,
+        parent_group_uuid: str | None = None,
+        index: int = 0,
+        emit: bool = True,
+    ) -> None:
         if item_uuid in self._uuid_to_node:
             return
         node = LayerNode(uuid=item_uuid, node_type="item")
@@ -181,7 +186,9 @@ class LayerTreeState(QtCore.QObject):
         if emit:
             self._emit_changed()
 
-    def move_node(self, uuid: str, target_parent_group_uuid: str | None, index: int, emit: bool = True) -> None:
+    def move_node(
+        self, uuid: str, target_parent_group_uuid: str | None, index: int, emit: bool = True
+    ) -> None:
         node = self._uuid_to_node.get(uuid)
         if not node:
             return
@@ -190,7 +197,9 @@ class LayerTreeState(QtCore.QObject):
         if emit:
             self._emit_changed()
 
-    def move_item_to_group(self, item_uuid: str, group_uuid: str | None, index: int | None = None, emit: bool = True) -> None:
+    def move_item_to_group(
+        self, item_uuid: str, group_uuid: str | None, index: int | None = None, emit: bool = True
+    ) -> None:
         node = self._uuid_to_node.get(item_uuid)
         if not node or not node.is_item():
             return
@@ -275,14 +284,14 @@ class LayerTreeState(QtCore.QObject):
 
     def apply_z_order_operation(self, uuids: list[str], operation: str) -> None:
         """Apply a z-order operation to multiple items.
-        
+
         Args:
             uuids: List of item UUIDs to move
             operation: One of "bring_forward", "send_backward", "bring_to_front", "send_to_back"
         """
         if not uuids:
             return
-        
+
         self.begin_update()
         try:
             if operation == "bring_forward":
@@ -343,7 +352,7 @@ class LayerTreeState(QtCore.QObject):
         return {"version": 1, "nodes": [node_to_dict(n) for n in self._roots]}
 
     @classmethod
-    def from_dict(cls, data: dict, parent: QtCore.QObject | None = None) -> "LayerTreeState":
+    def from_dict(cls, data: dict, parent: QtCore.QObject | None = None) -> LayerTreeState:
         st = cls(parent)
         if not data or data.get("version") != 1:
             return st
@@ -366,8 +375,11 @@ class LayerTreeState(QtCore.QObject):
             st._roots.append(dict_to_node(nd, None))
         return st
 
-    def replace_from(self, other: "LayerTreeState", emit: bool = True) -> None:
-        """Replace all state with `other` (used for load/migration) without changing object identity."""
+    def replace_from(self, other: LayerTreeState, emit: bool = True) -> None:
+        """
+        Replace all state with `other` (used for load/migration) without changing
+        object identity.
+        """
         self._roots = other._roots
         self._uuid_to_node = other._uuid_to_node
         if emit:
@@ -390,7 +402,7 @@ class LayerTreeState(QtCore.QObject):
         groups: list[dict],
         items_with_z: list[tuple[float, str]],
         parent: QtCore.QObject | None = None,
-    ) -> "LayerTreeState":
+    ) -> LayerTreeState:
         """Build from legacy `groups` list + (z, uuid) ordering."""
         st = cls(parent)
 

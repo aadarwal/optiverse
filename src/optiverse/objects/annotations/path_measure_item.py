@@ -14,6 +14,7 @@ from typing import Any, cast
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+from ...core.protocols import HasLayerState
 from ...core.ui_constants import (
     PATH_MEASURE_ENDPOINT_COLOR,
     PATH_MEASURE_ENDPOINT_RADIUS,
@@ -23,7 +24,6 @@ from ...core.ui_constants import (
     PATH_MEASURE_LINE_WIDTH,
     SELECTION_INDICATOR_COLOR,
 )
-from ...core.protocols import HasLayerState
 
 
 class PathMeasureItem(QtWidgets.QGraphicsObject):

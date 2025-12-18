@@ -46,7 +46,8 @@ class TestLayerTreeState:
         assert st2.get_all_items_in_order() == st.get_all_items_in_order()
 
     def test_legacy_migration_builds_expected_order(self):
-        # Legacy groups format: list of dicts with group_uuid/name/collapsed/item_uuids/parent_group_uuid
+        # Legacy groups format: list of dicts with
+        # group_uuid/name/collapsed/item_uuids/parent_group_uuid
         groups = [
             {"group_uuid": "G", "name": "Group", "collapsed": False, "item_uuids": ["B"]},
         ]

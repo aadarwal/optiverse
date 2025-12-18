@@ -28,7 +28,7 @@ class RayRenderer:
 
     Handles both hardware-accelerated OpenGL rendering and software fallback
     using QGraphicsPathItem.
-    
+
     Rays are rendered per-source at source.zValue() + 0.1, so they move
     together with their source in the layer tree.
     """
@@ -53,7 +53,7 @@ class RayRenderer:
 
         # Ray width in pixels
         self._ray_width_px: float = 2.0
-        
+
         # Cache of sources for z-value lookup
         self._sources: list[SourceItem] = []
 
@@ -70,7 +70,7 @@ class RayRenderer:
     def set_sources(self, sources: list[SourceItem]) -> None:
         """
         Set the list of sources for z-value lookup.
-        
+
         Args:
             sources: List of SourceItem objects in the same order as raytracing
         """
@@ -99,7 +99,7 @@ class RayRenderer:
 
         Uses OpenGL hardware acceleration if available, otherwise falls back
         to software rendering with QGraphicsPathItem.
-        
+
         Each source's rays are rendered at source.zValue() + 0.1.
 
         Args:
@@ -122,10 +122,10 @@ class RayRenderer:
     def _get_source_z_value(self, source_index: int) -> float:
         """
         Get the z-value for rays from a given source.
-        
+
         Args:
             source_index: Index of the source
-            
+
         Returns:
             z-value for rays (source z-value + offset)
         """
@@ -137,7 +137,7 @@ class RayRenderer:
     def _render_software(self, paths: list[RayPath]) -> None:
         """
         Software fallback rendering using QGraphicsPathItem.
-        
+
         Each source's rays are rendered at source.zValue() + 0.1.
 
         Args:
@@ -180,7 +180,7 @@ class RayRenderer:
             pen.setWidthF(self._ray_width_px * RAY_WIDTH_OPENGL_SCALE)
             pen.setCosmetic(True)
             item.setPen(pen)
-            
+
             # Set z-value based on source (rays render just above their source)
             z_value = self._get_source_z_value(p.source_index)
             item.setZValue(z_value)

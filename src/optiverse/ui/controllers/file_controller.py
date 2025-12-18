@@ -639,7 +639,8 @@ class FileController(QtCore.QObject):
                     if hasattr(item, "item_uuid"):
                         items_with_z.append((float(item.zValue()), str(item.item_uuid)))
 
-                # Build imported layer state from file (new layer_state preferred, else legacy groups)
+                # Build imported layer state from file
+                # (new layer_state preferred, else legacy groups)
                 from ...core.layer_tree_state import LayerTreeState
 
                 if "layer_state" in data:
@@ -648,13 +649,22 @@ class FileController(QtCore.QObject):
                     imported_state = LayerTreeState.from_legacy(file_groups, items_with_z)
 
                 # Create parent group in current state
-                parent_uuid = self._layer_state.create_group(group_name, parent_group_uuid=None, index=0, emit=False)
+                parent_uuid = self._layer_state.create_group(
+                    group_name, parent_group_uuid=None, index=0, emit=False
+                )
 
                 # Attach imported roots under parent group
                 for root in imported_state.get_root_nodes():
                     if root.is_group():
-                        # recreate group with same uuid under parent (preserve UUIDs from imported file)
-                        self._layer_state.create_group(root.name or "Group", parent_group_uuid=parent_uuid, index=10**9, group_uuid=root.uuid, emit=False)
+                        # recreate group with same uuid under parent
+                        # (preserve UUIDs from imported file)
+                        self._layer_state.create_group(
+                            root.name or "Group",
+                            parent_group_uuid=parent_uuid,
+                            index=10**9,
+                            group_uuid=root.uuid,
+                            emit=False,
+                        )
                         self._layer_state.set_group_collapsed(root.uuid, root.collapsed, emit=False)
                         # attach children recursively by serializing subtree and merging
                         from ...core.layer_tree_state import LayerNode
@@ -662,11 +672,21 @@ class FileController(QtCore.QObject):
                         def add_children(dst_parent_uuid: str, node: LayerNode) -> None:
                             for ch in node.children:
                                 if ch.is_group():
-                                    self._layer_state.create_group(ch.name or "Group", parent_group_uuid=dst_parent_uuid, index=10**9, group_uuid=ch.uuid, emit=False)
-                                    self._layer_state.set_group_collapsed(ch.uuid, ch.collapsed, emit=False)
+                                    self._layer_state.create_group(
+                                        ch.name or "Group",
+                                        parent_group_uuid=dst_parent_uuid,
+                                        index=10**9,
+                                        group_uuid=ch.uuid,
+                                        emit=False,
+                                    )
+                                    self._layer_state.set_group_collapsed(
+                                        ch.uuid, ch.collapsed, emit=False
+                                    )
                                     add_children(ch.uuid, ch)
                                 else:
-                                    self._layer_state.add_item(ch.uuid, dst_parent_uuid, index=10**9, emit=False)
+                                    self._layer_state.add_item(
+                                        ch.uuid, dst_parent_uuid, index=10**9, emit=False
+                                    )
                         add_children(root.uuid, root)
                     else:
                         self._layer_state.add_item(root.uuid, parent_uuid, index=10**9, emit=False)

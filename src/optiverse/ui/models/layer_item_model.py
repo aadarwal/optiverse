@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6 import QtCore, QtWidgets
 
-from ...core.undo_commands import BatchCommand, Command, MoveNodeCommand
-from ...core.layer_tree_state import LayerTreeState, LayerNode
+from ...core.layer_tree_state import LayerNode, LayerTreeState
+from ...core.undo_commands import BatchCommand, MoveNodeCommand
 
 if TYPE_CHECKING:
     from ...core.undo_stack import UndoStack
@@ -92,10 +92,12 @@ class LayerItemModel(QtCore.QAbstractItemModel):
 
     # --- Qt Model Overrides ---
 
-    def columnCount(self, parent: QtCore.QModelIndex = QtCore.QModelIndex()) -> int:
+    def columnCount(self, parent: QtCore.QModelIndex | None = None) -> int:
         return 1
 
-    def rowCount(self, parent: QtCore.QModelIndex = QtCore.QModelIndex()) -> int:
+    def rowCount(self, parent: QtCore.QModelIndex | None = None) -> int:
+        if parent is None:
+            parent = QtCore.QModelIndex()
         if not self._layer_state:
             return 0
         if not parent.isValid():
@@ -103,7 +105,11 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         node = self._node_from_index(parent)
         return len(node.children) if node and node.is_group() else 0
 
-    def index(self, row: int, column: int, parent: QtCore.QModelIndex = QtCore.QModelIndex()) -> QtCore.QModelIndex:
+    def index(
+        self, row: int, column: int, parent: QtCore.QModelIndex | None = None
+    ) -> QtCore.QModelIndex:
+        if parent is None:
+            parent = QtCore.QModelIndex()
         if column != 0 or row < 0 or not self._layer_state:
             return QtCore.QModelIndex()
 
@@ -121,7 +127,10 @@ class LayerItemModel(QtCore.QAbstractItemModel):
     def _create_index(self, row: int, column: int, uuid: str) -> QtCore.QModelIndex:
         """Create index with persistent pointer data."""
         if uuid not in self._index_data:
-            self._index_data[uuid] = (uuid, self._layer_state.generation if self._layer_state else 0)
+            self._index_data[uuid] = (
+                uuid,
+                self._layer_state.generation if self._layer_state else 0,
+            )
         return self.createIndex(row, column, self._index_data[uuid])
 
     def parent(self, index: QtCore.QModelIndex) -> QtCore.QModelIndex:
@@ -131,14 +140,20 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         if not node or not node.parent:
             return QtCore.QModelIndex()
         parent_node = node.parent
-        siblings = parent_node.parent.children if parent_node.parent else self._layer_state.get_root_nodes()
+        siblings = (
+            parent_node.parent.children
+            if parent_node.parent
+            else self._layer_state.get_root_nodes()
+        )
         try:
             row = siblings.index(parent_node)
         except ValueError:
             return QtCore.QModelIndex()
         return self._create_index(row, 0, parent_node.uuid)
 
-    def data(self, index: QtCore.QModelIndex, role: int = int(QtCore.Qt.ItemDataRole.DisplayRole)) -> object:
+    def data(
+        self, index: QtCore.QModelIndex, role: int = int(QtCore.Qt.ItemDataRole.DisplayRole)
+    ) -> object:
         if self._shutdown:
             return None
         node = self._node_from_index(index)
@@ -165,7 +180,12 @@ class LayerItemModel(QtCore.QAbstractItemModel):
             return bool(getattr(item, "_locked", False)) if item else False
         return None
 
-    def setData(self, index: QtCore.QModelIndex, value: object, role: int = int(QtCore.Qt.ItemDataRole.EditRole)) -> bool:
+    def setData(
+        self,
+        index: QtCore.QModelIndex,
+        value: object,
+        role: int = int(QtCore.Qt.ItemDataRole.EditRole),
+    ) -> bool:
         node = self._node_from_index(index)
         if not node:
             return False
@@ -216,7 +236,11 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         node = self._node_from_index(index)
         if not node:
             return QtCore.Qt.ItemFlag.NoItemFlags
-        flags = QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsDragEnabled
+        flags = (
+            QtCore.Qt.ItemFlag.ItemIsEnabled
+            | QtCore.Qt.ItemFlag.ItemIsSelectable
+            | QtCore.Qt.ItemFlag.ItemIsDragEnabled
+        )
         if node.is_group():
             flags |= QtCore.Qt.ItemFlag.ItemIsDropEnabled | QtCore.Qt.ItemFlag.ItemIsEditable
         else:
@@ -236,7 +260,14 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         mime.setData(MIME_TYPE_LAYER_ITEMS, ",".join(uuids).encode("utf-8"))
         return mime
 
-    def dropMimeData(self, data: QtCore.QMimeData, action: QtCore.Qt.DropAction, row: int, column: int, parent: QtCore.QModelIndex) -> bool:
+    def dropMimeData(
+        self,
+        data: QtCore.QMimeData,
+        action: QtCore.Qt.DropAction,
+        row: int,
+        column: int,
+        parent: QtCore.QModelIndex,
+    ) -> bool:
         if action != QtCore.Qt.DropAction.MoveAction or not self._scene or not self._layer_state:
             return False
         if not data.hasFormat(MIME_TYPE_LAYER_ITEMS):
@@ -266,7 +297,10 @@ class LayerItemModel(QtCore.QAbstractItemModel):
                 adjusted -= 1
         adjusted = max(0, adjusted)
 
-        cmds = [MoveNodeCommand(self._layer_state, uuid, target_uuid, adjusted + i) for i, uuid in enumerate(moved_uuids)]
+        cmds = [
+            MoveNodeCommand(self._layer_state, uuid, target_uuid, adjusted + i)
+            for i, uuid in enumerate(moved_uuids)
+        ]
         batch = BatchCommand(cmds)
         if self._undo_stack:
             self._undo_stack.push(batch)

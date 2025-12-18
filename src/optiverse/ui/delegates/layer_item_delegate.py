@@ -13,7 +13,7 @@ from ..models.layer_item_model import (
     LOCKED_ROLE,
     VISIBLE_ROLE,
 )
-from ..widgets.constants import Icons, LAYER_ITEM_MARGIN, LAYER_ITEM_SPACING, TOGGLE_BUTTON_SIZE
+from ..widgets.constants import LAYER_ITEM_MARGIN, LAYER_ITEM_SPACING, TOGGLE_BUTTON_SIZE, Icons
 
 
 class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
@@ -32,17 +32,23 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
         try:
             opt = QtWidgets.QStyleOptionViewItem(option)
             self.initStyleOption(opt, index)
-            
+
             # Check if this item is marked as selected
             is_selected = bool(opt.state & QtWidgets.QStyle.StateFlag.State_Selected)
-            
-            # Draw background - manually handle selection since Qt stylesheet may not work with custom delegate
+
+            # Draw background - manually handle selection since Qt stylesheet
+            # may not work with custom delegate
             if is_selected:
                 painter.fillRect(opt.rect, self.SELECTION_BG_COLOR)
             else:
                 # Let style draw default background for non-selected items
                 style = opt.widget.style() if opt.widget else QtWidgets.QApplication.style()
-                style.drawPrimitive(QtWidgets.QStyle.PrimitiveElement.PE_PanelItemViewItem, opt, painter, opt.widget)
+                style.drawPrimitive(
+                    QtWidgets.QStyle.PrimitiveElement.PE_PanelItemViewItem,
+                    opt,
+                    painter,
+                    opt.widget,
+                )
 
             rect = opt.rect.adjusted(LAYER_ITEM_MARGIN, 0, -LAYER_ITEM_MARGIN, 0)
             is_group = bool(index.data(IS_GROUP_ROLE))
@@ -65,7 +71,11 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
             # Draw label
             label = str(index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")
             painter.setPen(opt.palette.color(QtGui.QPalette.ColorRole.Text))
-            painter.drawText(text_rect, int(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft), label)
+            painter.drawText(
+                text_rect,
+                int(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft),
+                label,
+            )
         finally:
             painter.restore()
 
@@ -78,7 +88,10 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
     ) -> bool:
         if event.type() == QtCore.QEvent.Type.MouseButtonPress:
             mev = event  # type: ignore[assignment]
-            if isinstance(mev, QtGui.QMouseEvent) and mev.button() == QtCore.Qt.MouseButton.LeftButton:
+            if (
+                isinstance(mev, QtGui.QMouseEvent)
+                and mev.button() == QtCore.Qt.MouseButton.LeftButton
+            ):
                 rect = option.rect.adjusted(LAYER_ITEM_MARGIN, 0, -LAYER_ITEM_MARGIN, 0)
                 is_group = bool(index.data(IS_GROUP_ROLE))
                 vis_rect, lock_rect, _, _ = self._layout_rects(rect, is_group)
@@ -91,7 +104,9 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
                     return bool(model.setData(index, not current, int(LOCKED_ROLE)))
         return super().editorEvent(event, model, option, index)
 
-    def sizeHint(self, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex) -> QtCore.QSize:
+    def sizeHint(
+        self, option: QtWidgets.QStyleOptionViewItem, index: QtCore.QModelIndex
+    ) -> QtCore.QSize:
         size = super().sizeHint(option, index)
         size.setHeight(max(size.height(), TOGGLE_BUTTON_SIZE + 2))
         return size

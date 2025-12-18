@@ -12,6 +12,7 @@ from typing import Any
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+from ...core.protocols import HasLayerState
 from ...core.ui_constants import (
     ANGLE_MEASURE_ARC_COLOR,
     ANGLE_MEASURE_ARC_RADIUS,
@@ -25,7 +26,6 @@ from ...core.ui_constants import (
     ANGLE_MEASURE_LINE_WIDTH,
     SELECTION_INDICATOR_COLOR,
 )
-from ...core.protocols import HasLayerState
 
 
 class AngleMeasureItem(QtWidgets.QGraphicsObject):

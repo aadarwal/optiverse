@@ -6,6 +6,7 @@ from typing import Any
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+from ...core.protocols import HasLayerState
 from ...core.ui_constants import (
     RULER_BAR_HEIGHT,
     RULER_BAR_WIDTH,
@@ -22,7 +23,6 @@ from ...core.ui_constants import (
     RULER_TOTAL_LABEL_ALONG_OFFSET,
     RULER_TOTAL_LABEL_PERP_OFFSET,
 )
-from ...core.protocols import HasLayerState
 from ...ui.theme_manager import is_dark_mode
 
 

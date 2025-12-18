@@ -66,7 +66,7 @@ class SceneFileManager:
         self._is_modified = False
         self._layer_state: LayerTreeState | None = None
 
-    def set_layer_state(self, layer_state: "LayerTreeState") -> None:
+    def set_layer_state(self, layer_state: LayerTreeState) -> None:
         """Set the authoritative layer state for saving/loading layer hierarchy/order."""
         self._layer_state = layer_state
 
@@ -207,10 +207,10 @@ class SceneFileManager:
         """
         from optiverse.objects.annotations.path_measure_item import PathMeasureItem
 
+        from ..core.layer_tree_state import LayerTreeState
         from ..objects import BaseObj, RectangleItem
         from ..objects.annotations import RulerItem, TextNoteItem
         from ..objects.type_registry import deserialize_item
-        from ..core.layer_tree_state import LayerTreeState
 
         # Clear scene
         for it in list(self.scene.items()):

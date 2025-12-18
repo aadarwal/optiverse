@@ -13,8 +13,8 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 
 from ...core.layer_tree_state import LayerTreeState
 from ...core.undo_commands import CreateGroupCommand, DeleteGroupCommand
-from ..models import LayerItemModel
 from ..delegates import LayerItemDelegate
+from ..models import LayerItemModel
 from .constants import Icons
 
 if TYPE_CHECKING:
@@ -129,7 +129,9 @@ class LayerPanel(QtWidgets.QWidget):
 
     def set_scene(self, scene: QtWidgets.QGraphicsScene) -> None:
         self._scene = scene
-        self._model.set_context(scene=scene, layer_state=self._layer_state, undo_stack=self._get_undo_stack())
+        self._model.set_context(
+            scene=scene, layer_state=self._layer_state, undo_stack=self._get_undo_stack()
+        )
 
     @property
     def model(self) -> LayerItemModel:
@@ -138,7 +140,9 @@ class LayerPanel(QtWidgets.QWidget):
     def set_layer_state(self, layer_state: LayerTreeState) -> None:
         self._layer_state = layer_state
         layer_state.changed.connect(self.refresh)
-        self._model.set_context(scene=self._scene, layer_state=layer_state, undo_stack=self._get_undo_stack())
+        self._model.set_context(
+            scene=self._scene, layer_state=layer_state, undo_stack=self._get_undo_stack()
+        )
 
     def _get_undo_stack(self) -> UndoStack | None:
         if not self._scene or not (views := self._scene.views()):
@@ -163,7 +167,11 @@ class LayerPanel(QtWidgets.QWidget):
     def _do_refresh(self) -> None:
         if not self._scene:
             return
-        self._model.set_context(scene=self._scene, layer_state=self._layer_state, undo_stack=self._get_undo_stack())
+        self._model.set_context(
+            scene=self._scene,
+            layer_state=self._layer_state,
+            undo_stack=self._get_undo_stack(),
+        )
         self._apply_group_collapsed_state()
         self._do_sync_from_scene_selection()
 
@@ -184,7 +192,11 @@ class LayerPanel(QtWidgets.QWidget):
                 continue
             if bool(idx.data(IS_GROUP_ROLE)):
                 group_uuid = cast(str, idx.data(GROUP_UUID_ROLE))
-                node = self._layer_state.get_node(group_uuid) if group_uuid and self._layer_state else None
+                node = (
+                    self._layer_state.get_node(group_uuid)
+                    if group_uuid and self._layer_state
+                    else None
+                )
                 collapsed = bool(getattr(node, "collapsed", False)) if node else False
                 self._tree.setExpanded(idx, not collapsed)
             self._walk_and_apply_collapsed(idx)
@@ -200,7 +212,9 @@ class LayerPanel(QtWidgets.QWidget):
     def _apply_z_order(self, operation: str) -> None:
         if not self._scene or not self._layer_state:
             return
-        uuids = [item.item_uuid for item in self._scene.selectedItems() if hasattr(item, "item_uuid")]
+        uuids = [
+            item.item_uuid for item in self._scene.selectedItems() if hasattr(item, "item_uuid")
+        ]
         if uuids:
             self._layer_state.apply_z_order_operation(uuids, operation)
 
@@ -209,7 +223,11 @@ class LayerPanel(QtWidgets.QWidget):
 
     # --- Selection ---
 
-    def _on_selection_changed(self, _sel: QtCore.QItemSelection | None = None, _desel: QtCore.QItemSelection | None = None) -> None:
+    def _on_selection_changed(
+        self,
+        _sel: QtCore.QItemSelection | None = None,
+        _desel: QtCore.QItemSelection | None = None,
+    ) -> None:
         if not self._scene:
             return
         selected: list[str] = []
@@ -232,7 +250,9 @@ class LayerPanel(QtWidgets.QWidget):
     def _do_sync_from_scene_selection(self) -> None:
         if not self._scene:
             return
-        uuids = {item.item_uuid for item in self._scene.selectedItems() if hasattr(item, "item_uuid")}
+        uuids = {
+            item.item_uuid for item in self._scene.selectedItems() if hasattr(item, "item_uuid")
+        }
         sm = self._tree.selectionModel()
         if not sm:
             return
@@ -255,7 +275,11 @@ class LayerPanel(QtWidgets.QWidget):
                 continue
             if not bool(idx.data(IS_GROUP_ROLE)):
                 if idx.data(ITEM_UUID_ROLE) in uuids:
-                    sm.select(idx, QtCore.QItemSelectionModel.SelectionFlag.Select | QtCore.QItemSelectionModel.SelectionFlag.Rows)
+                    sm.select(
+                        idx,
+                        QtCore.QItemSelectionModel.SelectionFlag.Select
+                        | QtCore.QItemSelectionModel.SelectionFlag.Rows,
+                    )
             self._select_by_uuid(uuids, idx)
 
     # --- Actions ---
@@ -265,7 +289,9 @@ class LayerPanel(QtWidgets.QWidget):
             return
         selected = self._scene.selectedItems()
         if len(selected) < 2:
-            QtWidgets.QMessageBox.information(self, "Group Items", "Select at least 2 items to group.")
+            QtWidgets.QMessageBox.information(
+                self, "Group Items", "Select at least 2 items to group."
+            )
             return
         name, ok = QtWidgets.QInputDialog.getText(self, "Create Group", "Group name:", text="Group")
         if not ok:
@@ -344,7 +370,14 @@ class LayerPanel(QtWidgets.QWidget):
                     cmd.execute()
 
         for uid in item_uuids:
-            item = next((i for i in self._scene.items() if hasattr(i, "item_uuid") and i.item_uuid == uid), None)
+            item = next(
+                (
+                    i
+                    for i in self._scene.items()
+                    if hasattr(i, "item_uuid") and i.item_uuid == uid
+                ),
+                None,
+            )
             if item:
                 if undo:
                     undo.push(RemoveItemCommand(self._scene, item, self._layer_state))
