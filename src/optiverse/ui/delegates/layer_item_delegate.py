@@ -22,7 +22,7 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
     # Selection background color (matches dark_theme.qss LayerTreeView::item:selected)
     SELECTION_BG_COLOR = QtGui.QColor(0x3d, 0x5a, 0x80)  # #3d5a80
 
-    def paint(
+    def paint(  # type: ignore[override]
         self,
         painter: QtGui.QPainter,
         option: QtWidgets.QStyleOptionViewItem,
@@ -43,12 +43,13 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
             else:
                 # Let style draw default background for non-selected items
                 style = opt.widget.style() if opt.widget else QtWidgets.QApplication.style()
-                style.drawPrimitive(
-                    QtWidgets.QStyle.PrimitiveElement.PE_PanelItemViewItem,
-                    opt,
-                    painter,
-                    opt.widget,
-                )
+                if style:
+                    style.drawPrimitive(
+                        QtWidgets.QStyle.PrimitiveElement.PE_PanelItemViewItem,
+                        opt,
+                        painter,
+                        opt.widget,
+                    )
 
             rect = opt.rect.adjusted(LAYER_ITEM_MARGIN, 0, -LAYER_ITEM_MARGIN, 0)
             is_group = bool(index.data(IS_GROUP_ROLE))
@@ -79,7 +80,7 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
         finally:
             painter.restore()
 
-    def editorEvent(
+    def editorEvent(  # type: ignore[override]
         self,
         event: QtCore.QEvent,
         model: QtCore.QAbstractItemModel,

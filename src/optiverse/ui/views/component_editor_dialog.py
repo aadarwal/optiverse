@@ -940,8 +940,10 @@ class ComponentEditor(QtWidgets.QMainWindow):
         if self._library_io:
             self._library_io.load_library_from_path()
 
-    def closeEvent(self, event: QtGui.QCloseEvent):
+    def closeEvent(self, event: QtGui.QCloseEvent | None) -> None:  # type: ignore[override]
         """Handle window close event, prompting to save unsaved changes."""
+        if not event:
+            return
         if self._modified:
             reply = QtWidgets.QMessageBox.question(
                 self,

@@ -157,11 +157,13 @@ class ErrorHandler:
         header_layout.setSpacing(12)
 
         icon_label = QtWidgets.QLabel()
-        icon_label.setPixmap(
-            dialog.style()
-            .standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MessageBoxCritical)
-            .pixmap(32, 32)
-        )
+        style = dialog.style()
+        if style:
+            icon_label.setPixmap(
+                style.standardIcon(QtWidgets.QStyle.StandardPixmap.SP_MessageBoxCritical).pixmap(
+                    32, 32
+                )
+            )
         icon_label.setFixedSize(32, 32)
         header_layout.addWidget(icon_label, 0, QtCore.Qt.AlignmentFlag.AlignTop)
 

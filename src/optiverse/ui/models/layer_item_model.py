@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from PyQt6 import QtCore, QtWidgets
 
 from ...core.layer_tree_state import LayerNode, LayerTreeState
-from ...core.undo_commands import BatchCommand, MoveNodeCommand
+from ...core.undo_commands import BatchCommand, Command, MoveNodeCommand
 
 if TYPE_CHECKING:
     from ...core.undo_stack import UndoStack
@@ -133,7 +133,7 @@ class LayerItemModel(QtCore.QAbstractItemModel):
             )
         return self.createIndex(row, column, self._index_data[uuid])
 
-    def parent(self, index: QtCore.QModelIndex) -> QtCore.QModelIndex:
+    def parent(self, index: QtCore.QModelIndex) -> QtCore.QModelIndex:  # type: ignore[override]
         if not self._layer_state:
             return QtCore.QModelIndex()
         node = self._node_from_index(index)
@@ -254,13 +254,13 @@ class LayerItemModel(QtCore.QAbstractItemModel):
     def mimeTypes(self) -> list[str]:
         return [MIME_TYPE_LAYER_ITEMS]
 
-    def mimeData(self, indexes: list[QtCore.QModelIndex]) -> QtCore.QMimeData:
+    def mimeData(self, indexes: list[QtCore.QModelIndex]) -> QtCore.QMimeData:  # type: ignore[override]
         mime = QtCore.QMimeData()
         uuids = self._uuids_from_indexes(indexes)
         mime.setData(MIME_TYPE_LAYER_ITEMS, ",".join(uuids).encode("utf-8"))
         return mime
 
-    def dropMimeData(
+    def dropMimeData(  # type: ignore[override]
         self,
         data: QtCore.QMimeData,
         action: QtCore.Qt.DropAction,
@@ -273,7 +273,7 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         if not data.hasFormat(MIME_TYPE_LAYER_ITEMS):
             return False
 
-        raw = bytes(data.data(MIME_TYPE_LAYER_ITEMS)).decode("utf-8").strip()
+        raw = data.data(MIME_TYPE_LAYER_ITEMS).data().decode("utf-8").strip()
         moved_uuids = [u for u in raw.split(",") if u]
         if not moved_uuids:
             return False
@@ -297,7 +297,7 @@ class LayerItemModel(QtCore.QAbstractItemModel):
                 adjusted -= 1
         adjusted = max(0, adjusted)
 
-        cmds = [
+        cmds: list[Command] = [
             MoveNodeCommand(self._layer_state, uuid, target_uuid, adjusted + i)
             for i, uuid in enumerate(moved_uuids)
         ]

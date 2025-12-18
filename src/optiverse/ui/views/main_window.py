@@ -419,8 +419,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Connect edited signal for retrace and collaboration
         if isinstance(item, Editable):
-            item.edited.connect(self._maybe_retrace)
-            item.edited.connect(partial(self.collaboration_manager.broadcast_update_item, item))
+            item.edited.connect(self._maybe_retrace)  # type: ignore[attr-defined]
+            item.edited.connect(partial(self.collaboration_manager.broadcast_update_item, item))  # type: ignore[attr-defined]
 
         # Connect commandCreated signal for undo/redo
         # BaseObj and RulerItem both have commandCreated signal
@@ -565,7 +565,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Connect edited signal for optical components
             for item in self.scene.items():
                 if isinstance(item, Editable):
-                    item.edited.connect(self._maybe_retrace)
+                    item.edited.connect(self._maybe_retrace)  # type: ignore[attr-defined]
             # Refresh layer panel
             self.layer_panel.refresh()
 
@@ -575,7 +575,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Connect edited signal for optical components
             for item in self.scene.items():
                 if isinstance(item, Editable):
-                    item.edited.connect(self._maybe_retrace)
+                    item.edited.connect(self._maybe_retrace)  # type: ignore[attr-defined]
             # Refresh layer panel
             self.layer_panel.refresh()
 
@@ -605,10 +605,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 if isinstance(item, Editable):
                     # Only connect if not already connected
                     try:
-                        item.edited.disconnect(self._maybe_retrace)
+                        item.edited.disconnect(self._maybe_retrace)  # type: ignore[attr-defined]
                     except TypeError:
                         pass
-                    item.edited.connect(self._maybe_retrace)
+                    item.edited.connect(self._maybe_retrace)  # type: ignore[attr-defined]
             # Refresh layer panel
             self.layer_panel.refresh()
 

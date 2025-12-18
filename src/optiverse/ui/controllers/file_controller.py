@@ -670,6 +670,8 @@ class FileController(QtCore.QObject):
                         from ...core.layer_tree_state import LayerNode
 
                         def add_children(dst_parent_uuid: str, node: LayerNode) -> None:
+                            if not self._layer_state:
+                                return
                             for ch in node.children:
                                 if ch.is_group():
                                     self._layer_state.create_group(

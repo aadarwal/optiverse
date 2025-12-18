@@ -121,10 +121,10 @@ class LayerPanel(QtWidgets.QWidget):
             ("↑ Up", "Bring forward", "bring_forward"),
             ("↓ Down", "Send backward", "send_backward"),
         ]:
-            btn = QtWidgets.QPushButton(text)
-            btn.setToolTip(tooltip)
-            btn.clicked.connect(lambda _, o=op: self._apply_z_order(o))
-            btn_layout.addWidget(btn)
+            z_btn = QtWidgets.QPushButton(text)
+            z_btn.setToolTip(tooltip)
+            z_btn.clicked.connect(lambda _, o=op: self._apply_z_order(o))
+            btn_layout.addWidget(z_btn)
         layout.addLayout(btn_layout)
 
     def set_scene(self, scene: QtWidgets.QGraphicsScene) -> None:
@@ -263,7 +263,8 @@ class LayerPanel(QtWidgets.QWidget):
                 self._select_by_uuid(uuids, QtCore.QModelIndex())
         finally:
             sm.blockSignals(False)
-        self._tree.viewport().update()
+        if viewport := self._tree.viewport():
+            viewport.update()
 
     def _select_by_uuid(self, uuids: set[str], parent: QtCore.QModelIndex) -> None:
         sm = self._tree.selectionModel()

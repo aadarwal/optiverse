@@ -83,13 +83,15 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
                 act_send_backward: "send_backward",
                 act_send_to_back: "send_to_back",
             }
-            if (op := action_map.get(a)) and self.scene() and self.scene().views():
-                main_window = self.scene().views()[0].window()
-                if isinstance(main_window, HasLayerState) and main_window.layer_state:
-                    items = list(self.scene().selectedItems()) if self.isSelected() else [self]
-                    uuids = [it.item_uuid for it in items if hasattr(it, "item_uuid")]
-                    if uuids:
-                        main_window.layer_state.apply_z_order_operation(uuids, op)
+            if op := action_map.get(a):
+                scene = self.scene()
+                if scene and scene.views():
+                    main_window = scene.views()[0].window()
+                    if isinstance(main_window, HasLayerState) and main_window.layer_state:
+                        items = list(scene.selectedItems()) if self.isSelected() else [self]
+                        uuids = [it.item_uuid for it in items if hasattr(it, "item_uuid")]
+                        if uuids:
+                            main_window.layer_state.apply_z_order_operation(uuids, op)
 
     def clone(self, offset_mm: tuple[float, float] = (20.0, 20.0)) -> TextNoteItem:
         """Create a deep copy of this text note with optional position offset."""
