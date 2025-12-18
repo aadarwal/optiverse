@@ -43,6 +43,8 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         self._order: list[str] = []
         # Persistent storage for internal pointer data (prevents GC issues with Qt indexes)
         self._index_data: dict[str, tuple[str, int]] = {}
+        # Shutdown flag to prevent data access during Qt cleanup
+        self._shutdown: bool = False
 
     def set_context(
         self,
@@ -67,9 +69,12 @@ class LayerItemModel(QtCore.QAbstractItemModel):
 
     def cleanup(self) -> None:
         """Clear all cached references before shutdown."""
+        self._shutdown = True
+        self.beginResetModel()
         self._uuid_to_item.clear()
         self._scene = None
         self._layer_state = None
+        self.endResetModel()
 
     def get_order(self) -> list[str]:
         return list(self._order)
@@ -134,6 +139,8 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         return self._create_index(row, 0, parent_node.uuid)
 
     def data(self, index: QtCore.QModelIndex, role: int = int(QtCore.Qt.ItemDataRole.DisplayRole)) -> object:
+        if self._shutdown:
+            return None
         node = self._node_from_index(index)
         if not node:
             return None
