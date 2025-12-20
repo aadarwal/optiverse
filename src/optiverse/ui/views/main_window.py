@@ -364,6 +364,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # Connect z-order changes to retrace (so rays update their z-values)
         self.layer_panel.zOrderChanged.connect(self._schedule_retrace)
 
+        # Connect visibility changes to retrace (so hidden sources stop emitting rays)
+        self.layer_panel.visibilityChanged.connect(self._schedule_retrace)
+
         # Set layer state on component ops for delete operations
         self.component_ops.set_layer_state(self.layer_state)
 

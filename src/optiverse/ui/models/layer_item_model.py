@@ -33,6 +33,7 @@ class LayerItemModel(QtCore.QAbstractItemModel):
     """Tree model for layers with drag-drop support."""
 
     orderChanged = QtCore.pyqtSignal()
+    visibilityChanged = QtCore.pyqtSignal()
 
     def __init__(self, parent: QtCore.QObject | None = None):
         super().__init__(parent)
@@ -216,6 +217,7 @@ class LayerItemModel(QtCore.QAbstractItemModel):
             elif item := self._uuid_to_item.get(node.uuid):
                 item.setVisible(visible)
             self.dataChanged.emit(index, index, [int(VISIBLE_ROLE)])
+            self.visibilityChanged.emit()
             return True
 
         if role == int(LOCKED_ROLE) and self._scene:

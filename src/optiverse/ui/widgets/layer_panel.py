@@ -42,6 +42,7 @@ class LayerPanel(QtWidgets.QWidget):
 
     selectionChanged = QtCore.pyqtSignal(list)
     zOrderChanged = QtCore.pyqtSignal()
+    visibilityChanged = QtCore.pyqtSignal()
 
     def __init__(self, parent: QtWidgets.QWidget | None = None):
         super().__init__(parent)
@@ -50,6 +51,7 @@ class LayerPanel(QtWidgets.QWidget):
 
         self._model = LayerItemModel(self)
         self._model.orderChanged.connect(self._on_model_order_changed)
+        self._model.visibilityChanged.connect(self._on_visibility_changed)
 
         # Debounce timers
         self._refresh_timer = QtCore.QTimer(self)
@@ -220,6 +222,9 @@ class LayerPanel(QtWidgets.QWidget):
 
     def _on_model_order_changed(self) -> None:
         self.zOrderChanged.emit()
+
+    def _on_visibility_changed(self) -> None:
+        self.visibilityChanged.emit()
 
     # --- Selection ---
 

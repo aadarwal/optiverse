@@ -141,10 +141,10 @@ class RaytracingController(QtCore.QObject):
             from ...core.models import SourceParams
             from ...objects import SourceItem
 
-            # Collect sources (order matters for ray z-ordering)
+            # Collect visible sources (order matters for ray z-ordering)
             sources: list[SourceItem] = []
             for it in self._scene.items():
-                if isinstance(it, SourceItem):
+                if isinstance(it, SourceItem) and it.isVisible():
                     sources.append(it)
 
             if not sources:
