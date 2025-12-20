@@ -167,6 +167,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Z-order applier keeps scene z-values in sync with layer tree order
         self._zorder_applier = LayerZOrderApplier(self.layer_state, self.scene, parent=self)
+        self._zorder_applier.zValuesApplied.connect(self._schedule_retrace)
 
         # Load saved preferences
         self.magnetic_snap = self.settings_service.get_value("magnetic_snap", True, bool)
