@@ -112,6 +112,18 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
         size.setHeight(max(size.height(), TOGGLE_BUTTON_SIZE + 2))
         return size
 
+    def updateEditorGeometry(
+        self,
+        editor: QtWidgets.QWidget,
+        option: QtWidgets.QStyleOptionViewItem,
+        index: QtCore.QModelIndex,
+    ) -> None:
+        """Position the editor in the text area (after the icons)."""
+        rect = option.rect.adjusted(LAYER_ITEM_MARGIN, 0, -LAYER_ITEM_MARGIN, 0)
+        is_group = bool(index.data(IS_GROUP_ROLE))
+        _, _, _, text_rect = self._layout_rects(rect, is_group)
+        editor.setGeometry(text_rect)
+
     def _layout_rects(
         self, rect: QtCore.QRect, is_group: bool
     ) -> tuple[QtCore.QRect, QtCore.QRect, QtCore.QRect, QtCore.QRect]:

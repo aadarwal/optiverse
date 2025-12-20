@@ -160,7 +160,7 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         if not node:
             return None
 
-        if role == int(QtCore.Qt.ItemDataRole.DisplayRole):
+        if role in (int(QtCore.Qt.ItemDataRole.DisplayRole), int(QtCore.Qt.ItemDataRole.EditRole)):
             return node.name or "Group" if node.is_group() else self._get_item_name(node.uuid)
         if role == int(IS_GROUP_ROLE):
             return node.is_group()
