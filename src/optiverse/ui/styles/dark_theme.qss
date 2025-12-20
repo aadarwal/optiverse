@@ -113,6 +113,8 @@ QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox {
     border: 1px solid #3d3f46;
     padding: 3px;
     border-radius: 3px;
+    selection-background-color: #3d5a80;
+    selection-color: white;
 }
 
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus {
@@ -274,6 +276,8 @@ QTextEdit, QPlainTextEdit {
     color: white;
     border: 1px solid #3d3f46;
     border-radius: 3px;
+    selection-background-color: #3d5a80;
+    selection-color: white;
 }
 
 /* Ruler Widget */

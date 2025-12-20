@@ -83,7 +83,8 @@ QTreeWidget {
 }
 
 QTreeWidget::item:selected {
-    background-color: #cce8ff;
+    background-color: #0A84FF;
+    color: white;
 }
 
 QTreeWidget::item:hover {
@@ -278,8 +279,8 @@ LayerTreeWidget::item {
 }
 
 LayerTreeWidget::item:selected {
-    background-color: #cce8ff;
-    color: black;
+    background-color: #0A84FF;
+    color: white;
 }
 
 LayerTreeWidget::item:hover {
@@ -297,8 +298,8 @@ LayerTreeView::item {
 }
 
 LayerTreeView::item:selected {
-    background-color: #cce8ff;
-    color: black;
+    background-color: #0A84FF;
+    color: white;
 }
 
 LayerTreeView::item:hover {

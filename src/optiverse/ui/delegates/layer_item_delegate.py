@@ -19,9 +19,6 @@ from ..widgets.constants import LAYER_ITEM_MARGIN, LAYER_ITEM_SPACING, TOGGLE_BU
 class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
     """Paints visibility/lock icons and the item/group label; handles icon clicks."""
 
-    # Selection background color (matches dark_theme.qss LayerTreeView::item:selected)
-    SELECTION_BG_COLOR = QtGui.QColor(0x3d, 0x5a, 0x80)  # #3d5a80
-
     def paint(  # type: ignore[override]
         self,
         painter: QtGui.QPainter,
@@ -33,23 +30,24 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
             opt = QtWidgets.QStyleOptionViewItem(option)
             self.initStyleOption(opt, index)
 
-            # Check if this item is marked as selected
-            is_selected = bool(opt.state & QtWidgets.QStyle.StateFlag.State_Selected)
+            # Let Qt's style draw the background (respects QSS for selection/hover/normal)
+            # This ensures consistent painting across the entire row including indentation
+            style = opt.widget.style() if opt.widget else QtWidgets.QApplication.style()
+            if style:
+                style.drawPrimitive(
+                    QtWidgets.QStyle.PrimitiveElement.PE_PanelItemViewItem,
+                    opt,
+                    painter,
+                    opt.widget,
+                )
 
-            # Draw background - manually handle selection since Qt stylesheet
-            # may not work with custom delegate
-            if is_selected:
-                painter.fillRect(opt.rect, self.SELECTION_BG_COLOR)
-            else:
-                # Let style draw default background for non-selected items
-                style = opt.widget.style() if opt.widget else QtWidgets.QApplication.style()
-                if style:
-                    style.drawPrimitive(
-                        QtWidgets.QStyle.PrimitiveElement.PE_PanelItemViewItem,
-                        opt,
-                        painter,
-                        opt.widget,
-                    )
+            # Determine text color based on selection state
+            is_selected = bool(opt.state & QtWidgets.QStyle.StateFlag.State_Selected)
+            text_color_role = (
+                QtGui.QPalette.ColorRole.HighlightedText
+                if is_selected
+                else QtGui.QPalette.ColorRole.Text
+            )
 
             rect = opt.rect.adjusted(LAYER_ITEM_MARGIN, 0, -LAYER_ITEM_MARGIN, 0)
             is_group = bool(index.data(IS_GROUP_ROLE))
@@ -63,15 +61,15 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
             vis_text = Icons.VISIBLE if visible else Icons.HIDDEN
             lock_text = Icons.LOCKED if locked else Icons.UNLOCKED
 
-            # Draw icons
-            self._draw_centered_text(painter, vis_rect, vis_text, opt.palette)
-            self._draw_centered_text(painter, lock_rect, lock_text, opt.palette)
+            # Draw icons with appropriate color for selection state
+            self._draw_centered_text(painter, vis_rect, vis_text, opt.palette, text_color_role)
+            self._draw_centered_text(painter, lock_rect, lock_text, opt.palette, text_color_role)
             if is_group:
-                self._draw_centered_text(painter, folder_rect, Icons.FOLDER, opt.palette)
+                self._draw_centered_text(painter, folder_rect, Icons.FOLDER, opt.palette, text_color_role)
 
             # Draw label
             label = str(index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")
-            painter.setPen(opt.palette.color(QtGui.QPalette.ColorRole.Text))
+            painter.setPen(opt.palette.color(text_color_role))
             painter.drawText(
                 text_rect,
                 int(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft),
@@ -176,8 +174,9 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
         rect: QtCore.QRect,
         text: str,
         palette: QtGui.QPalette,
+        color_role: QtGui.QPalette.ColorRole = QtGui.QPalette.ColorRole.Text,
     ) -> None:
-        painter.setPen(palette.color(QtGui.QPalette.ColorRole.Text))
+        painter.setPen(palette.color(color_role))
         painter.drawText(rect, int(QtCore.Qt.AlignmentFlag.AlignCenter), text)
 
 
