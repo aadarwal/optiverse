@@ -317,22 +317,22 @@ LayerTreeWidget::item:hover {
     background-color: #4a6fa5;
 }
 
-/* LayerTreeView (Model/View architecture replacement for LayerTreeWidget) */
-LayerTreeView {
+/* KeyboardLayerTreeView (Model/View architecture replacement for LayerTreeWidget) */
+KeyboardLayerTreeView {
     background-color: #2b2d31;
     border: 1px solid #3d3f46;
 }
 
-LayerTreeView::item {
+KeyboardLayerTreeView::item {
     padding: 4px 2px;
 }
 
-LayerTreeView::item:selected {
+KeyboardLayerTreeView::item:selected {
     background-color: #3d5a80;
     color: white;
 }
 
-LayerTreeView::item:hover {
+KeyboardLayerTreeView::item:hover {
     background-color: #4a6fa5;
 }
 

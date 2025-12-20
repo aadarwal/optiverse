@@ -7,10 +7,8 @@ from .interface_widgets import (
     EditableLabel,
     InterfaceTreeWidget,
 )
-from .layer_panel import (
-    LayerPanel,
-    LayerTreeView,
-)
+from .layer_panel import LayerPanel
+from ..views.keyboard_layer_tree_view import KeyboardLayerTreeView
 from .library_tree import LibraryTree
 from .ruler_widget import CanvasWithRulers, RulerWidget
 from .smart_spinbox import SmartDoubleSpinBox, SmartSpinBox
@@ -33,5 +31,5 @@ __all__ = [
     "EditableLabel",
     "ColoredCircleLabel",
     # Layer widgets
-    "LayerTreeView",
+    "KeyboardLayerTreeView",
 ]

@@ -9,32 +9,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6 import QtCore, QtWidgets
 
 from ...core.layer_tree_state import LayerTreeState
 from ...core.undo_commands import CreateGroupCommand, DeleteGroupCommand
 from ..delegates import LayerItemDelegate
 from ..models import LayerItemModel
+from ..views.keyboard_layer_tree_view import KeyboardLayerTreeView
 from .constants import Icons
 
 if TYPE_CHECKING:
     from ...core.undo_stack import UndoStack
 
 from ..models.layer_item_model import GROUP_UUID_ROLE, IS_GROUP_ROLE, ITEM_UUID_ROLE
-
-
-class LayerTreeView(QtWidgets.QTreeView):
-    """Tree view with delete key handling."""
-
-    deleteKeyPressed = QtCore.pyqtSignal()
-
-    def keyPressEvent(self, event: QtGui.QKeyEvent | None) -> None:
-        if event and event.key() in (QtCore.Qt.Key.Key_Delete, QtCore.Qt.Key.Key_Backspace):
-            if self.state() != QtWidgets.QAbstractItemView.State.EditingState:
-                self.deleteKeyPressed.emit()
-                event.accept()
-                return
-        super().keyPressEvent(event)
 
 
 class LayerPanel(QtWidgets.QWidget):
@@ -92,7 +79,7 @@ class LayerPanel(QtWidgets.QWidget):
         layout.addWidget(header)
 
         # Tree view
-        self._tree = LayerTreeView()
+        self._tree = KeyboardLayerTreeView()
         self._tree.setModel(self._model)
         self._tree.setItemDelegate(LayerItemDelegate(self._tree))
         self._tree.setHeaderHidden(True)

@@ -21,7 +21,7 @@ The layer panel appears as a dockable widget on the right side of the main windo
 The layer system follows Qt's **Model/View/Delegate** pattern:
 
 - **Model** (`LayerItemModel`) - Provides data to the view
-- **View** (`LayerTreeView`) - Displays the tree structure
+- **View** (`KeyboardLayerTreeView`) - Displays the tree structure with keyboard handling
 - **Delegate** (`LayerItemDelegate`) - Custom painting and click handling
 
 The core state is managed separately in `LayerTreeState`, which acts as the **single source of truth** for hierarchy and ordering.
@@ -62,7 +62,7 @@ classDiagram
     
     class LayerPanel {
         +model: LayerItemModel
-        +tree: LayerTreeView
+        +tree: KeyboardLayerTreeView
         +selectionChanged: Signal
         +zOrderChanged: Signal
         +visibilityChanged: Signal
@@ -71,7 +71,7 @@ classDiagram
         +refresh()
     }
     
-    class LayerTreeView {
+    class KeyboardLayerTreeView {
         +deleteKeyPressed: Signal
         +keyPressEvent()
     }
@@ -105,13 +105,13 @@ classDiagram
     LayerTreeState "1" --o "*" LayerNode : contains
     LayerNode "0..1" --o "*" LayerNode : children
     LayerPanel "1" --> "1" LayerItemModel : uses
-    LayerPanel "1" --> "1" LayerTreeView : contains
+    LayerPanel "1" --> "1" KeyboardLayerTreeView : contains
     LayerPanel "1" --> "1" LayerTreeState : references
     LayerItemModel "1" --> "1" LayerTreeState : reads
     LayerItemModel "1" --> "1" QGraphicsScene : scans items
     LayerZOrderApplier "1" --> "1" LayerTreeState : listens to changed
     LayerZOrderApplier "1" --> "1" QGraphicsScene : updates z-values
-    LayerTreeView "1" --> "1" LayerItemDelegate : uses for painting
+    KeyboardLayerTreeView "1" --> "1" LayerItemDelegate : uses for painting
 ```
 
 ---
@@ -131,7 +131,7 @@ flowchart TD
         LP[LayerPanel]
         LIM[LayerItemModel]
         LID[LayerItemDelegate]
-        LTV[LayerTreeView]
+        LTV[KeyboardLayerTreeView]
     end
     
     subgraph scene [Graphics Scene]
@@ -159,7 +159,7 @@ flowchart TD
 1. **State Changes**: When the layer hierarchy changes (reorder, group, visibility toggle), `LayerTreeState` emits its `changed` signal
 2. **UI Refresh**: `LayerPanel` receives the signal and triggers a debounced refresh of `LayerItemModel`
 3. **Model Rebuild**: `LayerItemModel` scans the `QGraphicsScene` to build a UUID-to-item mapping and reads the hierarchy from `LayerTreeState`
-4. **View Update**: `LayerTreeView` displays the updated model data
+4. **View Update**: `KeyboardLayerTreeView` displays the updated model data
 5. **Z-Order Sync**: `LayerZOrderApplier` also receives the `changed` signal and updates `zValue()` on all scene items based on the traversal order
 
 ---
@@ -229,14 +229,15 @@ Signals:
 - `zOrderChanged` - Emitted when z-order is modified
 - `visibilityChanged` - Emitted when visibility is toggled
 
-### LayerTreeView
+### KeyboardLayerTreeView
 
-**File:** `src/optiverse/ui/widgets/layer_panel.py`
+**File:** `src/optiverse/ui/views/keyboard_layer_tree_view.py`
 
-A custom `QTreeView` subclass that adds:
+A custom `QTreeView` subclass with keyboard handling for layer operations. It provides:
 
-- Delete/Backspace key handling for deleting selected items
-- Emits `deleteKeyPressed` signal when delete is pressed
+- Delete/Backspace key handling for deleting selected items/groups
+- Emits `deleteKeyPressed` signal when delete is pressed (only when not in editing mode)
+- Extensibility point for future keyboard shortcuts (e.g., Ctrl+G for grouping)
 
 ### LayerItemModel
 
@@ -459,7 +460,8 @@ Visibility changes affect ray tracing:
 |------|-------------|
 | `src/optiverse/core/layer_tree_state.py` | Core state (LayerTreeState, LayerNode) |
 | `src/optiverse/core/layer_zorder_applier.py` | Z-value synchronization |
-| `src/optiverse/ui/widgets/layer_panel.py` | Main widget (LayerPanel, LayerTreeView) |
+| `src/optiverse/ui/widgets/layer_panel.py` | Main widget (LayerPanel) |
+| `src/optiverse/ui/views/keyboard_layer_tree_view.py` | Custom tree view with keyboard handling |
 | `src/optiverse/ui/models/layer_item_model.py` | Qt tree model |
 | `src/optiverse/ui/delegates/layer_item_delegate.py` | Custom row painting |
 | `src/optiverse/ui/widgets/constants.py` | UI constants (icons, sizes) |
