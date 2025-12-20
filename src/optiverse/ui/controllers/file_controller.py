@@ -75,11 +75,6 @@ class FileController(QtCore.QObject):
         if layer_state:
             self.file_manager.set_layer_state(layer_state)
 
-    def set_layer_state(self, layer_state: LayerTreeState) -> None:
-        """Set the layer state for save/load/import-as-layer functionality."""
-        self._layer_state = layer_state
-        self.file_manager.set_layer_state(layer_state)
-
         # Autosave timer
         self._autosave_timer = QtCore.QTimer()
         self._autosave_timer.setSingleShot(True)
@@ -88,6 +83,11 @@ class FileController(QtCore.QObject):
 
         # Connect undo stack to modification tracking
         self._undo_stack.commandPushed.connect(self._on_command_pushed)
+
+    def set_layer_state(self, layer_state: LayerTreeState) -> None:
+        """Set the layer state for save/load/import-as-layer functionality."""
+        self._layer_state = layer_state
+        self.file_manager.set_layer_state(layer_state)
 
     @property
     def saved_file_path(self) -> str | None:
