@@ -65,6 +65,7 @@ class LayerItemModel(QtCore.QAbstractItemModel):
             self._index_data.clear()
             self._rebuild_caches()
             self._order = self._layer_state.get_all_items_in_order() if self._layer_state else []
+            self._apply_all_effective_states()
         finally:
             self.endResetModel()
 
@@ -349,6 +350,14 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         current = self._layer_state.get_all_items_in_order() if self._layer_state else []
         rank = {u: i for i, u in enumerate(current)}
         return sorted(uuids, key=lambda u: rank.get(u, 10**9))
+
+    def _apply_all_effective_states(self) -> None:
+        """Apply effective visibility and lock to all items based on LayerNode hierarchy."""
+        if not self._layer_state:
+            return
+        for root in self._layer_state.get_root_nodes():
+            self._apply_effective_visibility(root)
+            self._apply_effective_locked(root)
 
     def _apply_effective_visibility(self, node: LayerNode) -> None:
         """Apply effective visibility to node and all descendants."""
