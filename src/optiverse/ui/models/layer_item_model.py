@@ -170,15 +170,9 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         if role == int(ITEM_UUID_ROLE) and node.is_item():
             return node.uuid
         if role == int(VISIBLE_ROLE):
-            if node.is_group():
-                return True
-            item = self._uuid_to_item.get(node.uuid)
-            return bool(item.isVisible()) if item else True
+            return node.visible
         if role == int(LOCKED_ROLE):
-            if node.is_group():
-                return False
-            item = self._uuid_to_item.get(node.uuid)
-            return bool(getattr(item, "_locked", False)) if item else False
+            return node.locked
         return None
 
     def setData(
@@ -210,23 +204,16 @@ class LayerItemModel(QtCore.QAbstractItemModel):
                     self.dataChanged.emit(index, index, [int(QtCore.Qt.ItemDataRole.DisplayRole)])
                     return True
 
-        if role == int(VISIBLE_ROLE) and self._scene:
-            visible = bool(value)
-            if node.is_group():
-                self._set_group_visible(node.uuid, visible)
-            elif item := self._uuid_to_item.get(node.uuid):
-                item.setVisible(visible)
+        if role == int(VISIBLE_ROLE) and self._scene and self._layer_state:
+            node.visible = bool(value)
+            self._apply_effective_visibility(node)
             self.dataChanged.emit(index, index, [int(VISIBLE_ROLE)])
             self.visibilityChanged.emit()
             return True
 
-        if role == int(LOCKED_ROLE) and self._scene:
-            locked = bool(value)
-            if node.is_group():
-                self._set_group_locked(node.uuid, locked)
-            elif item := self._uuid_to_item.get(node.uuid):
-                if hasattr(item, "set_locked"):
-                    item.set_locked(locked)
+        if role == int(LOCKED_ROLE) and self._scene and self._layer_state:
+            node.locked = bool(value)
+            self._apply_effective_locked(node)
             self.dataChanged.emit(index, index, [int(LOCKED_ROLE)])
             return True
 
@@ -363,17 +350,37 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         rank = {u: i for i, u in enumerate(current)}
         return sorted(uuids, key=lambda u: rank.get(u, 10**9))
 
-    def _set_group_visible(self, group_uuid: str, visible: bool) -> None:
+    def _apply_effective_visibility(self, node: LayerNode) -> None:
+        """Apply effective visibility to node and all descendants."""
         if not self._layer_state:
             return
-        for uuid in self._layer_state.get_group_items_recursive(group_uuid):
-            if item := self._uuid_to_item.get(uuid):
-                item.setVisible(visible)
 
-    def _set_group_locked(self, group_uuid: str, locked: bool) -> None:
+        def apply_to_node(n: LayerNode) -> None:
+            if n.is_item():
+                if item := self._uuid_to_item.get(n.uuid):
+                    effective = self._layer_state.is_effectively_visible(n.uuid)
+                    item.setVisible(effective)
+            else:
+                # Group: apply to all children
+                for child in n.children:
+                    apply_to_node(child)
+
+        apply_to_node(node)
+
+    def _apply_effective_locked(self, node: LayerNode) -> None:
+        """Apply effective locked state to node and all descendants."""
         if not self._layer_state:
             return
-        for uuid in self._layer_state.get_group_items_recursive(group_uuid):
-            if item := self._uuid_to_item.get(uuid):
-                if hasattr(item, "set_locked"):
-                    item.set_locked(locked)
+
+        def apply_to_node(n: LayerNode) -> None:
+            if n.is_item():
+                if item := self._uuid_to_item.get(n.uuid):
+                    if hasattr(item, "set_locked"):
+                        effective = self._layer_state.is_effectively_locked(n.uuid)
+                        item.set_locked(effective)
+            else:
+                # Group: apply to all children
+                for child in n.children:
+                    apply_to_node(child)
+
+        apply_to_node(node)

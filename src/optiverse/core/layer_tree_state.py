@@ -27,6 +27,8 @@ class LayerNode:
     node_type: NodeType
     name: str | None = None
     collapsed: bool = False
+    visible: bool = True
+    locked: bool = False
     parent: LayerNode | None = field(default=None, repr=False)
     children: list[LayerNode] = field(default_factory=list, repr=False)
 
@@ -336,6 +338,40 @@ class LayerTreeState(QtCore.QObject):
         walk(node)
         return out
 
+    def is_effectively_visible(self, uuid: str) -> bool:
+        """Returns True if node AND all ancestors are visible (Photoshop-style)."""
+        node = self._uuid_to_node.get(uuid)
+        while node:
+            if not node.visible:
+                return False
+            node = node.parent
+        return True
+
+    def is_effectively_locked(self, uuid: str) -> bool:
+        """Returns True if node OR any ancestor is locked."""
+        node = self._uuid_to_node.get(uuid)
+        while node:
+            if node.locked:
+                return True
+            node = node.parent
+        return False
+
+    def set_node_visible(self, uuid: str, visible: bool, emit: bool = True) -> None:
+        """Set visibility on a node."""
+        node = self._uuid_to_node.get(uuid)
+        if node:
+            node.visible = visible
+            if emit:
+                self._emit_changed()
+
+    def set_node_locked(self, uuid: str, locked: bool, emit: bool = True) -> None:
+        """Set locked state on a node."""
+        node = self._uuid_to_node.get(uuid)
+        if node:
+            node.locked = locked
+            if emit:
+                self._emit_changed()
+
     # --- Serialization ---
 
     def to_dict(self) -> dict[str, Any]:
@@ -345,6 +381,10 @@ class LayerTreeState(QtCore.QObject):
                 d["name"] = n.name
             if n.collapsed:
                 d["collapsed"] = True
+            if not n.visible:
+                d["visible"] = False
+            if n.locked:
+                d["locked"] = True
             if n.children:
                 d["children"] = [node_to_dict(c) for c in n.children]
             return d
@@ -363,6 +403,8 @@ class LayerTreeState(QtCore.QObject):
                 node_type=d["type"],
                 name=d.get("name"),
                 collapsed=bool(d.get("collapsed", False)),
+                visible=bool(d.get("visible", True)),
+                locked=bool(d.get("locked", False)),
                 parent=parent_node,
             )
             st._uuid_to_node[node.uuid] = node
