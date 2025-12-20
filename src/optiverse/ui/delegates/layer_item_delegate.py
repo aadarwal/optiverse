@@ -87,22 +87,50 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
         option: QtWidgets.QStyleOptionViewItem,
         index: QtCore.QModelIndex,
     ) -> bool:
-        if event.type() == QtCore.QEvent.Type.MouseButtonPress:
-            mev = event  # type: ignore[assignment]
-            if (
-                isinstance(mev, QtGui.QMouseEvent)
-                and mev.button() == QtCore.Qt.MouseButton.LeftButton
-            ):
-                rect = option.rect.adjusted(LAYER_ITEM_MARGIN, 0, -LAYER_ITEM_MARGIN, 0)
-                is_group = bool(index.data(IS_GROUP_ROLE))
-                vis_rect, lock_rect, _, _ = self._layout_rects(rect, is_group)
-                pos = mev.position().toPoint()
-                if vis_rect.contains(pos):
-                    current = bool(index.data(VISIBLE_ROLE))
-                    return bool(model.setData(index, not current, int(VISIBLE_ROLE)))
-                if lock_rect.contains(pos):
-                    current = bool(index.data(LOCKED_ROLE))
-                    return bool(model.setData(index, not current, int(LOCKED_ROLE)))
+        """Handle mouse events on icons; only allow editing on text area double-click.
+
+        This follows the Qt delegate pattern: intercept events in icon regions to
+        toggle visibility/lock on press and consume double-clicks to prevent the
+        edit trigger from activating. Double-clicks on the text area pass through
+        to Qt's default handling, which opens the inline editor.
+        """
+        # Only handle left mouse button press/double-click
+        if event.type() not in (
+            QtCore.QEvent.Type.MouseButtonPress,
+            QtCore.QEvent.Type.MouseButtonDblClick,
+        ):
+            return super().editorEvent(event, model, option, index)
+
+        mev = event  # type: ignore[assignment]
+        if (
+            not isinstance(mev, QtGui.QMouseEvent)
+            or mev.button() != QtCore.Qt.MouseButton.LeftButton
+        ):
+            return super().editorEvent(event, model, option, index)
+
+        rect = option.rect.adjusted(LAYER_ITEM_MARGIN, 0, -LAYER_ITEM_MARGIN, 0)
+        is_group = bool(index.data(IS_GROUP_ROLE))
+        vis_rect, lock_rect, folder_rect, _ = self._layout_rects(rect, is_group)
+        pos = mev.position().toPoint()
+        is_press = event.type() == QtCore.QEvent.Type.MouseButtonPress
+
+        # Visibility icon - toggle on press, consume double-click
+        if vis_rect.contains(pos):
+            if is_press:
+                model.setData(index, not bool(index.data(VISIBLE_ROLE)), int(VISIBLE_ROLE))
+            return True
+
+        # Lock icon - toggle on press, consume double-click
+        if lock_rect.contains(pos):
+            if is_press:
+                model.setData(index, not bool(index.data(LOCKED_ROLE)), int(LOCKED_ROLE))
+            return True
+
+        # Folder icon - consume all clicks (no action, prevents edit)
+        if is_group and folder_rect.contains(pos):
+            return True
+
+        # Text area - let Qt handle (select on click, edit on double-click)
         return super().editorEvent(event, model, option, index)
 
     def sizeHint(
