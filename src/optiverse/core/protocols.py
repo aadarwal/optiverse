@@ -213,3 +213,14 @@ class HasSnapping(Protocol):
 
     magnetic_snap: bool
     _snap_helper: Any  # SnapHelper
+
+
+@runtime_checkable
+class HasLayerState(Protocol):
+    """
+    Protocol for objects that provide layer tree state access.
+
+    Used by z-order operations that need to modify the layer hierarchy.
+    """
+
+    layer_state: Any  # LayerTreeState

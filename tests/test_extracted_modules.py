@@ -107,9 +107,8 @@ class TestZOrderUtils:
 
     def test_get_z_order_items_empty_scene(self, qapp):
         """Test get_z_order_items_from_item with no scene."""
-        from PyQt6 import QtWidgets
-
         from optiverse.core.zorder_utils import get_z_order_items_from_item
+        from PyQt6 import QtWidgets
 
         # Create an item not in a scene
         item = QtWidgets.QGraphicsRectItem()
@@ -120,9 +119,8 @@ class TestZOrderUtils:
 
     def test_get_z_order_items_single_item(self, qapp, scene):
         """Test get_z_order_items_from_item with single unselected item."""
-        from PyQt6 import QtWidgets
-
         from optiverse.core.zorder_utils import get_z_order_items_from_item
+        from PyQt6 import QtWidgets
 
         item = QtWidgets.QGraphicsRectItem(0, 0, 10, 10)
         scene.addItem(item)

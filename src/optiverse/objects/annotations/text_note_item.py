@@ -5,7 +5,7 @@ from typing import Any
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from ...core.zorder_utils import handle_z_order_from_menu
+from ...core.protocols import HasLayerState
 
 
 class TextNoteItem(QtWidgets.QGraphicsTextItem):
@@ -13,10 +13,15 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
     Movable, editable text note. Double-click to edit; right-click → Delete/Edit.
     """
 
+    # Type name for layer panel identification
+    type_name: str = "text"
+
     def __init__(self, text: str = "Text", item_uuid: str | None = None):
         super().__init__(text)
         # Generate or use provided UUID for collaboration
         self.item_uuid = item_uuid if item_uuid else str(uuid.uuid4())
+        # Custom display name for layer panel (None = use type_name)
+        self.display_name: str | None = None
 
         self.setFlags(
             QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable
@@ -71,17 +76,22 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
             if scene is not None:
                 scene.removeItem(self)
         else:
-            # Handle z-order actions via utility
-            handle_z_order_from_menu(
-                self,
-                a,
-                {
-                    act_bring_to_front: "bring_to_front",
-                    act_bring_forward: "bring_forward",
-                    act_send_backward: "send_backward",
-                    act_send_to_back: "send_to_back",
-                },
-            )
+            # Handle z-order actions
+            action_map = {
+                act_bring_to_front: "bring_to_front",
+                act_bring_forward: "bring_forward",
+                act_send_backward: "send_backward",
+                act_send_to_back: "send_to_back",
+            }
+            if op := action_map.get(a):
+                scene = self.scene()
+                if scene and scene.views():
+                    main_window = scene.views()[0].window()
+                    if isinstance(main_window, HasLayerState) and main_window.layer_state:
+                        items = list(scene.selectedItems()) if self.isSelected() else [self]
+                        uuids = [it.item_uuid for it in items if hasattr(it, "item_uuid")]
+                        if uuids:
+                            main_window.layer_state.apply_z_order_operation(uuids, op)
 
     def clone(self, offset_mm: tuple[float, float] = (20.0, 20.0)) -> TextNoteItem:
         """Create a deep copy of this text note with optional position offset."""

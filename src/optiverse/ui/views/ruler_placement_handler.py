@@ -33,6 +33,7 @@ class RulerPlacementHandler:
         undo_stack: UndoStack,
         get_ruler_action: Callable[[], QtGui.QAction],
         finish_ruler_mode: Callable[[], None],
+        layer_state=None,
     ):
         """
         Initialize the ruler placement handler.
@@ -51,6 +52,7 @@ class RulerPlacementHandler:
         self._undo_stack = undo_stack
         self._get_ruler_action = get_ruler_action
         self._finish_ruler_mode = finish_ruler_mode
+        self._layer_state = layer_state
         self._prev_cursor: QtGui.QCursor | None = None
 
     @property
@@ -215,7 +217,7 @@ class RulerPlacementHandler:
                 ruler_in_progress.commandCreated.connect(self._undo_stack.push)
                 ruler_in_progress.requestDelete.connect(self._handle_item_delete)
                 # Finalize ruler with undo command
-                cmd = AddItemCommand(self._scene, ruler_in_progress)
+                cmd = AddItemCommand(self._scene, ruler_in_progress, self._layer_state)
                 self._undo_stack.push(cmd)
                 ruler_in_progress.setSelected(True)
                 # Clear ruler_in_progress so finish() doesn't remove it
@@ -234,7 +236,7 @@ class RulerPlacementHandler:
         from ...core.undo_commands import RemoveItemCommand
 
         if item.scene():
-            cmd = RemoveItemCommand(item.scene(), item)
+            cmd = RemoveItemCommand(item.scene(), item, self._layer_state)
             self._undo_stack.push(cmd)
 
     def handle_add_bend(self) -> bool:

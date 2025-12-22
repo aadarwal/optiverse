@@ -240,6 +240,7 @@ class AngleMeasureToolHandler:
         undo_stack: UndoStack,
         parent_widget: QtWidgets.QWidget,
         on_complete: Callable[[], None] | None = None,
+        layer_state=None,
     ):
         """
         Initialize the angle measure tool handler.
@@ -256,6 +257,7 @@ class AngleMeasureToolHandler:
         self.undo_stack = undo_stack
         self.parent_widget = parent_widget
         self.on_complete = on_complete
+        self._layer_state = layer_state
 
         # State for three-click workflow
         self._state: str | None = None  # 'waiting_point1', 'waiting_vertex', 'waiting_point2'
@@ -401,7 +403,7 @@ class AngleMeasureToolHandler:
         angle_item.requestDelete.connect(self._handle_item_delete)
 
         # Add via undo stack
-        cmd = AddItemCommand(self.scene, angle_item)
+        cmd = AddItemCommand(self.scene, angle_item, self._layer_state)
         self.undo_stack.push(cmd)
 
         # Select the item
@@ -427,7 +429,7 @@ class AngleMeasureToolHandler:
         from ...core.undo_commands import RemoveItemCommand
 
         if item.scene():
-            cmd = RemoveItemCommand(item.scene(), item)
+            cmd = RemoveItemCommand(item.scene(), item, self._layer_state)
             self.undo_stack.push(cmd)
 
     def handle_mouse_move(self, scene_pos: QtCore.QPointF) -> None:
@@ -458,6 +460,7 @@ class PathMeasureToolHandler:
         get_ray_data: Callable[[], list[RayPath]],
         parent_widget: QtWidgets.QWidget,
         on_complete: Callable[[], None] | None = None,
+        layer_state=None,
     ):
         """
         Initialize the path measure tool handler.
@@ -476,6 +479,7 @@ class PathMeasureToolHandler:
         self._get_ray_data = get_ray_data
         self.parent_widget = parent_widget
         self.on_complete = on_complete
+        self._layer_state = layer_state
 
         # State for two-click workflow
         self._state: str | None = None  # 'waiting_first_click' or 'waiting_second_click'
@@ -744,9 +748,9 @@ class PathMeasureToolHandler:
         # Add items via undo stack
         cmd: AddItemCommand | AddMultipleItemsCommand
         if len(items_to_add) == 1:
-            cmd = AddItemCommand(self.scene, items_to_add[0])
+            cmd = AddItemCommand(self.scene, items_to_add[0], self._layer_state)
         else:
-            cmd = AddMultipleItemsCommand(self.scene, items_to_add)
+            cmd = AddMultipleItemsCommand(self.scene, items_to_add, self._layer_state)
 
         self.undo_stack.push(cmd)
 
@@ -777,7 +781,7 @@ class PathMeasureToolHandler:
         from ...core.undo_commands import RemoveItemCommand
 
         if item.scene():
-            cmd = RemoveItemCommand(item.scene(), item)
+            cmd = RemoveItemCommand(item.scene(), item, self._layer_state)
             self.undo_stack.push(cmd)
 
     def _param_to_position(

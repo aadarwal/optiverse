@@ -6,6 +6,7 @@ from typing import Any
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+from ...core.protocols import HasLayerState
 from ...core.ui_constants import (
     RULER_BAR_HEIGHT,
     RULER_BAR_WIDTH,
@@ -22,7 +23,6 @@ from ...core.ui_constants import (
     RULER_TOTAL_LABEL_ALONG_OFFSET,
     RULER_TOTAL_LABEL_PERP_OFFSET,
 )
-from ...core.zorder_utils import handle_z_order_from_menu
 from ...ui.theme_manager import is_dark_mode
 
 
@@ -45,6 +45,9 @@ class RulerItem(QtWidgets.QGraphicsObject):
     - point_count(): Get number of points
     """
 
+    # Type name for layer panel identification
+    type_name: str = "ruler"
+
     # Signal emitted when an undo command is created
     commandCreated = QtCore.pyqtSignal(object)
 
@@ -61,6 +64,8 @@ class RulerItem(QtWidgets.QGraphicsObject):
         super().__init__()
         # Generate or use provided UUID for collaboration
         self.item_uuid = item_uuid if item_uuid else str(uuid.uuid4())
+        # Custom display name for layer panel (None = use type_name)
+        self.display_name: str | None = None
         # Handle default values for p1 and p2
         if p1 is None:
             p1 = QtCore.QPointF(-50, 0)
@@ -493,16 +498,21 @@ class RulerItem(QtWidgets.QGraphicsObject):
             self._add_bend_at_nearest_segment(ev.pos())
         else:
             # Handle z-order actions
-            handle_z_order_from_menu(
-                self,
-                action,
-                {
-                    act_bring_to_front: "bring_to_front",
-                    act_bring_forward: "bring_forward",
-                    act_send_backward: "send_backward",
-                    act_send_to_back: "send_to_back",
-                },
-            )
+            action_map = {
+                act_bring_to_front: "bring_to_front",
+                act_bring_forward: "bring_forward",
+                act_send_backward: "send_backward",
+                act_send_to_back: "send_to_back",
+            }
+            if op := action_map.get(action):
+                scene = self.scene()
+                if scene and scene.views():
+                    main_window = scene.views()[0].window()
+                    if isinstance(main_window, HasLayerState) and main_window.layer_state:
+                        items = list(scene.selectedItems()) if self.isSelected() else [self]
+                        uuids = [it.item_uuid for it in items if hasattr(it, "item_uuid")]
+                        if uuids:
+                            main_window.layer_state.apply_z_order_operation(uuids, op)
 
     def _delete_bend_point(self, index: int) -> None:
         """Delete a bend point with undo support."""

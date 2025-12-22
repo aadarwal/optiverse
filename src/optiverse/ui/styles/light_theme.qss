@@ -83,7 +83,8 @@ QTreeWidget {
 }
 
 QTreeWidget::item:selected {
-    background-color: #cce8ff;
+    background-color: #0A84FF;
+    color: white;
 }
 
 QTreeWidget::item:hover {
@@ -278,11 +279,30 @@ LayerTreeWidget::item {
 }
 
 LayerTreeWidget::item:selected {
-    background-color: #cce8ff;
-    color: black;
+    background-color: #0A84FF;
+    color: white;
 }
 
 LayerTreeWidget::item:hover {
+    background-color: #e6f2ff;
+}
+
+/* KeyboardLayerTreeView (Model/View architecture replacement for LayerTreeWidget) */
+KeyboardLayerTreeView {
+    background-color: #f5f5f5;
+    border: 1px solid #d0d0d0;
+}
+
+KeyboardLayerTreeView::item {
+    padding: 4px 2px;
+}
+
+KeyboardLayerTreeView::item:selected {
+    background-color: #0A84FF;
+    color: white;
+}
+
+KeyboardLayerTreeView::item:hover {
     background-color: #e6f2ff;
 }
 

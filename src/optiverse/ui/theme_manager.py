@@ -164,7 +164,7 @@ def _create_dark_palette() -> QtGui.QPalette:
     palette.setColor(QtGui.QPalette.ColorRole.ButtonText, QtGui.QColor("white"))
     palette.setColor(QtGui.QPalette.ColorRole.BrightText, QtGui.QColor("white"))
     palette.setColor(QtGui.QPalette.ColorRole.Link, QtGui.QColor("#6495ff"))
-    palette.setColor(QtGui.QPalette.ColorRole.Highlight, QtGui.QColor("#2d2f36"))
+    palette.setColor(QtGui.QPalette.ColorRole.Highlight, QtGui.QColor("#3d5a80"))
     palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor("white"))
     return palette
 
@@ -181,8 +181,8 @@ def _create_light_palette() -> QtGui.QPalette:
     palette.setColor(QtGui.QPalette.ColorRole.ButtonText, QtGui.QColor("black"))
     palette.setColor(QtGui.QPalette.ColorRole.BrightText, QtGui.QColor("black"))
     palette.setColor(QtGui.QPalette.ColorRole.Link, QtGui.QColor("#4a90e2"))
-    palette.setColor(QtGui.QPalette.ColorRole.Highlight, QtGui.QColor("#cce8ff"))
-    palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor("black"))
+    palette.setColor(QtGui.QPalette.ColorRole.Highlight, QtGui.QColor("#0A84FF"))
+    palette.setColor(QtGui.QPalette.ColorRole.HighlightedText, QtGui.QColor("white"))
     return palette
 
 

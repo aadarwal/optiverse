@@ -14,6 +14,7 @@ from typing import Any, cast
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+from ...core.protocols import HasLayerState
 from ...core.ui_constants import (
     PATH_MEASURE_ENDPOINT_COLOR,
     PATH_MEASURE_ENDPOINT_RADIUS,
@@ -23,7 +24,6 @@ from ...core.ui_constants import (
     PATH_MEASURE_LINE_WIDTH,
     SELECTION_INDICATOR_COLOR,
 )
-from ...core.zorder_utils import handle_z_order_from_menu
 
 
 class PathMeasureItem(QtWidgets.QGraphicsObject):
@@ -37,6 +37,9 @@ class PathMeasureItem(QtWidgets.QGraphicsObject):
     - Displays total optical path length
     - Undo/redo support via commandCreated signal
     """
+
+    # Type name for layer panel identification
+    type_name: str = "path_measure"
 
     # Signal emitted when an undo command is created
     commandCreated = QtCore.pyqtSignal(object)
@@ -68,6 +71,8 @@ class PathMeasureItem(QtWidgets.QGraphicsObject):
 
         # Generate or use provided UUID
         self.item_uuid = item_uuid if item_uuid else str(uuid.uuid4())
+        # Custom display name for layer panel (None = use type_name)
+        self.display_name: str | None = None
 
         self.setFlags(
             QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
@@ -482,17 +487,22 @@ class PathMeasureItem(QtWidgets.QGraphicsObject):
                 # Emit signal for undoable deletion
                 self.requestDelete.emit(self)
             else:
-                # Handle z-order actions via utility
-                handle_z_order_from_menu(
-                    self,
-                    action,
-                    {
-                        act_bring_to_front: "bring_to_front",
-                        act_bring_forward: "bring_forward",
-                        act_send_backward: "send_backward",
-                        act_send_to_back: "send_to_back",
-                    },
-                )
+                # Handle z-order actions
+                action_map = {
+                    act_bring_to_front: "bring_to_front",
+                    act_bring_forward: "bring_forward",
+                    act_send_backward: "send_backward",
+                    act_send_to_back: "send_to_back",
+                }
+                if op := action_map.get(action):
+                    scene = self.scene()
+                    if scene and scene.views():
+                        main_window = scene.views()[0].window()
+                        if isinstance(main_window, HasLayerState) and main_window.layer_state:
+                            items = list(scene.selectedItems()) if self.isSelected() else [self]
+                            uuids = [it.item_uuid for it in items if hasattr(it, "item_uuid")]
+                            if uuids:
+                                main_window.layer_state.apply_z_order_operation(uuids, op)
 
             event.accept()
             return

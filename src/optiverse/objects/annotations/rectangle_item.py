@@ -6,7 +6,7 @@ from typing import Any
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from ...core.zorder_utils import handle_z_order_from_menu
+from ...core.protocols import HasLayerState
 
 
 class RectangleItem(QtWidgets.QGraphicsObject):
@@ -16,11 +16,16 @@ class RectangleItem(QtWidgets.QGraphicsObject):
     Supports Ctrl+drag and Ctrl+wheel for rotation.
     """
 
+    # Type name for layer panel identification
+    type_name: str = "rectangle"
+
     def __init__(
         self, width_mm: float = 60.0, height_mm: float = 40.0, item_uuid: str | None = None
     ):
         super().__init__()
         self.item_uuid = item_uuid if item_uuid else str(uuid.uuid4())
+        # Custom display name for layer panel (None = use type_name)
+        self.display_name: str | None = None
         self._w = float(width_mm)
         self._h = float(height_mm)
         self.setFlags(
@@ -87,17 +92,22 @@ class RectangleItem(QtWidgets.QGraphicsObject):
             if scene is not None:
                 scene.removeItem(self)
         else:
-            # Handle z-order actions via utility
-            handle_z_order_from_menu(
-                self,
-                a,
-                {
-                    act_bring_to_front: "bring_to_front",
-                    act_bring_forward: "bring_forward",
-                    act_send_backward: "send_backward",
-                    act_send_to_back: "send_to_back",
-                },
-            )
+            # Handle z-order actions
+            action_map = {
+                act_bring_to_front: "bring_to_front",
+                act_bring_forward: "bring_forward",
+                act_send_backward: "send_backward",
+                act_send_to_back: "send_to_back",
+            }
+            if op := action_map.get(a):
+                scene = self.scene()
+                if scene and scene.views():
+                    main_window = scene.views()[0].window()
+                    if isinstance(main_window, HasLayerState) and main_window.layer_state:
+                        items = list(scene.selectedItems()) if self.isSelected() else [self]
+                        uuids = [it.item_uuid for it in items if hasattr(it, "item_uuid")]
+                        if uuids:
+                            main_window.layer_state.apply_z_order_operation(uuids, op)
 
     def mousePressEvent(self, ev: QtWidgets.QGraphicsSceneMouseEvent | None):
         """Handle mouse press for rotation mode (Ctrl+drag) or normal drag."""
@@ -228,9 +238,9 @@ class RectangleItem(QtWidgets.QGraphicsObject):
         return item
 
     def open_editor(self):
-        d = QtWidgets.QDialog(
-            self.scene().views()[0].window() if self.scene() and self.scene().views() else None
-        )
+        scene = self.scene()
+        parent_window = scene.views()[0].window() if scene and scene.views() else None
+        d = QtWidgets.QDialog(parent_window)
         d.setWindowTitle("Edit Rectangle")
         f = QtWidgets.QFormLayout(d)
 

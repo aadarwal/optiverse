@@ -13,7 +13,7 @@ from PyQt6 import QtCore, QtWidgets
 from ...core.log_categories import LogCategory
 
 if TYPE_CHECKING:
-    from ...core.layer_group import GroupManager
+    from ...core.layer_tree_state import LayerTreeState
     from ...core.undo_stack import UndoStack
     from ...services.collaboration_manager import CollaborationManager
     from ...services.log_service import LogService
@@ -37,7 +37,7 @@ class ComponentOperationsHandler:
         schedule_retrace: Callable,
         set_paste_enabled: Callable[[bool], None],
         parent_widget: QtWidgets.QWidget,
-        group_manager: GroupManager | None = None,
+        layer_state: LayerTreeState | None = None,
     ):
         """
         Initialize the component operations handler.
@@ -52,7 +52,7 @@ class ComponentOperationsHandler:
             schedule_retrace: Callable to schedule ray retracing
             set_paste_enabled: Callable to enable/disable paste action
             parent_widget: Parent widget for dialogs
-            group_manager: Optional group manager for group membership cleanup on delete
+            layer_state: Optional layer state for group membership cleanup on delete
         """
         self.scene = scene
         self.undo_stack = undo_stack
@@ -63,14 +63,14 @@ class ComponentOperationsHandler:
         self._schedule_retrace = schedule_retrace
         self._set_paste_enabled = set_paste_enabled
         self.parent_widget = parent_widget
-        self._group_manager = group_manager
+        self._layer_state = layer_state
 
         # Clipboard for copy/paste
         self._clipboard: list = []
 
-    def set_group_manager(self, group_manager: GroupManager) -> None:
-        """Set the group manager for delete operations."""
-        self._group_manager = group_manager
+    def set_layer_state(self, layer_state: LayerTreeState) -> None:
+        """Set the layer state for delete operations."""
+        self._layer_state = layer_state
 
     def on_drop_component(self, rec: dict, scene_pos: QtCore.QPointF):
         """
@@ -105,7 +105,7 @@ class ComponentOperationsHandler:
         self._connect_item_signals(item)
 
         # Add to scene with undo support
-        cmd = AddItemCommand(self.scene, item)
+        cmd = AddItemCommand(self.scene, item, self._layer_state)
         self.undo_stack.push(cmd)
 
         # Clear previous selection and select only the newly dropped item
@@ -163,9 +163,9 @@ class ComponentOperationsHandler:
         # Use a single command for all deletions
         if items_to_delete:
             if len(items_to_delete) == 1:
-                cmd = RemoveItemCommand(self.scene, items_to_delete[0], self._group_manager)
+                cmd = RemoveItemCommand(self.scene, items_to_delete[0], self._layer_state)
             else:
-                cmd = RemoveMultipleItemsCommand(self.scene, items_to_delete, self._group_manager)
+                cmd = RemoveMultipleItemsCommand(self.scene, items_to_delete, self._layer_state)
             self.undo_stack.push(cmd)
 
         self._schedule_retrace()
@@ -254,7 +254,7 @@ class ComponentOperationsHandler:
             )
 
             # Use undo command to add all pasted items at once
-            cmd = PasteItemsCommand(self.scene, pasted_items)
+            cmd = PasteItemsCommand(self.scene, pasted_items, self._layer_state)
             self.undo_stack.push(cmd)
 
             # Clear current selection and select pasted items

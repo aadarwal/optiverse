@@ -8,6 +8,8 @@ from typing import Any
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 
+from optiverse import __version__
+
 from ...core.constants import (
     DEFAULT_WINDOW_HEIGHT,
     DEFAULT_WINDOW_WIDTH,
@@ -15,7 +17,8 @@ from ...core.constants import (
     SCENE_SIZE_MM,
 )
 from ...core.editor_state import EditorState
-from ...core.layer_group import GroupManager
+from ...core.layer_tree_state import LayerTreeState
+from ...core.layer_zorder_applier import LayerZOrderApplier
 from ...core.protocols import Editable
 from ...core.snap_helper import SnapHelper
 from ...core.ui_constants import (
@@ -64,9 +67,15 @@ def to_np(p: QtCore.QPointF) -> np.ndarray:
 
 class MainWindow(QtWidgets.QMainWindow):
     # Action attributes (initialized by ActionBuilder)
+    act_new: QtGui.QAction
     act_open: QtGui.QAction
     act_save: QtGui.QAction
     act_save_as: QtGui.QAction
+    act_close: QtGui.QAction
+    act_export_image: QtGui.QAction
+    act_export_pdf: QtGui.QAction
+    act_quit: QtGui.QAction
+    menu_recent: QtWidgets.QMenu
     act_undo: QtGui.QAction
     act_redo: QtGui.QAction
     act_delete: QtGui.QAction
@@ -108,7 +117,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("2D Ray Optics Sandbox — Top View (mm/cm grid)")
+        self.setWindowTitle(self._format_window_title("Untitled"))
         self.resize(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)
 
         # Set window icon
@@ -153,8 +162,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.log_service = get_log_service()
         self.log_service.debug("MainWindow.__init__ called", "Init")
 
-        # Group manager for layer grouping
-        self.group_manager = GroupManager(self.scene)
+        # Layer tree state for layer hierarchy and grouping
+        self.layer_state = LayerTreeState()
+
+        # Z-order applier keeps scene z-values in sync with layer tree order
+        self._zorder_applier = LayerZOrderApplier(self.layer_state, self.scene, parent=self)
+        self._zorder_applier.zValuesApplied.connect(self._schedule_retrace)
 
         # Load saved preferences
         self.magnetic_snap = self.settings_service.get_value("magnetic_snap", True, bool)
@@ -222,11 +235,12 @@ class MainWindow(QtWidgets.QMainWindow):
             get_ray_data=self._get_ray_data,
             parent_widget=self,
             connect_item_signals=self._connect_item_signals,
-            group_manager=self.group_manager,
+            layer_state=self.layer_state,
+            settings_service=self.settings_service,
         )
         # Connect file controller signals
         self.file_controller.traceRequested.connect(self._schedule_retrace)
-        self.file_controller.windowTitleChanged.connect(self.setWindowTitle)
+        self.file_controller.windowTitleChanged.connect(self._on_window_title_changed)
 
         # Collaboration controller - handles hosting/joining sessions
         self.collab_controller = CollaborationController(
@@ -251,6 +265,7 @@ class MainWindow(QtWidgets.QMainWindow):
             get_ray_data=self._get_ray_data,
             parent_widget=self,
             on_complete=self._on_path_measure_complete,
+            layer_state=self.layer_state,
         )
 
         # Angle measure tool handler
@@ -260,6 +275,7 @@ class MainWindow(QtWidgets.QMainWindow):
             undo_stack=self.undo_stack,
             parent_widget=self,
             on_complete=self._on_angle_measure_complete,
+            layer_state=self.layer_state,
         )
 
         # Item drag handler - tracks positions/rotations for undo/redo
@@ -269,7 +285,7 @@ class MainWindow(QtWidgets.QMainWindow):
             undo_stack=self.undo_stack,
             snap_to_grid_getter=self._get_snap_to_grid,
             schedule_retrace=self._schedule_retrace,
-            group_manager=self.group_manager,
+            layer_state=self.layer_state,
         )
 
         # Component operations handler - copy, paste, delete, drop
@@ -290,6 +306,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
     # Grid is now drawn in GraphicsView.drawBackground() for much better performance
     # No need for _draw_grid() method anymore!
+
+    def _format_window_title(self, subtitle: str) -> str:
+        """Format window title with version and subtitle."""
+        return f"Optiverse v{__version__} — {subtitle}"
+
+    def _on_window_title_changed(self, subtitle: str) -> None:
+        """Handle window title change from file controller."""
+        self.setWindowTitle(self._format_window_title(subtitle))
 
     def _build_library_dock(self):
         """Build component library dock with categorized tree view."""
@@ -321,6 +345,7 @@ class MainWindow(QtWidgets.QMainWindow):
             connect_item_signals=self._connect_item_signals,
             schedule_retrace=self._schedule_retrace,
             broadcast_add_item=self.collaboration_manager.broadcast_add_item,
+            layer_state=self.layer_state,
         )
 
     def _build_layer_dock(self):
@@ -329,18 +354,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.layerDock.setObjectName("layerDock")
         self.layer_panel = LayerPanel(self)
         self.layer_panel.set_scene(self.scene)
-        self.layer_panel.set_group_manager(self.group_manager)
+        self.layer_panel.set_layer_state(self.layer_state)
         self.layerDock.setWidget(self.layer_panel)
         self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.layerDock)
 
         # Connect layer panel selection to scene selection sync
         self.scene.selectionChanged.connect(self._sync_layer_panel_selection)
 
-        # Connect group manager to layer panel refresh
-        self.group_manager.groupsChanged.connect(self.layer_panel.refresh)
+        # Connect z-order changes to retrace (so rays update their z-values)
+        self.layer_panel.zOrderChanged.connect(self._schedule_retrace)
 
-        # Set group manager on component ops for delete operations
-        self.component_ops.set_group_manager(self.group_manager)
+        # Connect visibility changes to retrace (so hidden sources stop emitting rays)
+        self.layer_panel.visibilityChanged.connect(self._schedule_retrace)
+
+        # Set layer state on component ops for delete operations
+        self.component_ops.set_layer_state(self.layer_state)
 
         # Initial refresh to show any existing items
         QtCore.QTimer.singleShot(100, self.layer_panel.refresh)
@@ -364,6 +392,7 @@ class MainWindow(QtWidgets.QMainWindow):
             undo_stack=self.undo_stack,
             get_ruler_action=lambda: self.act_add_ruler,
             finish_ruler_mode=self.tool_controller.finish_ruler_placement,
+            layer_state=self.layer_state,
         )
 
         # Scene event handler - routes events to appropriate handlers
@@ -394,8 +423,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Connect edited signal for retrace and collaboration
         if isinstance(item, Editable):
-            item.edited.connect(self._maybe_retrace)
-            item.edited.connect(partial(self.collaboration_manager.broadcast_update_item, item))
+            item.edited.connect(self._maybe_retrace)  # type: ignore[attr-defined]
+            item.edited.connect(partial(self.collaboration_manager.broadcast_update_item, item))  # type: ignore[attr-defined]
 
         # Connect commandCreated signal for undo/redo
         # BaseObj and RulerItem both have commandCreated signal
@@ -520,6 +549,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.act_measure_angle.setChecked(False)
 
     # ----- Save / Load (delegated to FileController) -----
+    def new_assembly(self):
+        """Create new assembly (delegated to file controller)."""
+        if self.file_controller.new_assembly():
+            # Refresh layer panel
+            self.layer_panel.refresh()
+
     def save_assembly(self):
         """Quick save (delegated to file controller)."""
         self.file_controller.save_assembly()
@@ -534,9 +569,37 @@ class MainWindow(QtWidgets.QMainWindow):
             # Connect edited signal for optical components
             for item in self.scene.items():
                 if isinstance(item, Editable):
-                    item.edited.connect(self._maybe_retrace)
+                    item.edited.connect(self._maybe_retrace)  # type: ignore[attr-defined]
             # Refresh layer panel
             self.layer_panel.refresh()
+
+    def open_recent_file(self, path: str):
+        """Open a recent file (delegated to file controller)."""
+        if self.file_controller.open_recent_file(path):
+            # Connect edited signal for optical components
+            for item in self.scene.items():
+                if isinstance(item, Editable):
+                    item.edited.connect(self._maybe_retrace)  # type: ignore[attr-defined]
+            # Refresh layer panel
+            self.layer_panel.refresh()
+
+    def close_assembly(self):
+        """Close current assembly (delegated to file controller)."""
+        if self.file_controller.close_assembly():
+            # Refresh layer panel
+            self.layer_panel.refresh()
+
+    def export_image(self):
+        """Export scene to image (delegated to file controller)."""
+        self.file_controller.export_image()
+
+    def export_pdf(self):
+        """Export scene to PDF (delegated to file controller)."""
+        self.file_controller.export_pdf()
+
+    def quit_application(self):
+        """Quit the application (triggers close event which handles unsaved changes)."""
+        self.close()
 
     def import_assembly_as_layer(self):
         """Import an assembly file as a new layer (grouped items)."""
@@ -546,10 +609,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 if isinstance(item, Editable):
                     # Only connect if not already connected
                     try:
-                        item.edited.disconnect(self._maybe_retrace)
+                        item.edited.disconnect(self._maybe_retrace)  # type: ignore[attr-defined]
                     except TypeError:
                         pass
-                    item.edited.connect(self._maybe_retrace)
+                    item.edited.connect(self._maybe_retrace)  # type: ignore[attr-defined]
             # Refresh layer panel
             self.layer_panel.refresh()
 
@@ -771,6 +834,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._comp_editor.close()
             # Disconnect from collaboration (collab_controller always exists after __init__)
             self.collab_controller.cleanup()
+
+            # Clean up layer panel to prevent accessing deleted items
+            if hasattr(self, "layer_panel"):
+                self.layer_panel.cleanup()
         except (OSError, RuntimeError):
             # Ignore cleanup errors during shutdown
             pass

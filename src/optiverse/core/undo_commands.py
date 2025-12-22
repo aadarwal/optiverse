@@ -8,14 +8,14 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
-from PyQt6 import QtCore
+from PyQt6 import QtCore, QtWidgets
 
 from .protocols import Editable, HasParams, Undoable
 
 if TYPE_CHECKING:
     from PyQt6 import QtWidgets
 
-    from .layer_group import GroupManager
+    from .layer_tree_state import LayerTreeState
 
 
 class Command(ABC):
@@ -43,7 +43,12 @@ class Command(ABC):
 class AddItemCommand(Command):
     """Command to add an item to the scene."""
 
-    def __init__(self, scene: QtWidgets.QGraphicsScene, item: QtWidgets.QGraphicsItem):
+    def __init__(
+        self,
+        scene: QtWidgets.QGraphicsScene,
+        item: QtWidgets.QGraphicsItem,
+        layer_state: LayerTreeState | None = None,
+    ):
         """
         Initialize AddItemCommand.
 
@@ -53,17 +58,22 @@ class AddItemCommand(Command):
         """
         self.scene = scene
         self.item = item
+        self._layer_state = layer_state
         self._executed = False
 
     def execute(self) -> None:
         """Add the item to the scene."""
         if not self._executed:
             self.scene.addItem(self.item)
+            if self._layer_state and hasattr(self.item, "item_uuid"):
+                self._layer_state.add_item(str(self.item.item_uuid), None, 0, emit=True)
             self._executed = True
 
     def undo(self) -> None:
         """Remove the item from the scene."""
         if self._executed:
+            if self._layer_state and hasattr(self.item, "item_uuid"):
+                self._layer_state.remove_item(str(self.item.item_uuid), emit=True)
             self.scene.removeItem(self.item)
             self._executed = False
 
@@ -75,7 +85,7 @@ class RemoveItemCommand(Command):
         self,
         scene: QtWidgets.QGraphicsScene,
         item: QtWidgets.QGraphicsItem,
-        group_manager: GroupManager | None = None,
+        layer_state: LayerTreeState | None = None,
     ):
         """
         Initialize RemoveItemCommand.
@@ -87,25 +97,29 @@ class RemoveItemCommand(Command):
         """
         self.scene = scene
         self.item = item
-        self._group_manager = group_manager
+        self._layer_state = layer_state
         self._executed = False
 
-        # Store group membership and full group data for undo support
-        self._group_uuid: str | None = None
-        self._group_data: dict[str, Any] | None = None
-        if group_manager and hasattr(item, "item_uuid"):
-            group = group_manager.get_item_group(item.item_uuid)
-            if group:
-                self._group_uuid = group.group_uuid
-                # Store full group data in case it gets auto-deleted
-                self._group_data = group.to_dict()
+        # Store layer-tree context for undo (item parent/group placement)
+        self._item_uuid: str | None = getattr(item, "item_uuid", None)
+        self._old_parent_uuid: str | None = None
+        self._old_index: int = 0
+        if self._layer_state and self._item_uuid:
+            node = self._layer_state.get_node(self._item_uuid)
+            if node:
+                if node.parent:
+                    self._old_parent_uuid = node.parent.uuid
+                    self._old_index = node.parent.children.index(node)
+                else:
+                    roots = self._layer_state.get_root_nodes()
+                    self._old_index = roots.index(node) if node in roots else 0
 
     def execute(self) -> None:
         """Remove the item from the scene and its group."""
         if not self._executed:
-            # Remove from group first (triggers auto-delete if empty)
-            if self._group_manager and hasattr(self.item, "item_uuid"):
-                self._group_manager.remove_item_from_group(self.item.item_uuid)
+            # Remove from layer state first (authoritative)
+            if self._layer_state and self._item_uuid:
+                self._layer_state.remove_item(self._item_uuid, emit=True)
             self.scene.removeItem(self.item)
             self._executed = True
 
@@ -113,17 +127,14 @@ class RemoveItemCommand(Command):
         """Add the item back to the scene and restore group membership."""
         if self._executed:
             self.scene.addItem(self.item)
-            # Restore group membership (recreate group if it was auto-deleted)
-            if self._group_manager and self._group_uuid and hasattr(self.item, "item_uuid"):
-                # Recreate group if it was auto-deleted
-                if not self._group_manager.get_group(self._group_uuid) and self._group_data:
-                    from .layer_group import LayerGroup
-
-                    group = LayerGroup.from_dict(self._group_data)
-                    self._group_manager.add_group(group)
-
-                # Add item back to group
-                self._group_manager.add_item_to_group(self.item.item_uuid, self._group_uuid)
+            if self._layer_state and self._item_uuid:
+                # Restore item placement
+                if self._old_parent_uuid and self._layer_state.get_node(self._old_parent_uuid):
+                    self._layer_state.add_item(
+                        self._item_uuid, self._old_parent_uuid, self._old_index, emit=True
+                    )
+                else:
+                    self._layer_state.add_item(self._item_uuid, None, self._old_index, emit=True)
             self._executed = False
 
 
@@ -178,7 +189,12 @@ class MoveItemCommand(Command):
 class AddMultipleItemsCommand(Command):
     """Command to add multiple items to the scene in a single operation."""
 
-    def __init__(self, scene: QtWidgets.QGraphicsScene, items: list[QtWidgets.QGraphicsItem]):
+    def __init__(
+        self,
+        scene: QtWidgets.QGraphicsScene,
+        items: list[QtWidgets.QGraphicsItem],
+        layer_state: LayerTreeState | None = None,
+    ):
         """
         Initialize AddMultipleItemsCommand.
 
@@ -188,6 +204,7 @@ class AddMultipleItemsCommand(Command):
         """
         self.scene = scene
         self.items = items
+        self._layer_state = layer_state
         self._executed = False
 
     def execute(self) -> None:
@@ -195,11 +212,20 @@ class AddMultipleItemsCommand(Command):
         if not self._executed:
             for item in self.items:
                 self.scene.addItem(item)
+                if self._layer_state and hasattr(item, "item_uuid"):
+                    self._layer_state.add_item(str(item.item_uuid), None, 0, emit=False)
+            if self._layer_state:
+                self._layer_state.changed.emit()
             self._executed = True
 
     def undo(self) -> None:
         """Remove all items from the scene."""
         if self._executed:
+            if self._layer_state:
+                for item in self.items:
+                    if hasattr(item, "item_uuid"):
+                        self._layer_state.remove_item(str(item.item_uuid), emit=False)
+                self._layer_state.changed.emit()
             for item in self.items:
                 self.scene.removeItem(item)
             self._executed = False
@@ -212,7 +238,7 @@ class RemoveMultipleItemsCommand(Command):
         self,
         scene: QtWidgets.QGraphicsScene,
         items: list[QtWidgets.QGraphicsItem],
-        group_manager: GroupManager | None = None,
+        layer_state: LayerTreeState | None = None,
     ):
         """
         Initialize RemoveMultipleItemsCommand.
@@ -224,30 +250,39 @@ class RemoveMultipleItemsCommand(Command):
         """
         self.scene = scene
         self.items = items
-        self._group_manager = group_manager
+        self._layer_state = layer_state
         self._executed = False
 
-        # Store group memberships and full group data for undo support
-        self._item_groups: dict[str, str] = {}  # item_uuid -> group_uuid
-        self._group_data: dict[str, dict[str, Any]] = {}  # group_uuid -> group data
-        if group_manager:
+        # Store per-item tree placement for undo
+        self._placements: dict[str, tuple[str | None, int]] = {}
+        if self._layer_state:
             for item in items:
-                if hasattr(item, "item_uuid"):
-                    group = group_manager.get_item_group(item.item_uuid)
-                    if group:
-                        self._item_groups[item.item_uuid] = group.group_uuid
-                        # Store full group data (avoid duplicates)
-                        if group.group_uuid not in self._group_data:
-                            self._group_data[group.group_uuid] = group.to_dict()
+                item_uuid = getattr(item, "item_uuid", None)
+                if not item_uuid:
+                    continue
+                node = self._layer_state.get_node(item_uuid)
+                if node:
+                    if node.parent:
+                        self._placements[item_uuid] = (
+                            node.parent.uuid,
+                            node.parent.children.index(node),
+                        )
+                    else:
+                        roots = self._layer_state.get_root_nodes()
+                        self._placements[item_uuid] = (
+                            None,
+                            roots.index(node) if node in roots else 0,
+                        )
 
     def execute(self) -> None:
         """Remove all items from the scene and their groups."""
         if not self._executed:
-            # Remove from groups first (triggers auto-delete if empty)
-            if self._group_manager:
+            if self._layer_state:
                 for item in self.items:
-                    if hasattr(item, "item_uuid"):
-                        self._group_manager.remove_item_from_group(item.item_uuid)
+                    item_uuid = getattr(item, "item_uuid", None)
+                    if item_uuid:
+                        self._layer_state.remove_item(item_uuid, emit=False)
+                self._layer_state.changed.emit()
             for item in self.items:
                 self.scene.removeItem(item)
             self._executed = True
@@ -257,29 +292,26 @@ class RemoveMultipleItemsCommand(Command):
         if self._executed:
             for item in self.items:
                 self.scene.addItem(item)
-            # Restore group memberships (recreate groups if they were auto-deleted)
-            if self._group_manager:
-                # First, recreate any auto-deleted groups
-                for group_uuid, group_data in self._group_data.items():
-                    if not self._group_manager.get_group(group_uuid):
-                        from .layer_group import LayerGroup
-
-                        group = LayerGroup.from_dict(group_data)
-                        self._group_manager.add_group(group)
-
-                # Then restore item memberships
+            if self._layer_state:
                 for item in self.items:
-                    if hasattr(item, "item_uuid"):
-                        item_group_uuid: str | None = self._item_groups.get(item.item_uuid)
-                        if item_group_uuid:
-                            self._group_manager.add_item_to_group(item.item_uuid, item_group_uuid)
+                    item_uuid = getattr(item, "item_uuid", None)
+                    if not item_uuid:
+                        continue
+                    parent_uuid, idx = self._placements.get(item_uuid, (None, 0))
+                    self._layer_state.add_item(item_uuid, parent_uuid, idx, emit=False)
+                self._layer_state.changed.emit()
             self._executed = False
 
 
 class PasteItemsCommand(Command):
     """Command to paste multiple items to the scene."""
 
-    def __init__(self, scene: QtWidgets.QGraphicsScene, items: list[QtWidgets.QGraphicsItem]):
+    def __init__(
+        self,
+        scene: QtWidgets.QGraphicsScene,
+        items: list[QtWidgets.QGraphicsItem],
+        layer_state: LayerTreeState | None = None,
+    ):
         """
         Initialize PasteItemsCommand.
 
@@ -289,6 +321,7 @@ class PasteItemsCommand(Command):
         """
         self.scene = scene
         self.items = items
+        self._layer_state = layer_state
         self._executed = False
 
     def execute(self) -> None:
@@ -296,11 +329,20 @@ class PasteItemsCommand(Command):
         if not self._executed:
             for item in self.items:
                 self.scene.addItem(item)
+                if self._layer_state and hasattr(item, "item_uuid"):
+                    self._layer_state.add_item(str(item.item_uuid), None, 0, emit=False)
+            if self._layer_state:
+                self._layer_state.changed.emit()
             self._executed = True
 
     def undo(self) -> None:
         """Remove all items from the scene."""
         if self._executed:
+            if self._layer_state:
+                for item in self.items:
+                    if hasattr(item, "item_uuid"):
+                        self._layer_state.remove_item(str(item.item_uuid), emit=False)
+                self._layer_state.changed.emit()
             for item in self.items:
                 self.scene.removeItem(item)
             self._executed = False
@@ -432,36 +474,47 @@ class RotateItemsCommand(Command):
             item.setRotation(self.old_rotations[item])
 
 
-class ZOrderCommand(Command):
-    """Command to change z-order (stacking order) of items."""
+class BatchCommand(Command):
+    """Execute multiple Commands as one undo/redo step."""
+
+    def __init__(self, commands: list[Command]):
+        self._commands = [c for c in commands if c is not None]
+
+    def execute(self) -> None:
+        for cmd in self._commands:
+            cmd.execute()
+
+    def undo(self) -> None:
+        for cmd in reversed(self._commands):
+            cmd.undo()
+
+
+class MoveNodeCommand(Command):
+    """Command to move a single node to a new parent/index in LayerTreeState."""
 
     def __init__(
         self,
-        items: list[QtWidgets.QGraphicsItem],
-        old_z_values: dict[QtWidgets.QGraphicsItem, float],
-        new_z_values: dict[QtWidgets.QGraphicsItem, float],
+        layer_state: LayerTreeState,
+        uuid: str,
+        target_parent_uuid: str | None,
+        target_index: int,
     ):
-        """
-        Initialize ZOrderCommand.
+        self._layer_state = layer_state
+        self._uuid = uuid
+        self._new_parent_uuid = target_parent_uuid
+        self._new_index = target_index
 
-        Args:
-            items: The list of graphics items to change z-order for
-            old_z_values: Dict mapping items to their original z-values
-            new_z_values: Dict mapping items to their new z-values
-        """
-        self.items = items
-        self.old_z_values = dict(old_z_values)
-        self.new_z_values = dict(new_z_values)
+        old = layer_state.get_parent_and_index(uuid)
+        if old:
+            self._old_parent_uuid, self._old_index = old
+        else:
+            self._old_parent_uuid, self._old_index = None, 0
 
     def execute(self) -> None:
-        """Apply new z-values to all items."""
-        for item in self.items:
-            item.setZValue(self.new_z_values[item])
+        self._layer_state.move_node(self._uuid, self._new_parent_uuid, self._new_index, emit=True)
 
     def undo(self) -> None:
-        """Restore old z-values for all items."""
-        for item in self.items:
-            item.setZValue(self.old_z_values[item])
+        self._layer_state.move_node(self._uuid, self._old_parent_uuid, self._old_index, emit=True)
 
 
 # =============================================================================
@@ -470,11 +523,11 @@ class ZOrderCommand(Command):
 
 
 class CreateGroupCommand(Command):
-    """Command to create a new group."""
+    """Command to create a new group in LayerTreeState."""
 
     def __init__(
         self,
-        group_manager: GroupManager,
+        layer_state: LayerTreeState,
         name: str,
         item_uuids: list[str],
         parent_group_uuid: str | None = None,
@@ -488,60 +541,62 @@ class CreateGroupCommand(Command):
             item_uuids: List of item UUIDs to add to the group
             parent_group_uuid: Optional parent group UUID for nested groups
         """
-        from .layer_group import LayerGroup
-
-        self._group_manager = group_manager
+        self._layer_state = layer_state
         self._name = name
         self._item_uuids = list(item_uuids)
         self._parent_group_uuid = parent_group_uuid
-        self._group: LayerGroup | None = None
+        self._group_uuid: str | None = None
         self._executed = False
+        # Capture original placements for undo
+        self._original_positions: dict[str, tuple[str | None, int]] = {}
+        for uuid in self._item_uuids:
+            pos = layer_state.get_parent_and_index(uuid)
+            if pos:
+                self._original_positions[uuid] = pos
+        # Insert group where the first item currently sits within the target parent
+        # (when applicable)
+        self._insert_index: int = 0
+        if self._item_uuids:
+            first_pos = layer_state.get_parent_and_index(self._item_uuids[0])
+            if first_pos and first_pos[0] == parent_group_uuid:
+                self._insert_index = first_pos[1]
 
     def execute(self) -> None:
         """Create the group."""
         if not self._executed:
-            if self._group:
-                # Re-add an existing group (redo case)
-                # First remove items from parent group if this is a subgroup
-                if self._parent_group_uuid:
-                    parent = self._group_manager.get_group(self._parent_group_uuid)
-                    if parent:
-                        for item_uuid in self._item_uuids:
-                            if item_uuid in parent.item_uuids:
-                                parent.item_uuids.remove(item_uuid)
-                self._group_manager.add_group(self._group)
-            else:
-                # First time creation
-                self._group = self._group_manager.create_group(
-                    self._name, self._item_uuids, self._parent_group_uuid
-                )
+            # Create empty group node
+            self._group_uuid = self._layer_state.create_group(
+                self._name,
+                parent_group_uuid=self._parent_group_uuid,
+                index=self._insert_index,
+                group_uuid=self._group_uuid,
+                emit=False,
+            )
+            # Move items into it (preserving their current relative order by applying in order)
+            for uuid in self._item_uuids:
+                self._layer_state.move_item_to_group(uuid, self._group_uuid, emit=False)
+            self._layer_state.changed.emit()
             self._executed = True
 
     def undo(self) -> None:
-        """Delete the group and restore items to parent if this was a subgroup."""
-        if self._executed and self._group:
-            # Delete the group (keep items)
-            self._group_manager.delete_group(self._group.group_uuid, keep_items=True)
-
-            # If this was a subgroup, restore items to parent group
-            if self._parent_group_uuid:
-                parent = self._group_manager.get_group(self._parent_group_uuid)
-                if parent:
-                    for item_uuid in self._item_uuids:
-                        if item_uuid not in parent.item_uuids:
-                            parent.item_uuids.append(item_uuid)
-                        self._group_manager._item_to_group[item_uuid] = self._parent_group_uuid
-                    self._group_manager.groupsChanged.emit()
-
+        """Delete the group and restore items to their original placements."""
+        if self._executed and self._group_uuid:
+            self._layer_state.delete_group(self._group_uuid, emit=False)
+            for uuid, (parent_uuid, idx) in self._original_positions.items():
+                if self._layer_state.get_node(uuid):
+                    self._layer_state.move_node(uuid, parent_uuid, idx, emit=False)
+                else:
+                    self._layer_state.add_item(uuid, parent_uuid, idx, emit=False)
+            self._layer_state.changed.emit()
             self._executed = False
 
 
 class DeleteGroupCommand(Command):
-    """Command to delete a group."""
+    """Command to delete a group in LayerTreeState."""
 
     def __init__(
         self,
-        group_manager: GroupManager,
+        layer_state: LayerTreeState,
         group_uuid: str,
         keep_items: bool = True,
     ):
@@ -553,210 +608,75 @@ class DeleteGroupCommand(Command):
             group_uuid: UUID of the group to delete
             keep_items: If True, items remain in scene (ungrouped)
         """
-        self._group_manager = group_manager
+        self._layer_state = layer_state
         self._group_uuid = group_uuid
         self._keep_items = keep_items
-
-        # Store full group data for restoration
-        group = group_manager.get_group(group_uuid)
-        if group:
-            self._group_data: dict[str, Any] | None = group.to_dict()
-        else:
-            self._group_data = None
-
-        # If not keeping items, store the actual items for restoration
-        self._items: list[QtWidgets.QGraphicsItem] = []
-        if not keep_items and group:
-            self._items = group_manager.get_group_items(group_uuid)
+        self._old_parent_uuid: str | None = None
+        self._old_index: int = 0
+        # Snapshot group subtree for undo
+        node = layer_state.get_node(group_uuid)
+        self._snapshot: dict[str, Any] | None = None
+        if node and node.is_group():
+            old = layer_state.get_parent_and_index(group_uuid)
+            if old:
+                self._old_parent_uuid, self._old_index = old
+            # serialize just this subtree
+            def node_to_dict(n):
+                d = {"uuid": n.uuid, "type": n.node_type}
+                if n.name is not None:
+                    d["name"] = n.name
+                if n.collapsed:
+                    d["collapsed"] = True
+                if n.children:
+                    d["children"] = [node_to_dict(c) for c in n.children]
+                return d
+            self._snapshot = node_to_dict(node)
 
     def execute(self) -> None:
         """Delete the group (works for both initial execute and redo)."""
-        if not self._group_data:
+        if not self._snapshot:
             return
-
-        # Check if group exists (it should after undo recreated it)
-        if self._group_manager.get_group(self._group_uuid):
-            self._group_manager.delete_group(self._group_uuid, keep_items=self._keep_items)
+        if self._layer_state.get_node(self._group_uuid):
+            if self._keep_items:
+                self._layer_state.delete_group(self._group_uuid, emit=True)
+            else:
+                # If deleting items too, caller must remove from scene separately.
+                self._layer_state.delete_group(self._group_uuid, emit=True)
 
     def undo(self) -> None:
         """Restore the group."""
-        if not self._group_data:
+        if not self._snapshot:
             return
-
-        from .layer_group import LayerGroup
-
-        # Re-add items to scene if they were deleted
-        if not self._keep_items and self._items and self._group_manager.scene:
-            for item in self._items:
-                self._group_manager.scene.addItem(item)
-
-        # If this was a subgroup, remove items from parent first
-        # (they were moved there during delete)
-        parent_group_uuid = self._group_data.get("parent_group_uuid")
-        item_uuids = self._group_data.get("item_uuids", [])
-        if self._keep_items and parent_group_uuid:
-            parent = self._group_manager.get_group(parent_group_uuid)
-            if parent:
-                for item_uuid in item_uuids:
-                    if item_uuid in parent.item_uuids:
-                        parent.item_uuids.remove(item_uuid)
-
-        # Recreate the group
-        group = LayerGroup.from_dict(self._group_data)
-        self._group_manager.add_group(group)
-
-
-class AddItemToGroupCommand(Command):
-    """Command to add an item to a group."""
-
-    def __init__(
-        self,
-        group_manager: GroupManager,
-        item_uuid: str,
-        group_uuid: str,
-    ):
-        """
-        Initialize AddItemToGroupCommand.
-
-        Args:
-            group_manager: The group manager to use
-            item_uuid: UUID of the item to add
-            group_uuid: UUID of the group to add to
-        """
-        self._group_manager = group_manager
-        self._item_uuid = item_uuid
-        self._target_group_uuid = group_uuid
-        self._executed = False
-
-        # Store previous group membership (if any)
-        prev_group = group_manager.get_item_group(item_uuid)
-        self._previous_group_uuid: str | None = prev_group.group_uuid if prev_group else None
-
-    def execute(self) -> None:
-        """Add item to the group."""
-        if not self._executed:
-            self._group_manager.add_item_to_group(self._item_uuid, self._target_group_uuid)
-            self._executed = True
-
-    def undo(self) -> None:
-        """Remove item from group (restore previous membership if any)."""
-        if self._executed:
-            self._group_manager.remove_item_from_group(self._item_uuid)
-            if self._previous_group_uuid:
-                self._group_manager.add_item_to_group(self._item_uuid, self._previous_group_uuid)
-            self._executed = False
-
-
-class RemoveItemFromGroupCommand(Command):
-    """Command to remove an item from its group."""
-
-    def __init__(
-        self,
-        group_manager: GroupManager,
-        item_uuid: str,
-    ):
-        """
-        Initialize RemoveItemFromGroupCommand.
-
-        Args:
-            group_manager: The group manager to use
-            item_uuid: UUID of the item to remove from its group
-        """
-        self._group_manager = group_manager
-        self._item_uuid = item_uuid
-        self._executed = False
-
-        # Store group membership for restoration
-        group = group_manager.get_item_group(item_uuid)
-        self._group_uuid: str | None = group.group_uuid if group else None
-
-        # Store full group data in case it gets auto-deleted
-        if group:
-            self._group_data: dict[str, Any] | None = group.to_dict()
-        else:
-            self._group_data = None
-
-    def execute(self) -> None:
-        """Remove item from its group."""
-        if not self._executed and self._group_uuid:
-            self._group_manager.remove_item_from_group(self._item_uuid)
-            self._executed = True
-
-    def undo(self) -> None:
-        """Restore item to its group (recreate group if auto-deleted)."""
-        if self._executed and self._group_uuid:
-            # Check if group still exists
-            if not self._group_manager.get_group(self._group_uuid) and self._group_data:
-                # Recreate the auto-deleted group
-                from .layer_group import LayerGroup
-
-                group = LayerGroup.from_dict(self._group_data)
-                self._group_manager.add_group(group)
-
-            # Add item back to group
-            self._group_manager.add_item_to_group(self._item_uuid, self._group_uuid)
-            self._executed = False
-
-
-class ImportAsLayerCommand(Command):
-    """Command to import an assembly file as a layer (group)."""
-
-    def __init__(
-        self,
-        scene: QtWidgets.QGraphicsScene,
-        group_manager: GroupManager,
-        items: list[QtWidgets.QGraphicsItem],
-        parent_group_data: dict[str, Any],
-        imported_groups_data: list[dict[str, Any]],
-    ):
-        """
-        Initialize ImportAsLayerCommand.
-
-        Args:
-            scene: The graphics scene
-            group_manager: The group manager
-            items: List of imported items
-            parent_group_data: Data for the parent group (as dict)
-            imported_groups_data: List of imported group data dicts
-        """
-        self._scene = scene
-        self._group_manager = group_manager
-        self._items = items
-        self._parent_group_data = parent_group_data
-        self._imported_groups_data = imported_groups_data
-
-    def execute(self) -> None:
-        """Add items and groups to scene (for redo)."""
-        from .layer_group import LayerGroup
-
-        # Add items to scene
-        for item in self._items:
-            if item.scene() is None:
-                self._scene.addItem(item)
-
-        # Recreate parent group
-        parent_group = LayerGroup.from_dict(self._parent_group_data)
-        self._group_manager.add_group(parent_group)
-
-        # Recreate imported groups
-        for group_data in self._imported_groups_data:
-            group = LayerGroup.from_dict(group_data)
-            self._group_manager.add_group(group)
-
-    def undo(self) -> None:
-        """Remove imported items and groups."""
-        # Remove imported groups (in reverse order to handle hierarchy)
-        for group_data in reversed(self._imported_groups_data):
-            group_uuid = group_data.get("group_uuid")
-            if group_uuid and self._group_manager.get_group(group_uuid):
-                self._group_manager.delete_group(group_uuid, keep_items=True)
-
-        # Remove parent group
-        parent_uuid = self._parent_group_data.get("group_uuid")
-        if parent_uuid and self._group_manager.get_group(parent_uuid):
-            self._group_manager.delete_group(parent_uuid, keep_items=True)
-
-        # Remove items from scene
-        for item in self._items:
-            if item.scene() is not None:
-                self._scene.removeItem(item)
+        # Recreate group subtree (UUID-preserving) at original location
+        tmp = LayerTreeState.from_dict({"version": 1, "nodes": [self._snapshot]})
+        root = tmp.get_root_nodes()[0] if tmp.get_root_nodes() else None
+        if not root:
+            return
+        # Add group node (UUID preserved)
+        self._layer_state.create_group(
+            root.name or "Group",
+            parent_group_uuid=self._old_parent_uuid,
+            index=self._old_index,
+            group_uuid=root.uuid,
+            emit=False,
+        )
+        self._layer_state.set_group_collapsed(root.uuid, root.collapsed, emit=False)
+        # Add children recursively
+        def add_children(parent_uuid: str, children):
+            for ch in children:
+                if ch["type"] == "group":
+                    gid = ch["uuid"]
+                    self._layer_state.create_group(
+                        ch.get("name", "Group"),
+                        parent_group_uuid=parent_uuid,
+                        group_uuid=gid,
+                        emit=False,
+                    )
+                    self._layer_state.set_group_collapsed(
+                        gid, bool(ch.get("collapsed", False)), emit=False
+                    )
+                    add_children(gid, ch.get("children", []) or [])
+                else:
+                    self._layer_state.add_item(ch["uuid"], parent_uuid, index=10**9, emit=False)
+        add_children(root.uuid, self._snapshot.get("children", []) or [])
+        self._layer_state.changed.emit()

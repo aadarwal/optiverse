@@ -36,6 +36,7 @@ class PlacementHandler:
         connect_item_signals: Callable[[QtWidgets.QGraphicsItem], None],
         schedule_retrace: Callable[[], None],
         broadcast_add_item: Callable[[QtWidgets.QGraphicsItem], None],
+        layer_state=None,
     ):
         """
         Initialize the placement handler.
@@ -60,6 +61,7 @@ class PlacementHandler:
         self._connect_item_signals = connect_item_signals
         self._schedule_retrace = schedule_retrace
         self._broadcast_add_item = broadcast_add_item
+        self._layer_state = layer_state
 
         # State
         self._active = False
@@ -366,6 +368,13 @@ class PlacementHandler:
 
             template_copy = dict(template)
             template_copy["image_path"] = ""  # Remove sprite to show interface lines only
+            # Set clean default name for toolbar placement (without size info)
+            if component_type == ComponentType.LENS:
+                template_copy["name"] = "Lens"
+            elif component_type == ComponentType.MIRROR:
+                template_copy["name"] = "Mirror"
+            elif component_type == ComponentType.BEAMSPLITTER:
+                template_copy["name"] = "Beamsplitter"
 
             created_item = ComponentFactory.create_item_from_dict(
                 template_copy, x_mm=scene_pos.x(), y_mm=scene_pos.y()
@@ -395,7 +404,7 @@ class PlacementHandler:
             self._connect_item_signals(placed_item)
 
         # Add to scene with undo support
-        cmd = AddItemCommand(self.scene, placed_item)
+        cmd = AddItemCommand(self.scene, placed_item, self._layer_state)
         self.undo_stack.push(cmd)
         placed_item.setSelected(True)
 

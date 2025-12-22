@@ -1,200 +1,54 @@
-"""Layer panel widget for managing scene items by z-order."""
+"""Layer panel widget for managing scene items by z-order.
+
+Uses Qt's Model/View architecture:
+- LayerItemModel: tree structure + drag/drop
+- LayerItemDelegate: paints icons + text, handles click toggles
+"""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, cast
+from typing import TYPE_CHECKING, cast
 
-from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6 import QtCore, QtWidgets
 
-from ...core.layer_group import GroupManager, LayerGroup
-from ...core.undo_commands import (
-    AddItemToGroupCommand,
-    CreateGroupCommand,
-    DeleteGroupCommand,
-    RemoveItemFromGroupCommand,
-)
-from ...core.zorder_utils import apply_z_order_change
-from .constants import (
-    LAYER_ITEM_MARGIN,
-    LAYER_ITEM_SPACING,
-    TOGGLE_BUTTON_SIZE,
-    Z_ORDER_INITIAL_VALUE,
-    Z_ORDER_STEP,
-    Icons,
-)
+from ...core.layer_tree_state import LayerTreeState
+from ...core.undo_commands import CreateGroupCommand, DeleteGroupCommand
+from ..delegates import LayerItemDelegate
+from ..models import LayerItemModel
+from ..views.keyboard_layer_tree_view import KeyboardLayerTreeView
+from .constants import Icons
 
 if TYPE_CHECKING:
     from ...core.undo_stack import UndoStack
 
-# Shared data role constants
-ITEM_UUID_ROLE = QtCore.Qt.ItemDataRole.UserRole
-GROUP_UUID_ROLE = QtCore.Qt.ItemDataRole.UserRole + 1
-IS_GROUP_ROLE = QtCore.Qt.ItemDataRole.UserRole + 2
-
-
-class ClickableLabel(QtWidgets.QLabel):
-    """A QLabel that emits clicked signal on left mouse press."""
-
-    clicked = QtCore.pyqtSignal()
-
-    def __init__(self, parent: QtWidgets.QWidget | None = None):
-        super().__init__(parent)
-        self._checked = False
-        alignment = (
-            QtCore.Qt.AlignmentFlag.AlignHCenter
-            | QtCore.Qt.AlignmentFlag.AlignVCenter
-        )
-        self.setAlignment(alignment)
-        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-
-    def isChecked(self) -> bool:
-        return self._checked
-
-    def setChecked(self, checked: bool) -> None:
-        self._checked = checked
-
-    def mousePressEvent(self, event: QtGui.QMouseEvent | None) -> None:
-        if event and event.button() == QtCore.Qt.MouseButton.LeftButton:
-            self.clicked.emit()
-        super().mousePressEvent(event)
-
-
-class LayerItemWidget(QtWidgets.QWidget):
-    """Widget for a layer item row with visibility/lock toggles."""
-
-    visibilityChanged = QtCore.pyqtSignal(bool)
-    lockChanged = QtCore.pyqtSignal(bool)
-
-    def __init__(self, name: str, is_visible: bool = True, is_locked: bool = False,
-                 is_group: bool = False, parent: QtWidgets.QWidget | None = None):
-        super().__init__(parent)
-
-        layout = QtWidgets.QHBoxLayout(self)
-        layout.setContentsMargins(
-            LAYER_ITEM_MARGIN,
-            LAYER_ITEM_MARGIN,
-            LAYER_ITEM_MARGIN,
-            LAYER_ITEM_MARGIN,
-        )
-        layout.setSpacing(LAYER_ITEM_SPACING)
-
-        # Visibility toggle
-        self._vis_btn = self._create_toggle(is_visible, "Toggle visibility", self._on_vis_clicked)
-        self._update_vis_icon()
-        layout.addWidget(self._vis_btn)
-
-        # Lock toggle
-        self._lock_btn = self._create_toggle(is_locked, "Toggle lock", self._on_lock_clicked)
-        self._update_lock_icon()
-        layout.addWidget(self._lock_btn)
-
-        if is_group:
-            layout.addWidget(QtWidgets.QLabel(Icons.FOLDER))
-
-        name_label = QtWidgets.QLabel(name)
-        name_label.setContentsMargins(4, 0, 0, 0)
-        layout.addWidget(name_label, 1)
-
-    def _create_toggle(
-        self, checked: bool, tooltip: str, callback: Callable[[], None]
-    ) -> ClickableLabel:
-        btn = ClickableLabel()
-        btn.setChecked(checked)
-        btn.setToolTip(tooltip)
-        btn.setFixedSize(TOGGLE_BUTTON_SIZE, TOGGLE_BUTTON_SIZE)
-        btn.clicked.connect(callback)
-        return btn
-
-    def _update_vis_icon(self) -> None:
-        self._vis_btn.setText(Icons.VISIBLE if self._vis_btn.isChecked() else Icons.HIDDEN)
-
-    def _update_lock_icon(self) -> None:
-        self._lock_btn.setText(Icons.LOCKED if self._lock_btn.isChecked() else Icons.UNLOCKED)
-
-    def _on_vis_clicked(self) -> None:
-        new_state = not self._vis_btn.isChecked()
-        self._vis_btn.setChecked(new_state)
-        self._update_vis_icon()
-        self.visibilityChanged.emit(new_state)
-
-    def _on_lock_clicked(self) -> None:
-        new_state = not self._lock_btn.isChecked()
-        self._lock_btn.setChecked(new_state)
-        self._update_lock_icon()
-        self.lockChanged.emit(new_state)
-
-
-class LayerTreeWidget(QtWidgets.QTreeWidget):
-    """Tree widget with drag-drop and delete key handling."""
-
-    itemsReordered = QtCore.pyqtSignal()
-    itemDroppedInGroup = QtCore.pyqtSignal(str, str)
-    itemRemovedFromGroup = QtCore.pyqtSignal(str)
-    deleteKeyPressed = QtCore.pyqtSignal()
-
-    def __init__(self, parent: QtWidgets.QWidget | None = None):
-        super().__init__(parent)
-        self.setHeaderHidden(True)
-        self.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
-        self.setDefaultDropAction(QtCore.Qt.DropAction.MoveAction)
-        self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.setIndentation(16)
-        self.setRootIsDecorated(True)
-        self.setAnimated(True)
-        self.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel)
-        self.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel)
-
-    def keyPressEvent(self, event: QtGui.QKeyEvent | None) -> None:
-        if event and event.key() in (QtCore.Qt.Key.Key_Delete, QtCore.Qt.Key.Key_Backspace):
-            if self.state() != QtWidgets.QAbstractItemView.State.EditingState:
-                self.deleteKeyPressed.emit()
-                event.accept()
-                return
-        super().keyPressEvent(event)
-
-    def dropEvent(self, event: QtGui.QDropEvent | None) -> None:
-        if not event:
-            return
-
-        target_item = self.itemAt(event.position().toPoint())
-        drop_indicator = self.dropIndicatorPosition()
-
-        moved_uuids = [item.data(0, ITEM_UUID_ROLE) for item in self.selectedItems()
-                       if not item.data(0, IS_GROUP_ROLE) and item.data(0, ITEM_UUID_ROLE)]
-
-        super().dropEvent(event)
-
-        if target_item and target_item.data(0, IS_GROUP_ROLE):
-            if drop_indicator == QtWidgets.QAbstractItemView.DropIndicatorPosition.OnItem:
-                group_uuid = target_item.data(0, GROUP_UUID_ROLE)
-                for uuid in moved_uuids:
-                    self.itemDroppedInGroup.emit(uuid, group_uuid)
-            else:
-                for uuid in moved_uuids:
-                    self.itemRemovedFromGroup.emit(uuid)
-        else:
-            for uuid in moved_uuids:
-                if any(
-                    (top_item := self.topLevelItem(i))
-                    and top_item.data(0, ITEM_UUID_ROLE) == uuid
-                    for i in range(self.topLevelItemCount())
-                ):
-                    self.itemRemovedFromGroup.emit(uuid)
-
-        self.itemsReordered.emit()
+from ..models.layer_item_model import GROUP_UUID_ROLE, IS_GROUP_ROLE, ITEM_UUID_ROLE
 
 
 class LayerPanel(QtWidgets.QWidget):
-    """Main layer panel widget."""
+    """Layer panel for managing scene items by z-order."""
 
     selectionChanged = QtCore.pyqtSignal(list)
+    zOrderChanged = QtCore.pyqtSignal()
+    visibilityChanged = QtCore.pyqtSignal()
 
     def __init__(self, parent: QtWidgets.QWidget | None = None):
         super().__init__(parent)
         self._scene: QtWidgets.QGraphicsScene | None = None
-        self._group_manager: GroupManager | None = None
-        self._uuid_cache: dict[str, QtWidgets.QGraphicsItem] = {}
-        self._z_counter = Z_ORDER_INITIAL_VALUE
+        self._layer_state: LayerTreeState | None = None
+
+        self._model = LayerItemModel(self)
+        self._model.orderChanged.connect(self._on_model_order_changed)
+        self._model.visibilityChanged.connect(self._on_visibility_changed)
+
+        # Debounce timers
+        self._refresh_timer = QtCore.QTimer(self)
+        self._refresh_timer.setSingleShot(True)
+        self._refresh_timer.timeout.connect(self._do_refresh)
+
+        self._sync_timer = QtCore.QTimer(self)
+        self._sync_timer.setSingleShot(True)
+        self._sync_timer.timeout.connect(self._do_sync_from_scene_selection)
+
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -224,522 +78,349 @@ class LayerPanel(QtWidgets.QWidget):
 
         layout.addWidget(header)
 
-        # Tree
-        self._tree = LayerTreeWidget()
-        self._tree.itemSelectionChanged.connect(self._on_selection_changed)
-        self._tree.itemsReordered.connect(self._on_reordered)
-        self._tree.itemDroppedInGroup.connect(self._on_item_dropped_in_group)
-        self._tree.itemRemovedFromGroup.connect(self._on_item_removed_from_group)
+        # Tree view
+        self._tree = KeyboardLayerTreeView()
+        self._tree.setModel(self._model)
+        self._tree.setItemDelegate(LayerItemDelegate(self._tree))
+        self._tree.setHeaderHidden(True)
+        self._tree.setDragDropMode(QtWidgets.QAbstractItemView.DragDropMode.InternalMove)
+        self._tree.setDefaultDropAction(QtCore.Qt.DropAction.MoveAction)
+        self._tree.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
+        self._tree.setIndentation(16)
+        self._tree.setRootIsDecorated(True)
+        self._tree.setAnimated(True)
+        self._tree.setVerticalScrollMode(QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self._tree.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self._tree.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.DoubleClicked)
+
+        if sm := self._tree.selectionModel():
+            sm.selectionChanged.connect(self._on_selection_changed)
+
         self._tree.deleteKeyPressed.connect(self._delete_selected)
         self._tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self._tree.customContextMenuRequested.connect(self._show_context_menu)
-        self._tree.itemDoubleClicked.connect(lambda item, col: self._tree.editItem(item, col))
-        self._tree.itemExpanded.connect(lambda item: self._set_group_collapsed(item, False))
-        self._tree.itemCollapsed.connect(lambda item: self._set_group_collapsed(item, True))
+        self._tree.expanded.connect(lambda idx: self._set_group_collapsed(idx, False))
+        self._tree.collapsed.connect(lambda idx: self._set_group_collapsed(idx, True))
         layout.addWidget(self._tree, 1)
 
         # Z-order buttons
         btn_layout = QtWidgets.QHBoxLayout()
         btn_layout.setContentsMargins(8, 4, 8, 8)
-        buttons = [
+        for text, tooltip, op in [
             ("↑ Up", "Bring forward", "bring_forward"),
             ("↓ Down", "Send backward", "send_backward"),
-        ]
-        for text, tooltip, op in buttons:
-            push_btn = QtWidgets.QPushButton(text)
-            push_btn.setToolTip(tooltip)
-            push_btn.clicked.connect(lambda _, o=op: self._apply_z_order(o))
-            btn_layout.addWidget(push_btn)
+        ]:
+            z_btn = QtWidgets.QPushButton(text)
+            z_btn.setToolTip(tooltip)
+            z_btn.clicked.connect(lambda _, o=op: self._apply_z_order(o))
+            btn_layout.addWidget(z_btn)
         layout.addLayout(btn_layout)
-
-    def _set_group_collapsed(self, item: QtWidgets.QTreeWidgetItem, collapsed: bool) -> None:
-        if self._group_manager and (uuid := item.data(0, GROUP_UUID_ROLE)):
-            self._group_manager.set_group_collapsed(uuid, collapsed)
 
     def set_scene(self, scene: QtWidgets.QGraphicsScene) -> None:
         self._scene = scene
+        self._model.set_context(
+            scene=scene, layer_state=self._layer_state, undo_stack=self._get_undo_stack()
+        )
 
-    def set_group_manager(self, group_manager: GroupManager) -> None:
-        self._group_manager = group_manager
-        group_manager.groupsChanged.connect(self.refresh)
+    @property
+    def model(self) -> LayerItemModel:
+        return self._model
+
+    def set_layer_state(self, layer_state: LayerTreeState) -> None:
+        self._layer_state = layer_state
+        layer_state.changed.connect(self.refresh)
+        self._model.set_context(
+            scene=self._scene, layer_state=layer_state, undo_stack=self._get_undo_stack()
+        )
 
     def _get_undo_stack(self) -> UndoStack | None:
-        """Get the undo stack from the main window."""
-        if not self._scene:
+        if not self._scene or not (views := self._scene.views()):
             return None
-        if views := self._scene.views():
-            window = views[0].window()
-            if window is not None and hasattr(window, "undo_stack"):
-                return cast("UndoStack | None", window.undo_stack)
-        return None
+        window = views[0].window()
+        return cast("UndoStack | None", getattr(window, "undo_stack", None))
+
+    def cleanup(self) -> None:
+        """Clean up before shutdown to prevent accessing deleted objects."""
+        self._refresh_timer.stop()
+        self._sync_timer.stop()
+        self._model.cleanup()
+
+    # --- Refresh ---
 
     def refresh(self) -> None:
+        """Debounced refresh."""
+        self._refresh_timer.stop()
+        self._sync_timer.stop()
+        self._refresh_timer.start(100)
+
+    def _do_refresh(self) -> None:
         if not self._scene:
+            return
+        self._model.set_context(
+            scene=self._scene,
+            layer_state=self._layer_state,
+            undo_stack=self._get_undo_stack(),
+        )
+        self._apply_group_collapsed_state()
+        self._do_sync_from_scene_selection()
+
+    def _apply_group_collapsed_state(self) -> None:
+        """Expand/collapse groups based on LayerTreeState."""
+        if not self._layer_state:
             return
         self._tree.blockSignals(True)
         try:
-            self._rebuild_tree()
+            self._walk_and_apply_collapsed(QtCore.QModelIndex())
         finally:
             self._tree.blockSignals(False)
 
-    def _rebuild_tree(self) -> None:
-        self._tree.clear()
-        self._uuid_cache.clear()
+    def _walk_and_apply_collapsed(self, parent: QtCore.QModelIndex) -> None:
+        for r in range(self._model.rowCount(parent)):
+            idx = self._model.index(r, 0, parent)
+            if not idx.isValid():
+                continue
+            if bool(idx.data(IS_GROUP_ROLE)):
+                group_uuid = cast(str, idx.data(GROUP_UUID_ROLE))
+                node = (
+                    self._layer_state.get_node(group_uuid)
+                    if group_uuid and self._layer_state
+                    else None
+                )
+                collapsed = bool(getattr(node, "collapsed", False)) if node else False
+                self._tree.setExpanded(idx, not collapsed)
+            self._walk_and_apply_collapsed(idx)
 
-        if not self._scene:
+    def _set_group_collapsed(self, idx: QtCore.QModelIndex, collapsed: bool) -> None:
+        if not self._layer_state or not idx.isValid() or not bool(idx.data(IS_GROUP_ROLE)):
             return
-
-        # Build cache and get sorted items
-        items_with_z = []
-        for item in self._scene.items():
-            if hasattr(item, "item_uuid") and hasattr(item, "type_name"):
-                items_with_z.append((item.zValue(), item))
-                self._uuid_cache[item.item_uuid] = item
-        items_with_z.sort(key=lambda x: x[0], reverse=True)
-
-        # Get grouped UUIDs
-        grouped = set()
-        if self._group_manager:
-            for g in self._group_manager.get_all_groups():
-                grouped.update(g.item_uuids)
-
-        group_items: dict[str, QtWidgets.QTreeWidgetItem] = {}
-
-        # Add groups
-        if self._group_manager:
-            for group in self._group_manager.get_root_groups():
-                self._tree.addTopLevelItem(self._build_group_item(group, items_with_z, group_items))
-
-        # Add ungrouped items
-        ungrouped: list[QtWidgets.QTreeWidgetItem] = []
-        for _z, item in items_with_z:
-            if hasattr(item, "item_uuid") and item.item_uuid not in grouped:
-                tree_item = self._create_item(item)
-                self._tree.addTopLevelItem(tree_item)
-                ungrouped.append(tree_item)
-
-        # Setup widgets
-        for uuid, tree_item in group_items.items():
-            if self._group_manager:
-                layer_group: LayerGroup | None = self._group_manager.get_group(uuid)
-                if layer_group is not None:
-                    widget = LayerItemWidget(layer_group.name, is_group=True)
-                    def set_group_visible(visible: bool, group_uuid: str = uuid) -> None:
-                        self._apply_to_group(group_uuid, lambda item: item.setVisible(visible))
-
-                    def set_group_locked(locked: bool, group_uuid: str = uuid) -> None:
-                        self._apply_to_group(
-                            group_uuid,
-                            lambda item: hasattr(item, "set_locked")
-                            and item.set_locked(locked),
-                        )
-
-                    widget.visibilityChanged.connect(set_group_visible)
-                    widget.lockChanged.connect(set_group_locked)
-                    self._tree.setItemWidget(tree_item, 0, widget)
-                    tree_item.setExpanded(not layer_group.collapsed)
-
-            for i in range(tree_item.childCount()):
-                if (child := tree_item.child(i)) and not child.data(0, IS_GROUP_ROLE):
-                    self._setup_item_widget(child)
-
-        for tree_item in ungrouped:
-            self._setup_item_widget(tree_item)
-
-    def _build_group_item(
-        self,
-        group: LayerGroup,
-        items_with_z: list,
-        group_items: dict,
-    ) -> QtWidgets.QTreeWidgetItem:
-        tree_item = QtWidgets.QTreeWidgetItem()
-        # Don't setText - we use setItemWidget which renders its own text
-        tree_item.setData(0, GROUP_UUID_ROLE, group.group_uuid)
-        tree_item.setData(0, IS_GROUP_ROLE, True)
-        flags = (
-            tree_item.flags()
-            | QtCore.Qt.ItemFlag.ItemIsSelectable
-            | QtCore.Qt.ItemFlag.ItemIsEditable
-        )
-        tree_item.setFlags(flags)
-        group_items[group.group_uuid] = tree_item
-
-        if self._group_manager:
-            for child in self._group_manager.get_child_groups(group.group_uuid):
-                tree_item.addChild(self._build_group_item(child, items_with_z, group_items))
-
-        filtered_items = [
-            (z, i)
-            for z, i in items_with_z
-            if hasattr(i, "item_uuid") and i.item_uuid in group.item_uuids
-        ]
-        for _z, item in sorted(filtered_items, key=lambda x: x[0], reverse=True):
-            tree_item.addChild(self._create_item(item))
-
-        return tree_item
-
-    def _create_item(self, item: QtWidgets.QGraphicsItem) -> QtWidgets.QTreeWidgetItem:
-        tree_item = QtWidgets.QTreeWidgetItem()
-        # Don't setText - we use setItemWidget which renders its own text
-        if hasattr(item, "item_uuid"):
-            tree_item.setData(0, ITEM_UUID_ROLE, item.item_uuid)
-        tree_item.setData(0, IS_GROUP_ROLE, False)
-        flags = (
-            tree_item.flags()
-            | QtCore.Qt.ItemFlag.ItemIsSelectable
-            | QtCore.Qt.ItemFlag.ItemIsEditable
-        )
-        tree_item.setFlags(flags)
-        return tree_item
-
-    def _setup_item_widget(self, tree_item: QtWidgets.QTreeWidgetItem) -> None:
-        uuid = tree_item.data(0, ITEM_UUID_ROLE)
-        if not uuid:
-            return
-        item = self._uuid_cache.get(uuid)
-        if not item:
-            return
-        widget = LayerItemWidget(
-            self._get_name(item),
-            item.isVisible(),
-            getattr(item, "_locked", False),
-        )
-        widget.visibilityChanged.connect(lambda v: item.setVisible(v))
-
-        def set_locked(locked: bool) -> None:
-            if hasattr(item, "set_locked"):
-                item.set_locked(locked)
-
-        widget.lockChanged.connect(set_locked)
-        self._tree.setItemWidget(tree_item, 0, widget)
-
-    def _get_name(self, item: QtWidgets.QGraphicsItem) -> str:
-        if hasattr(item, "params") and hasattr(item.params, "name") and item.params.name:
-            name: str = item.params.name
-            return name
-        return item.type_name.replace("_", " ").title() if hasattr(item, "type_name") else "Item"
-
-    # --- Group Operations ---
-
-    def _on_item_dropped_in_group(self, item_uuid: str, group_uuid: str) -> None:
-        """Handle item being dropped into a group (via drag-drop)."""
-        if not self._group_manager:
-            return
-        undo_stack = self._get_undo_stack()
-        if undo_stack:
-            cmd = AddItemToGroupCommand(self._group_manager, item_uuid, group_uuid)
-            undo_stack.push(cmd)
-        else:
-            self._group_manager.add_item_to_group(item_uuid, group_uuid)
-
-    def _on_item_removed_from_group(self, item_uuid: str) -> None:
-        """Handle item being removed from a group (via drag-drop)."""
-        if not self._group_manager:
-            return
-        undo_stack = self._get_undo_stack()
-        if undo_stack:
-            cmd = RemoveItemFromGroupCommand(self._group_manager, item_uuid)
-            undo_stack.push(cmd)
-        else:
-            self._group_manager.remove_item_from_group(item_uuid)
-
-    def _apply_to_group(self, group_uuid: str, action: Callable) -> None:
-        """Apply action recursively to all items in a group."""
-        if not self._group_manager:
-            return
-        for item in self._group_manager.get_group_items(group_uuid):
-            action(item)
-        for child in self._group_manager.get_child_groups(group_uuid):
-            self._apply_to_group(child.group_uuid, action)
-
-    def _collect_group_uuids(self, group_uuid: str) -> list[str]:
-        """Collect all item UUIDs from a group recursively."""
-        if not self._group_manager or not (group := self._group_manager.get_group(group_uuid)):
-            return []
-        result = list(group.item_uuids)
-        for child in self._group_manager.get_child_groups(group_uuid):
-            result.extend(self._collect_group_uuids(child.group_uuid))
-        return result
+        if group_uuid := idx.data(GROUP_UUID_ROLE):
+            self._layer_state.set_group_collapsed(str(group_uuid), collapsed, emit=True)
 
     # --- Z-Order ---
 
     def _apply_z_order(self, operation: str) -> None:
-        if not self._scene or not (items := list(self._scene.selectedItems())):
+        if not self._scene or not self._layer_state:
             return
-        undo_stack = None
-        if views := self._scene.views():
-            window = views[0].window()
-            if window is not None and hasattr(window, "undo_stack"):
-                undo_stack = window.undo_stack
-        apply_z_order_change(items, operation, self._scene, undo_stack)
+        uuids = [
+            item.item_uuid for item in self._scene.selectedItems() if hasattr(item, "item_uuid")
+        ]
+        if uuids:
+            self._layer_state.apply_z_order_operation(uuids, operation)
 
-    def _update_z_from_tree(self) -> None:
-        self._z_counter = Z_ORDER_INITIAL_VALUE
-        for i in range(self._tree.topLevelItemCount()):
-            if item := self._tree.topLevelItem(i):
-                self._update_z_recursive(item)
+    def _on_model_order_changed(self) -> None:
+        self.zOrderChanged.emit()
 
-    def _update_z_recursive(self, tree_item: QtWidgets.QTreeWidgetItem) -> None:
-        if tree_item.data(0, IS_GROUP_ROLE):
-            for i in range(tree_item.childCount()):
-                if child := tree_item.child(i):
-                    self._update_z_recursive(child)
-        elif (uuid := tree_item.data(0, ITEM_UUID_ROLE)) and (item := self._uuid_cache.get(uuid)):
-            item.setZValue(self._z_counter)
-            self._z_counter -= Z_ORDER_STEP
+    def _on_visibility_changed(self) -> None:
+        self.visibilityChanged.emit()
 
-    # --- Selection Sync ---
+    # --- Selection ---
 
-    def _on_selection_changed(self) -> None:
+    def _on_selection_changed(
+        self,
+        _sel: QtCore.QItemSelection | None = None,
+        _desel: QtCore.QItemSelection | None = None,
+    ) -> None:
         if not self._scene:
             return
-        selected = []
-        for item in self._tree.selectedItems():
-            if item.data(0, IS_GROUP_ROLE):
-                selected.extend(self._collect_group_uuids(item.data(0, GROUP_UUID_ROLE)))
-            elif uuid := item.data(0, ITEM_UUID_ROLE):
-                selected.append(uuid)
-
+        selected: list[str] = []
+        if sm := self._tree.selectionModel():
+            for idx in sm.selectedRows(0):
+                selected.extend(self._model.item_uuids_under(idx))
         self._scene.clearSelection()
-        for graphics_item in self._scene.items():
-            if hasattr(graphics_item, "item_uuid") and graphics_item.item_uuid in selected:
-                graphics_item.setSelected(True)
+        for item in self._scene.items():
+            if hasattr(item, "item_uuid") and item.item_uuid in selected:
+                item.setSelected(True)
         self.selectionChanged.emit(selected)
 
     def sync_from_scene_selection(self) -> None:
+        """Sync layer panel selection from scene (debounced)."""
+        if self._refresh_timer.isActive():
+            return
+        self._sync_timer.stop()
+        self._sync_timer.start(50)
+
+    def _do_sync_from_scene_selection(self) -> None:
         if not self._scene:
             return
-        self._tree.blockSignals(True)
+        uuids = {
+            item.item_uuid for item in self._scene.selectedItems() if hasattr(item, "item_uuid")
+        }
+        sm = self._tree.selectionModel()
+        if not sm:
+            return
+        sm.blockSignals(True)
         try:
-            uuids = {
-                item.item_uuid
-                for item in self._scene.selectedItems()
-                if hasattr(item, "item_uuid")
-            }
-            self._tree.clearSelection()
-            self._select_in_tree(uuids)
+            sm.clearSelection()
+            if uuids:
+                self._select_by_uuid(uuids, QtCore.QModelIndex())
         finally:
-            self._tree.blockSignals(False)
+            sm.blockSignals(False)
+        if viewport := self._tree.viewport():
+            viewport.update()
 
-    def _select_in_tree(
-        self, uuids: set[str], parent: QtWidgets.QTreeWidgetItem | None = None
-    ) -> None:
-        count = parent.childCount() if parent else self._tree.topLevelItemCount()
-        for i in range(count):
-            item = parent.child(i) if parent else self._tree.topLevelItem(i)
-            if not item:
+    def _select_by_uuid(self, uuids: set[str], parent: QtCore.QModelIndex) -> None:
+        sm = self._tree.selectionModel()
+        if not sm:
+            return
+        for r in range(self._model.rowCount(parent)):
+            idx = self._model.index(r, 0, parent)
+            if not idx.isValid():
                 continue
-            if not item.data(0, IS_GROUP_ROLE) and item.data(0, ITEM_UUID_ROLE) in uuids:
-                item.setSelected(True)
-            self._select_in_tree(uuids, item)
-
-    def _on_reordered(self) -> None:
-        if self._scene:
-            self._update_z_from_tree()
-            self.refresh()
+            if not bool(idx.data(IS_GROUP_ROLE)):
+                if idx.data(ITEM_UUID_ROLE) in uuids:
+                    sm.select(
+                        idx,
+                        QtCore.QItemSelectionModel.SelectionFlag.Select
+                        | QtCore.QItemSelectionModel.SelectionFlag.Rows,
+                    )
+            self._select_by_uuid(uuids, idx)
 
     # --- Actions ---
 
     def _group_selected(self) -> None:
-        if not self._scene or not self._group_manager:
+        if not self._scene or not self._layer_state:
             return
         selected = self._scene.selectedItems()
         if len(selected) < 2:
             QtWidgets.QMessageBox.information(
-                self, "Group Items", "Please select at least 2 items to group."
+                self, "Group Items", "Select at least 2 items to group."
             )
             return
         name, ok = QtWidgets.QInputDialog.getText(self, "Create Group", "Group name:", text="Group")
-        if ok:
-            # Collect item UUIDs
-            item_uuids = [
-                item.item_uuid for item in selected
-                if hasattr(item, "item_uuid")
-            ]
-            if not item_uuids:
-                return
-
-            # Check if all items are in the same group (for creating subgroups)
-            parent_group_uuid: str | None = None
-            parent_groups = set()
-            for item_uuid in item_uuids:
-                group = self._group_manager.get_item_group(item_uuid)
-                if group:
-                    parent_groups.add(group.group_uuid)
-
-            # If all items are in the same group, create a subgroup
-            if len(parent_groups) == 1:
-                parent_group_uuid = parent_groups.pop()
-
-            undo_stack = self._get_undo_stack()
-            if undo_stack:
-                cmd = CreateGroupCommand(
-                    self._group_manager,
-                    name or "Group",
-                    item_uuids,
-                    parent_group_uuid,
-                )
-                undo_stack.push(cmd)
-            else:
-                self._group_manager.create_group(
-                    name or "Group", item_uuids, parent_group_uuid
-                )
+        if not ok:
+            return
+        uuids = [item.item_uuid for item in selected if hasattr(item, "item_uuid")]
+        if not uuids:
+            return
+        cmd = CreateGroupCommand(self._layer_state, name or "Group", uuids, None)
+        if undo := self._get_undo_stack():
+            undo.push(cmd)
+        else:
+            cmd.execute()
 
     def _ungroup_selected(self) -> None:
-        if not self._group_manager:
+        if not self._layer_state:
+            return
+        group_uuid: str | None = None
+
+        # Check if a group is selected in tree
+        if sm := self._tree.selectionModel():
+            for idx in sm.selectedRows(0):
+                if bool(idx.data(IS_GROUP_ROLE)):
+                    group_uuid = cast(str, idx.data(GROUP_UUID_ROLE))
+                    break
+
+        # Check if selected items share a common group
+        if not group_uuid and self._scene:
+            groups: set[str] = set()
+            for item in self._scene.selectedItems():
+                if hasattr(item, "item_uuid"):
+                    node = self._layer_state.get_node(item.item_uuid)
+                    if node and node.parent and node.parent.is_group():
+                        groups.add(node.parent.uuid)
+            if len(groups) == 1:
+                group_uuid = groups.pop()
+
+        if not group_uuid:
+            QtWidgets.QMessageBox.information(self, "Ungroup", "Select a group to ungroup.")
             return
 
-        group_uuid_to_ungroup: str | None = None
-
-        # First, check if a group is directly selected in the tree
-        for item in self._tree.selectedItems():
-            if item.data(0, IS_GROUP_ROLE):
-                group_uuid_to_ungroup = item.data(0, GROUP_UUID_ROLE)
-                break
-
-        # If no group directly selected, check if selected items belong to a common group
-        if not group_uuid_to_ungroup and self._scene:
-            selected_scene_items = self._scene.selectedItems()
-            if selected_scene_items:
-                groups = set()
-                for scene_item in selected_scene_items:
-                    if hasattr(scene_item, "item_uuid"):
-                        group = self._group_manager.get_item_group(scene_item.item_uuid)
-                        if group:
-                            groups.add(group.group_uuid)
-                # If all selected items are in the same group, ungroup that group
-                if len(groups) == 1:
-                    group_uuid_to_ungroup = groups.pop()
-
-        if group_uuid_to_ungroup:
-            undo_stack = self._get_undo_stack()
-            if undo_stack:
-                cmd = DeleteGroupCommand(
-                    self._group_manager,
-                    group_uuid_to_ungroup,
-                    keep_items=True,
-                )
-                undo_stack.push(cmd)
-            else:
-                self._group_manager.ungroup(group_uuid_to_ungroup)
-            return
-
-        QtWidgets.QMessageBox.information(self, "Ungroup", "Please select a group to ungroup.")
+        cmd = DeleteGroupCommand(self._layer_state, group_uuid, keep_items=True)
+        if undo := self._get_undo_stack():
+            undo.push(cmd)
+        else:
+            cmd.execute()
 
     def _delete_selected(self) -> None:
         if not self._scene:
             return
-        selected = self._tree.selectedItems()
-        if not selected:
+        sm = self._tree.selectionModel()
+        if not sm:
+            return
+        rows = sm.selectedRows(0)
+        if not rows:
             return
 
         from ...core.undo_commands import RemoveItemCommand
 
-        undo_stack = self._get_undo_stack()
+        undo = self._get_undo_stack()
+        group_uuids: set[str] = set()
+        item_uuids: set[str] = set()
 
-        for item in selected:
-            if item.data(0, IS_GROUP_ROLE):
-                if self._group_manager:
-                    group_uuid = item.data(0, GROUP_UUID_ROLE)
-                    if undo_stack:
-                        cmd = DeleteGroupCommand(
-                            self._group_manager,
-                            group_uuid,
-                            keep_items=False,  # Delete items with group
-                        )
-                        undo_stack.push(cmd)
-                    else:
-                        self._group_manager.delete_group(group_uuid)
-            else:
-                uuid = item.data(0, ITEM_UUID_ROLE)
-                if uuid:
-                    scene_item = self._uuid_cache.get(uuid)
-                    if scene_item:
-                        if undo_stack:
-                            remove_cmd = RemoveItemCommand(
-                                self._scene, scene_item, self._group_manager
-                            )
-                            undo_stack.push(remove_cmd)
-                        else:
-                            # Remove from group first (this triggers empty group cleanup)
-                            if self._group_manager:
-                                self._group_manager.remove_item_from_group(uuid)
-                            self._scene.removeItem(scene_item)
-        self.refresh()
+        for idx in rows:
+            if bool(idx.data(IS_GROUP_ROLE)):
+                if gu := idx.data(GROUP_UUID_ROLE):
+                    group_uuids.add(str(gu))
+            elif iu := idx.data(ITEM_UUID_ROLE):
+                item_uuids.add(str(iu))
 
-    def _toggle_property(
-        self,
-        item: QtWidgets.QTreeWidgetItem,
-        get_val: Callable,
-        set_val: Callable,
-    ) -> None:
-        """Toggle a property (visibility/lock) for item or group."""
-        if item.data(0, IS_GROUP_ROLE):
-            uuid = item.data(0, GROUP_UUID_ROLE)
-            items = self._group_manager.get_group_items(uuid) if self._group_manager else []
-            current = get_val(items[0]) if items else True
-            self._apply_to_group(uuid, lambda i: set_val(i, not current))
-        else:
-            uuid = item.data(0, ITEM_UUID_ROLE)
-            if uuid:
-                scene_item = self._uuid_cache.get(uuid)
-                if scene_item:
-                    set_val(scene_item, not get_val(scene_item))
+        for gid in group_uuids:
+            if self._layer_state:
+                cmd = DeleteGroupCommand(self._layer_state, gid, keep_items=False)
+                if undo:
+                    undo.push(cmd)
+                else:
+                    cmd.execute()
+
+        for uid in item_uuids:
+            item = next(
+                (
+                    i
+                    for i in self._scene.items()
+                    if hasattr(i, "item_uuid") and i.item_uuid == uid
+                ),
+                None,
+            )
+            if item:
+                if undo:
+                    undo.push(RemoveItemCommand(self._scene, item, self._layer_state))
+                else:
+                    if self._layer_state:
+                        self._layer_state.remove_item(uid, emit=True)
+                    self._scene.removeItem(item)
+
         self.refresh()
 
     def _show_context_menu(self, pos: QtCore.QPoint) -> None:
-        item = self._tree.itemAt(pos)
+        idx = self._tree.indexAt(pos)
         menu = QtWidgets.QMenu(self)
 
-        if item:
-            def toggle_visibility() -> None:
-                self._toggle_property(
-                    item,
-                    lambda i: i.isVisible(),
-                    lambda i, v: i.setVisible(v),
-                )
+        if idx.isValid():
+            from ..models.layer_item_model import LOCKED_ROLE, VISIBLE_ROLE
 
-            def toggle_lock() -> None:
-                self._toggle_property(
-                    item,
-                    lambda i: getattr(i, "_locked", False),
-                    lambda i, v: hasattr(i, "set_locked") and i.set_locked(v),
-                )
-
-            visibility_action = menu.addAction("Toggle Visibility")
-            if visibility_action is not None:
-                visibility_action.triggered.connect(toggle_visibility)
-            lock_action = menu.addAction("Toggle Lock")
-            if lock_action is not None:
-                lock_action.triggered.connect(toggle_lock)
+            vis_act = menu.addAction("Toggle Visibility")
+            if vis_act:
+                vis_act.triggered.connect(lambda: self._toggle_role(idx, VISIBLE_ROLE))
+            lock_act = menu.addAction("Toggle Lock")
+            if lock_act:
+                lock_act.triggered.connect(lambda: self._toggle_role(idx, LOCKED_ROLE))
             menu.addSeparator()
 
-            if item.data(0, IS_GROUP_ROLE):
-                ungroup_action = menu.addAction("Ungroup")
-                if ungroup_action is not None:
-                    ungroup_action.triggered.connect(self._ungroup_selected)
+            if bool(idx.data(IS_GROUP_ROLE)):
+                if act := menu.addAction("Ungroup"):
+                    act.triggered.connect(self._ungroup_selected)
             else:
-                group_action = menu.addAction("Group with Selected")
-                if group_action is not None:
-                    group_action.triggered.connect(self._group_selected)
+                if act := menu.addAction("Group with Selected"):
+                    act.triggered.connect(self._group_selected)
             menu.addSeparator()
-            delete_action = menu.addAction("Delete")
-            if delete_action is not None:
-                delete_action.triggered.connect(self._delete_selected)
+            if act := menu.addAction("Delete"):
+                act.triggered.connect(self._delete_selected)
 
         menu.addSeparator()
-        z_menu = menu.addMenu("Z-Order")
-        if z_menu is not None:
+        if z_menu := menu.addMenu("Z-Order"):
             for label, op in [
                 ("Bring to Front", "bring_to_front"),
                 ("Bring Forward", "bring_forward"),
                 ("Send Backward", "send_backward"),
                 ("Send to Back", "send_to_back"),
             ]:
-                z_action = z_menu.addAction(label)
-                if z_action is not None:
-                    z_action.triggered.connect(lambda _, o=op: self._apply_z_order(o))
+                if act := z_menu.addAction(label):
+                    act.triggered.connect(lambda _, o=op: self._apply_z_order(o))
 
-        viewport = self._tree.viewport()
-        if viewport is not None:
-            menu.exec(viewport.mapToGlobal(pos))
+        if vp := self._tree.viewport():
+            menu.exec(vp.mapToGlobal(pos))
+
+    def _toggle_role(self, idx: QtCore.QModelIndex, role: int) -> None:
+        current = bool(idx.data(role))
+        self._model.setData(idx, not current, role)
+        self.refresh()
