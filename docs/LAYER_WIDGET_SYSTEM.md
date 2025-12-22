@@ -464,7 +464,39 @@ Visibility changes affect ray tracing:
 | `src/optiverse/ui/views/keyboard_layer_tree_view.py` | Custom tree view with keyboard handling |
 | `src/optiverse/ui/models/layer_item_model.py` | Qt tree model |
 | `src/optiverse/ui/delegates/layer_item_delegate.py` | Custom row painting |
-| `src/optiverse/ui/widgets/constants.py` | UI constants (icons, sizes) |
+| `src/optiverse/ui/widgets/constants.py` | UI constants (Icons class, sizes) |
 | `src/optiverse/core/undo_commands.py` | Undo commands for layer operations |
 | `tests/core/test_layer_tree_state.py` | Unit tests for LayerTreeState |
+
+---
+
+## Icons Class Reference
+
+The `Icons` class in `src/optiverse/ui/widgets/constants.py` defines the visual symbols used throughout the layer panel UI:
+
+```python
+class Icons:
+    """Emoji icons used in the UI."""
+    VISIBLE: str = "👁"       # Eye icon - item is visible
+    HIDDEN: str = "○"         # Empty circle - item is hidden
+    LOCKED: str = "🔒"        # Closed lock - item is locked (cannot be edited)
+    UNLOCKED: str = "🔓"      # Open lock - item is unlocked
+    FOLDER: str = "📁"        # Folder icon - displayed for group nodes
+    FOLDER_ADD: str = "📁+"   # Add folder button in header
+    FOLDER_REMOVE: str = "📁-" # Remove folder button in header
+    N1_COLOR: str = "#FFD700" # Gold color for n1 refractive index labels
+    N2_COLOR: str = "#9370DB" # Purple color for n2 refractive index labels
+```
+
+### Icon Usage
+
+| Icon | Context | Click Behavior |
+|------|---------|----------------|
+| `VISIBLE` / `HIDDEN` | Left side of each row | Toggles item/group visibility |
+| `LOCKED` / `UNLOCKED` | Next to visibility icon | Toggles item/group lock state |
+| `FOLDER` | Before group name | Indicates a group node (no click action) |
+| `FOLDER_ADD` | Header toolbar | Opens dialog to group selected items |
+| `FOLDER_REMOVE` | Header toolbar | Ungroups the selected group |
+
+The `LayerItemDelegate` uses these icons during custom painting. Click handling for toggle icons is implemented in `LayerItemDelegate.editorEvent()`.
 

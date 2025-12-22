@@ -361,13 +361,14 @@ class LayerItemModel(QtCore.QAbstractItemModel):
 
     def _apply_effective_visibility(self, node: LayerNode) -> None:
         """Apply effective visibility to node and all descendants."""
-        if not self._layer_state:
+        layer_state = self._layer_state
+        if not layer_state:
             return
 
         def apply_to_node(n: LayerNode) -> None:
             if n.is_item():
                 if item := self._uuid_to_item.get(n.uuid):
-                    effective = self._layer_state.is_effectively_visible(n.uuid)
+                    effective = layer_state.is_effectively_visible(n.uuid)
                     item.setVisible(effective)
             else:
                 # Group: apply to all children
@@ -378,14 +379,15 @@ class LayerItemModel(QtCore.QAbstractItemModel):
 
     def _apply_effective_locked(self, node: LayerNode) -> None:
         """Apply effective locked state to node and all descendants."""
-        if not self._layer_state:
+        layer_state = self._layer_state
+        if not layer_state:
             return
 
         def apply_to_node(n: LayerNode) -> None:
             if n.is_item():
                 if item := self._uuid_to_item.get(n.uuid):
                     if hasattr(item, "set_locked"):
-                        effective = self._layer_state.is_effectively_locked(n.uuid)
+                        effective = layer_state.is_effectively_locked(n.uuid)
                         item.set_locked(effective)
             else:
                 # Group: apply to all children

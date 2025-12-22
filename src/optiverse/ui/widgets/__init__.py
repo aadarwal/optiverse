@@ -1,5 +1,6 @@
 """Custom widgets for Optiverse UI."""
 
+from ..views.keyboard_layer_tree_view import KeyboardLayerTreeView
 from .interface_properties_widget import InterfacePropertiesWidget
 from .interface_tree_panel import InterfaceTreePanel
 from .interface_widgets import (
@@ -8,7 +9,6 @@ from .interface_widgets import (
     InterfaceTreeWidget,
 )
 from .layer_panel import LayerPanel
-from ..views.keyboard_layer_tree_view import KeyboardLayerTreeView
 from .library_tree import LibraryTree
 from .ruler_widget import CanvasWithRulers, RulerWidget
 from .smart_spinbox import SmartDoubleSpinBox, SmartSpinBox

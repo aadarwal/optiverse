@@ -65,7 +65,9 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
             self._draw_centered_text(painter, vis_rect, vis_text, opt.palette, text_color_role)
             self._draw_centered_text(painter, lock_rect, lock_text, opt.palette, text_color_role)
             if is_group:
-                self._draw_centered_text(painter, folder_rect, Icons.FOLDER, opt.palette, text_color_role)
+                self._draw_centered_text(
+                    painter, folder_rect, Icons.FOLDER, opt.palette, text_color_role
+                )
 
             # Draw label
             label = str(index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")
@@ -140,11 +142,13 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
 
     def updateEditorGeometry(
         self,
-        editor: QtWidgets.QWidget,
+        editor: QtWidgets.QWidget | None,
         option: QtWidgets.QStyleOptionViewItem,
         index: QtCore.QModelIndex,
     ) -> None:
         """Position the editor in the text area (after the icons)."""
+        if editor is None:
+            return
         rect = option.rect.adjusted(LAYER_ITEM_MARGIN, 0, -LAYER_ITEM_MARGIN, 0)
         is_group = bool(index.data(IS_GROUP_ROLE))
         _, _, _, text_rect = self._layout_rects(rect, is_group)
