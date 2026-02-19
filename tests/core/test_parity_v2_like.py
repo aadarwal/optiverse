@@ -40,8 +40,8 @@ def test_thin_lens_deflection_matches_v2_formula():
     v = np.array(pts[-1]) - np.array(pts[-2])
     v_norm = v / (np.linalg.norm(v) or 1.0)
 
-    # Expected theta_out = -y/f where y=+10 mm, f=100 mm => -0.1 rad
-    expected_theta = -0.1
+    # Expected theta_out = -arctan(y/f) where y=+10 mm, f=100 mm
+    expected_theta = -math.atan2(10.0, 100.0)
     # In global coords, n_hat is +Y, t_hat is +X; V = cos(theta)*n + sin(theta)*t
     exp = np.array([math.sin(expected_theta), math.cos(expected_theta)])
     # Allow small tolerance
