@@ -12,7 +12,7 @@ from ...core.color_utils import (
 )
 from ...core.models import SourceParams
 from ...core.raytracing_math import qt_angle_to_user, user_angle_to_qt
-from ...ui.widgets.smart_spinbox import SmartDoubleSpinBox
+from ...ui.widgets.smart_spinbox import SmartDoubleSpinBox, SmartSpinBox
 from ..base_obj import BaseObj
 from ..type_registry import deserialize_item, register_type, serialize_item
 
@@ -161,27 +161,50 @@ class SourceItem(BaseObj):
         self.edited.connect(sync_from_item)
 
         # Source parameters
-        size = QtWidgets.QDoubleSpinBox()
+        size = SmartDoubleSpinBox()
         size.setRange(0, 1e6)
         size.setDecimals(3)
         size.setSuffix(" mm")
         size.setValue(self.params.size_mm)
 
-        nr = QtWidgets.QSpinBox()
+        nr = SmartSpinBox()
         nr.setRange(1, 2001)
         nr.setValue(self.params.n_rays)
 
-        rlen = QtWidgets.QDoubleSpinBox()
+        rlen = SmartDoubleSpinBox()
         rlen.setRange(1, 1e7)
         rlen.setDecimals(1)
         rlen.setSuffix(" mm")
         rlen.setValue(self.params.ray_length_mm)
 
-        spr = QtWidgets.QDoubleSpinBox()
+        spr = SmartDoubleSpinBox()
         spr.setRange(0, 89.9)
         spr.setDecimals(2)
         spr.setSuffix(" °")
         spr.setValue(self.params.spread_deg)
+
+        # Live update connections for source parameters
+        def update_size():
+            self.params.size_mm = size.value()
+            self._update_shape()
+            self.edited.emit()
+
+        def update_n_rays():
+            self.params.n_rays = nr.value()
+            self.edited.emit()
+
+        def update_ray_length():
+            self.params.ray_length_mm = rlen.value()
+            self.edited.emit()
+
+        def update_spread():
+            self.params.spread_deg = spr.value()
+            self.edited.emit()
+
+        size.valueChanged.connect(update_size)
+        nr.valueChanged.connect(update_n_rays)
+        rlen.valueChanged.connect(update_ray_length)
+        spr.valueChanged.connect(update_spread)
 
         # Wavelength controls
         wl_mode = QtWidgets.QComboBox()
@@ -206,7 +229,7 @@ class SourceItem(BaseObj):
                     break
 
         # Wavelength spinbox (always enabled)
-        wl_spin = QtWidgets.QDoubleSpinBox()
+        wl_spin = SmartDoubleSpinBox()
         wl_spin.setRange(200, 2000)
         wl_spin.setDecimals(1)
         wl_spin.setSuffix(" nm")
@@ -244,12 +267,25 @@ class SourceItem(BaseObj):
                 self._color = c
                 color_disp.setText(c.name())
                 paint_chip(chip, c.name())
+                _apply_color_to_source()
+
+        def _apply_color_to_source():
+            """Apply current color/wavelength settings to the source live."""
+            self.params.wavelength_nm = wl_spin.value()
+            if wl_mode.currentText() == "Wavelength":
+                self.params.color_hex = wavelength_to_hex(self.params.wavelength_nm)
+                self._color = qcolor_from_hex(self.params.color_hex)
+            else:
+                self.params.color_hex = hex_from_qcolor(self._color)
+            self.update()
+            self.edited.emit()
 
         def update_from_wavelength():
             """Update color chip from wavelength only if in Wavelength mode."""
             if wl_mode.currentText() == "Wavelength":
                 wl = wl_spin.value()
                 paint_chip(chip, wavelength_to_hex(wl))
+                _apply_color_to_source()
 
         def on_mode_changed(mode: str):
             """Handle wavelength mode change."""
@@ -261,6 +297,7 @@ class SourceItem(BaseObj):
                 update_from_wavelength()
             else:
                 paint_chip(chip, color_disp.text())
+                _apply_color_to_source()
 
         def on_preset_changed(idx: int):
             """Handle wavelength preset selection."""
@@ -303,18 +340,22 @@ class SourceItem(BaseObj):
         except AttributeError:
             pass  # params may not have polarization_type yet
 
-        pol_angle = QtWidgets.QDoubleSpinBox()
+        pol_angle = SmartDoubleSpinBox()
         pol_angle.setRange(-180, 180)
         pol_angle.setDecimals(1)
         pol_angle.setSuffix(" °")
         pol_angle.setValue(self.params.polarization_angle_deg)
         pol_angle.setEnabled(self.params.polarization_type == "linear")
 
-        # Enable angle control only when "linear" is selected
-        def on_pol_type_changed(text):
-            pol_angle.setEnabled(text == "linear")
+        # Live update connections for polarization
+        def update_polarization():
+            self.params.polarization_type = pol_type.currentText()
+            self.params.polarization_angle_deg = pol_angle.value()
+            pol_angle.setEnabled(pol_type.currentText() == "linear")
+            self.edited.emit()
 
-        pol_type.currentTextChanged.connect(on_pol_type_changed)
+        pol_type.currentTextChanged.connect(update_polarization)
+        pol_angle.valueChanged.connect(update_polarization)
 
         # Add all fields to form
         f.addRow("X Position", x)
@@ -347,32 +388,7 @@ class SourceItem(BaseObj):
         self.edited.disconnect(sync_from_item)
 
         if result:
-            # x, y, angle already applied live - just update other params
-            pass  # Position and angle already updated live
-            self.params.size_mm = size.value()
-            self.params.n_rays = nr.value()
-            self.params.ray_length_mm = rlen.value()
-            self.params.spread_deg = spr.value()
-
-            # Save wavelength and color based on mode
-            # Wavelength is always saved regardless of mode
-            self.params.wavelength_nm = wl_spin.value()
-
-            if wl_mode.currentText() == "Wavelength":
-                # Use wavelength-derived color for display
-                self.params.color_hex = wavelength_to_hex(self.params.wavelength_nm)
-                self._color = qcolor_from_hex(self.params.color_hex)
-            else:
-                # Use custom color for display, but preserve wavelength
-                self.params.color_hex = hex_from_qcolor(self._color)
-
-            # Polarization parameters
-            self.params.polarization_type = pol_type.currentText()
-            self.params.polarization_angle_deg = pol_angle.value()
-            self._update_shape()
-            self.edited.emit()
-
-            # Create undo command for property change
+            # All params already applied live — just create undo command
             final_state = self.capture_state()
             if initial_state != final_state:
                 from ...core.undo_commands import PropertyChangeCommand

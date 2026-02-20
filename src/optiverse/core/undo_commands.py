@@ -5,6 +5,7 @@ Each command encapsulates an action that can be executed and undone.
 
 from __future__ import annotations
 
+import time
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
@@ -139,7 +140,14 @@ class RemoveItemCommand(Command):
 
 
 class MoveItemCommand(Command):
-    """Command to move an item to a new position."""
+    """Command to move an item to a new position.
+
+    Consecutive moves within MERGE_WINDOW_S of the same item merge into
+    one undo step (i.e., a single drag). A new drag after the window
+    expires creates a separate undo step.
+    """
+
+    MERGE_WINDOW_S = 0.5  # seconds — moves further apart are separate undo steps
 
     def __init__(
         self,
@@ -147,42 +155,36 @@ class MoveItemCommand(Command):
         old_pos: QtCore.QPointF,
         new_pos: QtCore.QPointF,
     ):
-        """
-        Initialize MoveItemCommand.
-
-        Args:
-            item: The graphics item to move
-            old_pos: The original position
-            new_pos: The new position
-        """
         self.item = item
-        self.old_pos = QtCore.QPointF(old_pos)  # Make a copy
-        self.new_pos = QtCore.QPointF(new_pos)  # Make a copy
+        self.old_pos = QtCore.QPointF(old_pos)
+        self.new_pos = QtCore.QPointF(new_pos)
+        self._timestamp = time.monotonic()
 
     def execute(self) -> None:
-        """Move the item to the new position."""
         self.item.setPos(self.new_pos)
-        # Force Qt to update cached transforms (fixes BeamsplitterItem position tracking)
         self.item.setTransform(self.item.transform())
+        if hasattr(self.item, "edited"):
+            self.item.edited.emit()
 
     def undo(self) -> None:
-        """Move the item back to the old position."""
         self.item.setPos(self.old_pos)
-        # Force Qt to update cached transforms (fixes BeamsplitterItem position tracking)
         self.item.setTransform(self.item.transform())
+        if hasattr(self.item, "edited"):
+            self.item.edited.emit()
 
     def id(self) -> int:
-        """Return unique ID for this item to enable command merging."""
         return id(self.item)
 
     def merge_with(self, other: Command) -> bool:
-        """Merge with another MoveItemCommand for the same item."""
         if not isinstance(other, MoveItemCommand):
             return False
         if other.item is not self.item:
             return False
-        # Update new position to include the other command's movement
+        # Only merge if the new command arrived within the merge window
+        if other._timestamp - self._timestamp > self.MERGE_WINDOW_S:
+            return False
         self.new_pos = QtCore.QPointF(other.new_pos)
+        self._timestamp = other._timestamp
         return True
 
 
@@ -428,10 +430,14 @@ class RotateItemCommand(Command):
     def execute(self) -> None:
         """Rotate the item to the new angle."""
         self.item.setRotation(self.new_rotation)
+        if hasattr(self.item, "edited"):
+            self.item.edited.emit()
 
     def undo(self) -> None:
         """Rotate the item back to the old angle."""
         self.item.setRotation(self.old_rotation)
+        if hasattr(self.item, "edited"):
+            self.item.edited.emit()
 
 
 class RotateItemsCommand(Command):
@@ -466,12 +472,16 @@ class RotateItemsCommand(Command):
         for item in self.items:
             item.setPos(self.new_positions[item])
             item.setRotation(self.new_rotations[item])
+            if hasattr(item, "edited"):
+                item.edited.emit()
 
     def undo(self) -> None:
         """Restore old positions and rotations for all items."""
         for item in self.items:
             item.setPos(self.old_positions[item])
             item.setRotation(self.old_rotations[item])
+            if hasattr(item, "edited"):
+                item.edited.emit()
 
 
 class BatchCommand(Command):

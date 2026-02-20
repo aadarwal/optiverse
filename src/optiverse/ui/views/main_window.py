@@ -316,11 +316,27 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle(self._format_window_title(subtitle))
 
     def _build_library_dock(self):
-        """Build component library dock with categorized tree view."""
+        """Build component library dock with categorized tree view and search bar."""
         self.libDock = QtWidgets.QDockWidget("Component Library", self)
         self.libDock.setObjectName("libDock")
+
+        # Container with search bar + tree
+        container = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        search_bar = QtWidgets.QLineEdit()
+        search_bar.setPlaceholderText("Search components...")
+        search_bar.setClearButtonEnabled(True)
+        layout.addWidget(search_bar)
+
         self.libraryTree = LibraryTree(self)
-        self.libDock.setWidget(self.libraryTree)
+        layout.addWidget(self.libraryTree)
+
+        search_bar.textChanged.connect(self.libraryTree.filter_items)
+
+        self.libDock.setWidget(container)
         self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.libDock)
 
         # Initialize library manager

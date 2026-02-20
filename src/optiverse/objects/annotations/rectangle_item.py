@@ -7,6 +7,7 @@ from typing import Any
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from ...core.protocols import HasLayerState
+from ...ui.widgets.smart_spinbox import SmartDoubleSpinBox
 
 
 class RectangleItem(QtWidgets.QGraphicsObject):
@@ -254,31 +255,31 @@ class RectangleItem(QtWidgets.QGraphicsObject):
         initial_w = self._w
         initial_h = self._h
 
-        x = QtWidgets.QDoubleSpinBox()
+        x = SmartDoubleSpinBox()
         x.setRange(-1e6, 1e6)
         x.setDecimals(3)
         x.setSuffix(" mm")
         x.setValue(initial_x)
 
-        y = QtWidgets.QDoubleSpinBox()
+        y = SmartDoubleSpinBox()
         y.setRange(-1e6, 1e6)
         y.setDecimals(3)
         y.setSuffix(" mm")
         y.setValue(initial_y)
 
-        ang = QtWidgets.QDoubleSpinBox()
+        ang = SmartDoubleSpinBox()
         ang.setRange(-1e6, 1e6)
         ang.setDecimals(2)
         ang.setSuffix(" °")
         ang.setValue(initial_ang)
 
-        w = QtWidgets.QDoubleSpinBox()
+        w = SmartDoubleSpinBox()
         w.setRange(1.0, 1e7)
         w.setDecimals(2)
         w.setSuffix(" mm")
         w.setValue(initial_w)
 
-        h = QtWidgets.QDoubleSpinBox()
+        h = SmartDoubleSpinBox()
         h.setRange(1.0, 1e7)
         h.setDecimals(2)
         h.setSuffix(" mm")

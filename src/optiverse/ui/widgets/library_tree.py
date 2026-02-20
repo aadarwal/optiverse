@@ -33,6 +33,27 @@ class LibraryTree(QtWidgets.QTreeWidget):
         self.clearSelection()
         super().focusOutEvent(event)
 
+    def filter_items(self, text: str) -> None:
+        """Filter tree items by name. Shows matching items and their parent categories."""
+        text = text.strip().lower()
+        for cat_idx in range(self.topLevelItemCount()):
+            category = self.topLevelItem(cat_idx)
+            if category is None:
+                continue
+            any_child_visible = False
+            for child_idx in range(category.childCount()):
+                child = category.child(child_idx)
+                if child is None:
+                    continue
+                visible = not text or text in (child.text(0) or "").lower()
+                child.setHidden(not visible)
+                if visible:
+                    any_child_visible = True
+            # Hide category if no children match (unless filter is empty)
+            category.setHidden(bool(text) and not any_child_visible)
+            if any_child_visible:
+                category.setExpanded(True)
+
     def _show_context_menu(self, position: QtCore.QPoint) -> None:
         """Show context menu for component items."""
         item = self.itemAt(position)

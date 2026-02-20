@@ -194,8 +194,11 @@ class ItemDragHandler:
             # No draggable item found
             return
 
-        # Check for group membership and expand selection
-        if self._layer_state and hasattr(self._drag.primary_item, "item_uuid"):
+        # Check for group membership and expand selection.
+        # Only auto-expand to full group when NOT Shift-clicking.
+        # Shift-click allows selecting individual items within a group.
+        is_shift = bool(modifiers & QtCore.Qt.KeyboardModifier.ShiftModifier)
+        if self._layer_state and hasattr(self._drag.primary_item, "item_uuid") and not is_shift:
             group_uuid = self._layer_state.get_group_for_item(self._drag.primary_item.item_uuid)
             if group_uuid:
                 uuids = set(self._layer_state.get_group_items_recursive(group_uuid))
