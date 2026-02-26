@@ -20,6 +20,7 @@ from ..data.optical_properties import (
     DichroicProperties,
     FaradayRotatorProperties,
     LensProperties,
+    LinearPolarizerProperties,
     MirrorProperties,
     RefractiveProperties,
     WaveplateProperties,
@@ -33,6 +34,7 @@ from ..raytracing.elements import (
     FaradayRotator,
     IOpticalElement,
     Lens,
+    LinearPolarizer,
     Mirror,
     RefractiveInterfaceElement,
     Waveplate,
@@ -88,6 +90,10 @@ def create_polymorphic_element(optical_iface: OpticalInterface) -> IOpticalEleme
     elif element_type == "faraday_rotator":
         assert isinstance(properties, FaradayRotatorProperties)
         return FaradayRotator(optical_iface)
+
+    elif element_type == "linear_polarizer":
+        assert isinstance(properties, LinearPolarizerProperties)
+        return LinearPolarizer(optical_iface)
 
     elif element_type == "dichroic":
         assert isinstance(properties, DichroicProperties)

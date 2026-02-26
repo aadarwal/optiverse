@@ -102,6 +102,21 @@ class FaradayRotatorProperties:
 
 
 @dataclass
+class LinearPolarizerProperties:
+    """
+    Properties for a linear polarizer (transmits one polarization, blocks orthogonal).
+
+    Implements Malus's Law: I_out = I_in * cos²(θ), where θ is the angle
+    between the input polarization and the transmission axis.
+
+    The extinction axis is perpendicular to the transmission axis.
+    """
+
+    transmission_axis_deg: float  # Transmission axis angle in lab frame (degrees)
+    extinction_ratio_db: float = 40.0  # Extinction ratio in dB (40 dB = 10,000:1)
+
+
+@dataclass
 class BeamBlockProperties:
     """
     Properties for a beam block (absorber).
@@ -121,6 +136,7 @@ OpticalProperties = Union[
     BeamsplitterProperties,
     WaveplateProperties,
     FaradayRotatorProperties,
+    LinearPolarizerProperties,
     DichroicProperties,
     BeamBlockProperties,
 ]

@@ -15,6 +15,7 @@ from .optical_properties import (
     DichroicProperties,
     FaradayRotatorProperties,
     LensProperties,
+    LinearPolarizerProperties,
     MirrorProperties,
     OpticalProperties,
     RefractiveProperties,
@@ -60,6 +61,8 @@ class OpticalInterface:
             return "waveplate"
         elif isinstance(self.properties, FaradayRotatorProperties):
             return "faraday_rotator"
+        elif isinstance(self.properties, LinearPolarizerProperties):
+            return "linear_polarizer"
         elif isinstance(self.properties, DichroicProperties):
             return "dichroic"
         elif isinstance(self.properties, BeamBlockProperties):
@@ -117,6 +120,8 @@ class OpticalInterface:
             properties = cast(OpticalProperties, WaveplateProperties(**properties_data))
         elif property_type == "faraday_rotator":
             properties = cast(OpticalProperties, FaradayRotatorProperties(**properties_data))
+        elif property_type == "linear_polarizer":
+            properties = cast(OpticalProperties, LinearPolarizerProperties(**properties_data))
         elif property_type == "dichroic":
             properties = cast(OpticalProperties, DichroicProperties(**properties_data))
         else:
@@ -201,6 +206,18 @@ class OpticalInterface:
                     FaradayRotatorProperties(
                         rotation_angle_deg=getattr(
                             old_interface, "rotation_angle_deg", 45.0
+                        ),
+                    ),
+                )
+            elif polarizer_subtype == "linear_polarizer":
+                properties = cast(
+                    OpticalProperties,
+                    LinearPolarizerProperties(
+                        transmission_axis_deg=getattr(
+                            old_interface, "transmission_axis_deg", 0.0
+                        ),
+                        extinction_ratio_db=getattr(
+                            old_interface, "extinction_ratio_db", 40.0
                         ),
                     ),
                 )

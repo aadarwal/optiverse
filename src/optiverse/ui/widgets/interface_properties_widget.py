@@ -216,7 +216,13 @@ class InterfacePropertiesWidget(QtWidgets.QWidget):
         self, idx: int, interface: InterfaceDefinition, form: QtWidgets.QFormLayout
     ) -> None:
         """Add type-specific properties."""
-        props = interface_types.get_type_properties(interface.element_type)
+        # For polarizing interfaces, only show properties relevant to the subtype
+        if interface.element_type == "polarizing_interface":
+            props = interface_types.get_polarizing_interface_properties(
+                getattr(interface, "polarizer_subtype", "waveplate")
+            )
+        else:
+            props = interface_types.get_type_properties(interface.element_type)
 
         if not props:
             if not self._show_coordinates:
@@ -357,6 +363,9 @@ class InterfacePropertiesWidget(QtWidgets.QWidget):
             return
         if 0 <= idx < len(self._interfaces):
             setattr(self._interfaces[idx], prop_name, value)
+            # Changing polarizer subtype means different properties are relevant
+            if prop_name == "polarizer_subtype":
+                self._rebuild_form(idx)
             self.propertiesChanged.emit()
 
     def _on_coordinate_changed(self, idx: int, coord_name: str, value_str: str) -> None:

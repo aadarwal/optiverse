@@ -318,6 +318,76 @@ def transform_polarization_faraday_rotator(
     return Polarization(jones_out)
 
 
+def transform_polarization_linear_polarizer(
+    pol: Polarization,
+    transmission_axis_deg: float,
+    extinction_ratio_db: float = 40.0,
+) -> tuple[Polarization, float]:
+    """
+    Transform polarization through a linear polarizer.
+
+    Physics:
+    --------
+    A linear polarizer transmits the component of light polarized along
+    its transmission axis and blocks the orthogonal component.
+
+    Malus's Law: I_out = I_in * cos²(θ)
+    where θ is the angle between the input polarization and the transmission axis.
+
+    A real polarizer has a finite extinction ratio — the orthogonal component
+    is not perfectly blocked but attenuated by the extinction ratio.
+
+    Jones Matrix (ideal):
+        J = [[cos²α, cosα sinα],
+             [cosα sinα, sin²α]]
+    where α is the transmission axis angle.
+
+    With finite extinction ratio ε (power ratio):
+        - Transmitted component: full amplitude along transmission axis
+        - Leaked component: amplitude scaled by 1/√ε along extinction axis
+
+    Args:
+        pol: Input polarization state (Jones vector).
+        transmission_axis_deg: Transmission axis angle in lab frame (degrees).
+        extinction_ratio_db: Extinction ratio in dB (e.g. 40 dB = 10,000:1).
+
+    Returns:
+        Tuple of (output_polarization, intensity_factor).
+        intensity_factor is the fraction of input intensity that passes through.
+    """
+    from .models import Polarization
+
+    # Define transmission and extinction axes in lab frame
+    axis_rad = deg2rad(transmission_axis_deg)
+    t_axis = np.array([np.cos(axis_rad), np.sin(axis_rad)])  # Transmission axis
+    e_axis = np.array([-np.sin(axis_rad), np.cos(axis_rad)])  # Extinction axis
+
+    # Decompose input Jones vector onto transmission and extinction axes
+    jones = pol.jones_vector
+    t_component = np.dot(jones, t_axis)  # Component along transmission axis
+    e_component = np.dot(jones, e_axis)  # Component along extinction axis
+
+    # Apply extinction ratio to the blocked component
+    # extinction_ratio_db is in dB of power: ε = 10^(dB/10)
+    # Amplitude leakage factor: 1/√ε
+    extinction_ratio = 10.0 ** (extinction_ratio_db / 10.0)
+    leakage = 1.0 / np.sqrt(extinction_ratio)
+
+    # Output Jones vector: full transmission + leaked extinction
+    jones_out = t_component * t_axis + (e_component * leakage) * e_axis
+
+    # Total output intensity
+    intensity = float(np.abs(t_component) ** 2 + np.abs(e_component * leakage) ** 2)
+
+    # Normalise output Jones vector (intensity returned separately)
+    if intensity > 1e-12:
+        jones_out = jones_out / np.sqrt(intensity)
+    else:
+        jones_out = np.zeros(2, dtype=complex)
+
+    return Polarization(jones_out), intensity
+
+
 def transform_polarization_beamsplitter(
     pol: Polarization,
     v_in: np.ndarray,
