@@ -149,23 +149,47 @@ class SceneEventHandler(QtCore.QObject):
                 if self._ruler_handler.handle_mouse_move(mev.scenePos()):
                     return True
 
-        # --- Track item positions and rotations on mouse press ---
+        # --- Item drag: unified handling for ALL left-button item drags ---
+        # We take FULL CONTROL of press/move/release for non-Ctrl item drags.
+        # This prevents Qt's built-in ItemIsMovable drag from competing with
+        # our custom handler, eliminates rubber band during drag (via ev.accept()),
+        # and gives consistent undo behavior for single and group moves.
+        #
+        # Ctrl+click rotation passes through to BaseObj — we just track for undo.
         if et == QtCore.QEvent.Type.GraphicsSceneMousePress:
             mev = cast(QtWidgets.QGraphicsSceneMouseEvent, ev)
-            # Pass scene position and modifiers directly to drag handler
-            # (mev.pos() is item-local coords, mev.scenePos() is scene coords)
-            self._drag_handler.handle_mouse_press_at_scene_pos(
-                mev.scenePos(), mev.modifiers()
-            )
+            if mev.button() == QtCore.Qt.MouseButton.LeftButton:
+                if mev.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
+                    # Rotation: track initial state for undo, but let BaseObj
+                    # handle the interactive rotation (do NOT consume).
+                    self._drag_handler.start_rotation_tracking(
+                        mev.scenePos(), mev.modifiers()
+                    )
+                else:
+                    # Normal drag: take full control if item found
+                    if self._drag_handler.handle_drag_start(
+                        mev.scenePos(), mev.modifiers()
+                    ):
+                        ev.accept()  # Prevents rubber band from QGraphicsView
+                        return True
 
-        # --- Update group positions during drag ---
         if et == QtCore.QEvent.Type.GraphicsSceneMouseMove:
-            if self._drag_handler.is_dragging_group():
-                self._drag_handler.update_group_positions()
+            if self._drag_handler.is_dragging():
+                mev = cast(QtWidgets.QGraphicsSceneMouseEvent, ev)
+                self._drag_handler.handle_drag_move(mev.scenePos())
+                ev.accept()
+                return True
 
-        # --- Snap to grid and create move/rotate commands on mouse release ---
         if et == QtCore.QEvent.Type.GraphicsSceneMouseRelease:
-            self._drag_handler.handle_mouse_release()
+            mev = cast(QtWidgets.QGraphicsSceneMouseEvent, ev)
+            if mev.button() == QtCore.Qt.MouseButton.LeftButton:
+                if self._drag_handler.is_dragging():
+                    self._drag_handler.handle_drag_end()
+                    ev.accept()
+                    return True
+                if self._drag_handler.is_rotation_tracked():
+                    self._drag_handler.handle_rotation_end()
+                    # Do NOT consume — let BaseObj.mouseReleaseEvent clean up
 
         return None  # Defer to parent
 

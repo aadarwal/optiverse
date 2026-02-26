@@ -285,7 +285,6 @@ class MainWindow(QtWidgets.QMainWindow):
             undo_stack=self.undo_stack,
             snap_to_grid_getter=self._get_snap_to_grid,
             schedule_retrace=self._schedule_retrace,
-            layer_state=self.layer_state,
         )
 
         # Component operations handler - copy, paste, delete, drop
