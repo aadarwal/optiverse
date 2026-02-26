@@ -265,6 +265,59 @@ def transform_polarization_waveplate(
     return Polarization(jones_out)
 
 
+def transform_polarization_faraday_rotator(
+    pol: Polarization, rotation_angle_deg: float, is_forward: bool = True
+) -> Polarization:
+    """
+    Transform polarization through a Faraday rotator.
+
+    Physics:
+    --------
+    A Faraday rotator uses the magneto-optic Faraday effect to rotate the
+    plane of polarization by a fixed angle.  The rotation direction is
+    determined by the magnetic field and is the **same in the lab frame**
+    regardless of the propagation direction of the light.
+
+    This makes the Faraday rotator **non-reciprocal**: unlike waveplates
+    (where J_backward = J^T = J), the Faraday rotator always rotates in
+    the same absolute direction. After a double pass (forward + mirror +
+    backward), the rotation **accumulates**:
+
+        R(theta) * R(theta) = R(2*theta)
+
+    A 45-degree Faraday rotator combined with a mirror gives 90-degree
+    total rotation, which is the operating principle of optical isolators.
+
+    Jones Matrix:
+    -------------
+    J = R(theta) = [[cos theta, -sin theta],
+                     [sin theta,  cos theta]]
+
+    The same matrix is applied for both forward and backward propagation.
+    (The is_forward parameter is accepted for API consistency but ignored.)
+
+    Args:
+        pol: Input polarization state (Jones vector).
+        rotation_angle_deg: Rotation angle in degrees (typically 45.0).
+        is_forward: Accepted for API consistency; has no effect.
+                    Non-reciprocal: same rotation for both directions.
+
+    Returns:
+        Transformed polarization state.
+    """
+    from .models import Polarization
+
+    theta = deg2rad(rotation_angle_deg)
+    c = np.cos(theta)
+    s = np.sin(theta)
+
+    # Rotation matrix — identical for forward and backward (non-reciprocal)
+    R = np.array([[c, -s], [s, c]], dtype=complex)
+
+    jones_out = R @ pol.jones_vector
+    return Polarization(jones_out)
+
+
 def transform_polarization_beamsplitter(
     pol: Polarization,
     v_in: np.ndarray,

@@ -226,6 +226,8 @@ class SceneFileManager:
             try:
                 item = deserialize_item(item_data)
                 self.scene.addItem(item)
+                if self._connect_item_signals:
+                    self._connect_item_signals(item)
             except (KeyError, ValueError, TypeError) as e:
                 # KeyError: missing required fields, ValueError/TypeError: invalid data
                 self.log_service.error(f"Error loading item: {e}", "Load")
@@ -238,10 +240,16 @@ class SceneFileManager:
             self.scene.addItem(ruler)
 
         for text_data in data.get("texts", []):
-            self.scene.addItem(TextNoteItem.from_dict(text_data))
+            note = TextNoteItem.from_dict(text_data)
+            self.scene.addItem(note)
+            if self._connect_item_signals:
+                self._connect_item_signals(note)
 
         for rect_data in data.get("rectangles", []):
-            self.scene.addItem(RectangleItem.from_dict(rect_data))
+            rect = RectangleItem.from_dict(rect_data)
+            self.scene.addItem(rect)
+            if self._connect_item_signals:
+                self._connect_item_signals(rect)
 
         # Load path measures
         ray_data = self._get_ray_data()

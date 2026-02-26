@@ -13,6 +13,7 @@ from .optical_properties import (
     BeamBlockProperties,
     BeamsplitterProperties,
     DichroicProperties,
+    FaradayRotatorProperties,
     LensProperties,
     MirrorProperties,
     OpticalProperties,
@@ -57,6 +58,8 @@ class OpticalInterface:
             return "beamsplitter"
         elif isinstance(self.properties, WaveplateProperties):
             return "waveplate"
+        elif isinstance(self.properties, FaradayRotatorProperties):
+            return "faraday_rotator"
         elif isinstance(self.properties, DichroicProperties):
             return "dichroic"
         elif isinstance(self.properties, BeamBlockProperties):
@@ -112,6 +115,8 @@ class OpticalInterface:
             properties = cast(OpticalProperties, BeamsplitterProperties(**properties_data))
         elif property_type == "waveplate":
             properties = cast(OpticalProperties, WaveplateProperties(**properties_data))
+        elif property_type == "faraday_rotator":
+            properties = cast(OpticalProperties, FaradayRotatorProperties(**properties_data))
         elif property_type == "dichroic":
             properties = cast(OpticalProperties, DichroicProperties(**properties_data))
         else:
@@ -190,8 +195,16 @@ class OpticalInterface:
                         fast_axis_deg=old_interface.fast_axis_deg,
                     ),
                 )
+            elif polarizer_subtype == "faraday_rotator":
+                properties = cast(
+                    OpticalProperties,
+                    FaradayRotatorProperties(
+                        rotation_angle_deg=getattr(
+                            old_interface, "rotation_angle_deg", 45.0
+                        ),
+                    ),
+                )
             else:
-                # Future: handle other polarizer subtypes
                 raise ValueError(f"Unsupported polarizer subtype: {polarizer_subtype}")
         elif element_type == "waveplate":
             # Legacy support: old "waveplate" element_type

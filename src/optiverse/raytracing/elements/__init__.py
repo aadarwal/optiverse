@@ -10,6 +10,7 @@ from .base import IOpticalElement
 from .beam_block import BeamBlockElement
 from .beamsplitter import BeamsplitterElement
 from .dichroic import DichroicElement
+from .faraday_rotator import FaradayRotatorElement
 from .lens import LensElement
 from .mirror import MirrorElement
 from .refractive import RefractiveElement
@@ -87,6 +88,19 @@ class Waveplate(WaveplateElement):
         )
 
 
+class FaradayRotator(FaradayRotatorElement):
+    """Faraday rotator that accepts OpticalInterface with curved geometry support."""
+
+    def __init__(self, optical_iface):
+        self._geometry = optical_iface.geometry
+        self.interface = optical_iface
+        super().__init__(
+            p1=optical_iface.geometry.p1,
+            p2=optical_iface.geometry.p2,
+            rotation_angle_deg=optical_iface.properties.rotation_angle_deg,
+        )
+
+
 class Dichroic(DichroicElement):
     """Dichroic that accepts OpticalInterface with curved geometry support."""
 
@@ -122,6 +136,7 @@ __all__ = [
     "RefractiveElement",
     "BeamsplitterElement",
     "WaveplateElement",
+    "FaradayRotatorElement",
     "DichroicElement",
     "BeamBlockElement",
     # Wrapper classes with curved geometry support
@@ -130,6 +145,7 @@ __all__ = [
     "RefractiveInterfaceElement",
     "Beamsplitter",
     "Waveplate",
+    "FaradayRotator",
     "Dichroic",
     "BeamBlock",
 ]

@@ -86,6 +86,22 @@ class DichroicProperties:
 
 
 @dataclass
+class FaradayRotatorProperties:
+    """
+    Properties for a Faraday rotator (non-reciprocal polarization rotation).
+
+    Rotates the plane of polarization by a fixed angle in the same absolute
+    direction regardless of propagation direction. This non-reciprocal behaviour
+    (due to the magneto-optic Faraday effect) means a double pass accumulates
+    rotation: forward theta + backward theta = 2*theta.
+
+    A 45-degree Faraday rotator is the basis of optical isolators.
+    """
+
+    rotation_angle_deg: float  # Rotation angle in degrees (typically 45.0)
+
+
+@dataclass
 class BeamBlockProperties:
     """
     Properties for a beam block (absorber).
@@ -104,6 +120,7 @@ OpticalProperties = Union[
     MirrorProperties,
     BeamsplitterProperties,
     WaveplateProperties,
+    FaradayRotatorProperties,
     DichroicProperties,
     BeamBlockProperties,
 ]
