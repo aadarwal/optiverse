@@ -172,8 +172,12 @@ class ItemDragHandler:
             else:
                 # Add to selection (keep existing selected items)
                 draggable_item.setSelected(True)
+        elif draggable_item.isSelected():
+            # Already selected (e.g. part of multi-selection from layers panel)
+            # — keep current selection, just drag them all
+            pass
         else:
-            # Normal click: clear selection, select this item
+            # Clicking an unselected item: clear selection, select only this one
             self.scene.clearSelection()
             draggable_item.setSelected(True)
 
