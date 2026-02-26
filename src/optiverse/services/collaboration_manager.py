@@ -411,8 +411,9 @@ class CollaborationManager(QObject):
             self.main_window.scene.addItem(item)
             # Add to UUID map
             self.item_uuid_map[item.item_uuid] = item
-            # Connect signals
-            item.edited.connect(self.main_window._maybe_retrace)
+            # Connect signals (only BaseObj subclasses have 'edited')
+            if hasattr(item, "edited"):
+                item.edited.connect(self.main_window._maybe_retrace)
             # Retrace if needed
             if self.main_window.autotrace:
                 self.main_window.retrace()
