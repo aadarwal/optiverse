@@ -244,12 +244,20 @@ class RayOpenGLWidget(QOpenGLWidget):
             r_norm = r / 255.0
             g_norm = g / 255.0
             b_norm = b / 255.0
-            a_norm = a / 255.0
+            has_per_seg = len(ray_path.intensities) >= len(ray_path.points)
 
             # Create line segments
             for i in range(len(ray_path.points) - 1):
                 p1 = ray_path.points[i]
                 p2 = ray_path.points[i + 1]
+
+                # Per-vertex alpha from intensity at each point
+                if has_per_seg:
+                    a1_norm = max(0.0, min(1.0, ray_path.intensities[i]))
+                    a2_norm = max(0.0, min(1.0, ray_path.intensities[i + 1]))
+                else:
+                    a1_norm = a / 255.0
+                    a2_norm = a1_norm
 
                 # Vertex 1 (position + color)
                 vertex_data.extend(
@@ -259,7 +267,7 @@ class RayOpenGLWidget(QOpenGLWidget):
                         r_norm,
                         g_norm,
                         b_norm,
-                        a_norm,  # color
+                        a1_norm,  # color with per-vertex alpha
                     ]
                 )
 
@@ -271,7 +279,7 @@ class RayOpenGLWidget(QOpenGLWidget):
                         r_norm,
                         g_norm,
                         b_norm,
-                        a_norm,  # color
+                        a2_norm,  # color with per-vertex alpha
                     ]
                 )
 

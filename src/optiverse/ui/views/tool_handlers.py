@@ -145,8 +145,11 @@ class InspectToolHandler:
         point = ray_data.points[point_idx]
         x_mm, y_mm = point[0], point[1]
 
-        # Get intensity (from alpha channel)
-        intensity = ray_data.rgba[3] / MAX_ALPHA
+        # Get intensity at the clicked point (per-point if available, else from alpha)
+        if ray_data.intensities and point_idx < len(ray_data.intensities):
+            intensity = ray_data.intensities[point_idx]
+        else:
+            intensity = ray_data.rgba[3] / MAX_ALPHA
 
         # Get polarization state for the clicked segment (not just final state)
         pol = ray_data.polarization  # fallback: final polarization
