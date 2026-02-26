@@ -349,7 +349,7 @@ class CollaborationDialog(QtWidgets.QDialog):
             self.info_label.setText(
                 f"✅ Server started! Others can connect to:\n"
                 f"ws://{local_ip}:{port}\n\n"
-                f"Session ID: {self.session_id_edit.text()}"
+                f"Session ID: {self.host_session_id_edit.text()}"
             )
 
             # Auto-connect if enabled

@@ -14,10 +14,18 @@ import sys
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Store connections and session state
-connections = {}
-session_state = {}  # session_id -> {state: dict, version: int, host: str}
+# Store connections PER SESSION:  session_id -> {user_id: websocket}
+sessions: dict[str, dict[str, object]] = {}
+# Session metadata:  session_id -> {state: dict, version: int, host: str}
+session_state: dict[str, dict] = {}
 server = None
+
+
+def _get_session_connections(session_id: str) -> dict[str, object]:
+    """Get or create the connections dict for a session."""
+    if session_id not in sessions:
+        sessions[session_id] = {}
+    return sessions[session_id]
 
 
 async def handler(websocket):
@@ -34,9 +42,12 @@ async def handler(websocket):
     session_id = parts[1]
     user_id = parts[2]
 
-    # Store connection
-    connections[user_id] = websocket
-    logger.info(f"User {user_id} joined session {session_id}")
+    # Get per-session connections
+    conns = _get_session_connections(session_id)
+
+    # Store connection in the session
+    conns[user_id] = websocket
+    logger.info(f"User {user_id} joined session {session_id} ({len(conns)} user(s) now)")
 
     # Determine if this is the first user (becomes host)
     is_first_user = (session_id not in session_state) or (
@@ -52,7 +63,7 @@ async def handler(websocket):
         logger.info(f"User {user_id} is the host of session {session_id}")
 
     try:
-        # Send connection ack
+        # Send connection ack with users IN THIS SESSION only
         await websocket.send(
             json.dumps(
                 {
@@ -60,12 +71,12 @@ async def handler(websocket):
                     "session_id": session_id,
                     "user_id": user_id,
                     "is_host": is_first_user,
-                    "users": [{"user_id": u} for u in connections.keys()],
+                    "users": [{"user_id": u} for u in conns.keys()],
                     "timestamp": "2025-10-28T12:00:00",
                 }
             )
         )
-        logger.info(f"Sent ack to {user_id} (host={is_first_user})")
+        logger.info(f"Sent ack to {user_id} (host={is_first_user}, users={list(conns.keys())})")
 
         # Send current session state to new joiner if not the first user
         if not is_first_user and session_id in session_state:
@@ -77,8 +88,8 @@ async def handler(websocket):
                 f"Sent session state to {user_id} ({len(stored_state.get('items', []))} items)"
             )
 
-        # Notify other users
-        for other_id, other_ws in connections.items():
+        # Notify other users IN THIS SESSION
+        for other_id, other_ws in conns.items():
             if other_id != user_id:
                 try:
                     await other_ws.send(json.dumps({"type": "user:joined", "user_id": user_id}))
@@ -107,8 +118,8 @@ async def handler(websocket):
                         f"(version {state.get('version', 0)})"
                     )
 
-                # Broadcast to other users
-                for other_id, other_ws in connections.items():
+                # Broadcast to other users IN THIS SESSION
+                for other_id, other_ws in conns.items():
                     if other_id != user_id:
                         try:
                             await other_ws.send(message)
@@ -133,16 +144,16 @@ async def handler(websocket):
                     logger.info(f"📤 Sent stored state to {user_id}")
 
             elif msg_type == "command":
-                # Broadcast command to other users in the session
+                # Broadcast command to other users IN THIS SESSION
                 command = data.get("command", {})
                 action = command.get("action", "")
                 item_type = command.get("item_type", "")
                 logger.info(
                     f"📤 Broadcasting {action} ({item_type}) from {user_id} "
-                    f"to {len(connections) - 1} other(s)"
+                    f"to {len(conns) - 1} other(s) in session {session_id}"
                 )
 
-                for other_id, other_ws in connections.items():
+                for other_id, other_ws in conns.items():
                     if other_id != user_id:
                         try:
                             await other_ws.send(message)
@@ -154,12 +165,19 @@ async def handler(websocket):
     except Exception as e:
         logger.error(f"Error for {user_id}: {e}")
     finally:
-        if user_id in connections:
-            del connections[user_id]
-        logger.info(f"User {user_id} disconnected")
+        # Remove from session connections
+        if user_id in conns:
+            del conns[user_id]
+        logger.info(f"User {user_id} disconnected from session {session_id} ({len(conns)} remaining)")
 
-        # Notify other users
-        for _other_id, other_ws in connections.items():
+        # Clean up empty sessions
+        if not conns:
+            sessions.pop(session_id, None)
+            session_state.pop(session_id, None)
+            logger.info(f"Session {session_id} closed (no users remaining)")
+
+        # Notify other users IN THIS SESSION
+        for _other_id, other_ws in conns.items():
             try:
                 await other_ws.send(json.dumps({"type": "user:left", "user_id": user_id}))
             except Exception:
