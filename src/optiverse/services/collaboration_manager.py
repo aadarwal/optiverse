@@ -342,11 +342,24 @@ class CollaborationManager(QObject):
         user_count = len(users)
         self.status_changed.emit(f"Connected ({user_count} users)")
 
-        # Request initial state sync
-        self.collaboration_service.request_sync()
-
-        # Rebuild UUID map from current scene
-        self.rebuild_uuid_map()
+        if self.role == "host":
+            # Host is the source of truth — upload current canvas to server
+            self.rebuild_uuid_map()
+            state = self.get_session_state()
+            self.log.info(
+                f"Uploading host state to server ({len(state.get('items', []))} items)",
+                LogCategory.COLLABORATION,
+            )
+            self.collaboration_service.send_message(
+                {
+                    "type": "sync:full_state",
+                    "state": state,
+                }
+            )
+        else:
+            # Client needs to receive state from host/server
+            self.collaboration_service.request_sync()
+            self.rebuild_uuid_map()
 
     def _on_command_received(self, message: dict[str, Any]) -> None:
         """
@@ -559,6 +572,14 @@ class CollaborationManager(QObject):
             return
 
         self.log.info("Received full state sync", LogCategory.COLLABORATION)
+
+        # Host is the source of truth — ignore incoming state syncs
+        # (these are echoes of our own upload or stale server state)
+        if self.role == "host":
+            self.log.info(
+                "Ignoring state sync (we are the host)", LogCategory.COLLABORATION
+            )
+            return
 
         # Check for version conflict
         conflict_resolution = message.get("conflict_resolution", "host_wins")
