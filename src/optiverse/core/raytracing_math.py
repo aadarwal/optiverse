@@ -110,46 +110,39 @@ def transform_polarization_mirror(
     pol: Polarization, v_in: np.ndarray, n_hat: np.ndarray
 ) -> Polarization:
     """
-    Transform polarization upon reflection from a mirror.
+    Transform polarization upon reflection from an ideal mirror.
 
-    For ideal metallic mirrors, s-polarization (perpendicular to plane of incidence)
-    maintains phase, while p-polarization (parallel to plane) gets phase shift of π.
+    For an ideal metallic mirror (perfect conductor), the Fresnel reflection
+    coefficients are equal for s- and p-polarization at all incidence angles:
+
+        r_s = r_p = -1   (Born & Wolf convention)
+
+    This means J_mirror = -I (identity up to global phase).  The mirror
+    preserves the polarization state — no relative phase shift is introduced
+    between any two orthogonal components.
+
+    Physical justification:
+    - At normal incidence the s-p basis is degenerate (plane of incidence
+      undefined), so r_s must equal r_p.
+    - For a perfect conductor at oblique incidence, both reflection
+      coefficients have magnitude 1 with identical phase (Born & Wolf).
+    - Applying different signs (the old r_s=+1, r_p=-1 Hecht convention)
+      introduces a spurious π relative phase that breaks double-pass
+      waveplate setups (e.g. QWP + retro-mirror should act as HWP).
 
     Args:
         pol: Input polarization state
-        v_in: Incident ray direction (normalized)
-        n_hat: Surface normal (normalized)
+        v_in: Incident ray direction (unused for ideal mirror, kept for API compat)
+        n_hat: Surface normal (unused for ideal mirror, kept for API compat)
 
     Returns:
-        Transformed polarization state
+        Transformed polarization state (global phase flip, physically equivalent)
     """
     from .models import Polarization
 
-    # Compute plane of incidence
-    v_norm = normalize(v_in)
-
-    # s-polarization direction (perpendicular to plane of incidence)
-    # This is the cross product of v_in and n_hat
-    s_hat = np.cross(np.append(v_norm, 0), np.append(n_hat, 0))[:2]
-    s_hat = normalize(s_hat) if np.linalg.norm(s_hat) > 1e-12 else np.array([0.0, 1.0])
-
-    # p-polarization direction (in plane of incidence, perpendicular to v_in)
-    p_hat = np.array([-s_hat[1], s_hat[0]])
-
-    # Decompose input polarization into s and p components
-    jones = pol.jones_vector
-    s_component = np.dot(jones, s_hat)
-    p_component = np.dot(jones, p_hat)
-
-    # Apply reflection: s maintains phase, p gets π phase shift
-    # Jones matrix for ideal mirror reflection: [[1, 0], [0, -1]] in s-p basis
-    s_out = s_component
-    p_out = -p_component  # π phase shift = multiplication by -1
-
-    # Reconstruct in original coordinate system
-    jones_out = s_out * s_hat + p_out * p_hat
-
-    return Polarization(jones_out)
+    # Ideal metallic mirror: r_s = r_p = -1
+    # J = -I → global phase only, no polarization change
+    return Polarization(-pol.jones_vector)
 
 
 def transform_polarization_lens(pol: Polarization) -> Polarization:
@@ -189,15 +182,20 @@ def transform_polarization_waveplate(
 
     Directionality:
     --------------
-    The direction of light propagation through the waveplate matters!
-    - Forward direction (with element normal): phase shift = +δ
-    - Backward direction (against element normal): phase shift = -δ
+    For reciprocal, non-absorbing waveplates the backward Jones matrix is the
+    transpose of the forward one:  J_backward = J_forward^T.
 
-    This is critical for quarter waveplates:
-    - QWP forward (+90°): H → Right Circular
-    - QWP backward (-90°): H → Left Circular
+    Because the waveplate Jones matrix J = R(-θ) · D · R(θ) is symmetric
+    (R(θ)^T = R(-θ) and D^T = D for diagonal D), the transpose equals the
+    original: J^T = J.  Therefore the forward and backward matrices are
+    **identical** — the phase shift is NOT negated on the return pass.
 
-    For half waveplates, direction doesn't matter since exp(i·180°) = exp(-i·180°) = -1
+    Physical consequence for a QWP + retro-mirror:
+      Forward QWP: H → right circular
+      Mirror:      right circular → left circular  (handedness flip)
+      Backward QWP (same matrix): left circular → V
+    A double pass through a QWP acts as a HWP (QWP² = HWP), rotating the
+    linear polarization by 90°.
 
     Jones Matrix Formalism:
     ----------------------
@@ -209,38 +207,34 @@ def transform_polarization_waveplate(
     - R(θ) is the rotation matrix
     - exp(iδ) represents the phase shift on the slow axis
     - Fast axis component has no phase shift (factor of 1)
-    - δ is negated if light travels backward through the waveplate
 
     Args:
         pol: Input polarization state (Jones vector)
         phase_shift_deg: Phase shift in degrees (90° for QWP, 180° for HWP)
         fast_axis_deg: ABSOLUTE angle of fast axis in lab frame (degrees)
                        0° = horizontal, 90° = vertical
-        is_forward: True if light travels in forward direction (with normal),
-                   False if backward (against normal). Default: True
+        is_forward: Kept for API compatibility; has no effect (J^T = J for waveplates).
 
     Returns:
         Transformed polarization state
 
     Example:
-        # Convert horizontal to right circular with QWP at 45° (forward)
+        # Convert horizontal to right circular with QWP at 45°
         pol_in = Polarization.horizontal()  # [1, 0]
         pol_out = transform_polarization_waveplate(
             pol_in,
             phase_shift_deg=90.0,  # Quarter wave
             fast_axis_deg=45.0,    # 45° fast axis
-            is_forward=True        # Forward direction
         )
         # Result: right circular [1/√2, i/√2]
 
-        # Same waveplate, backward direction gives left circular
-        pol_out_back = transform_polarization_waveplate(
-            pol_in,
+        # Double pass through QWP at 45° (forward + backward) acts as HWP:
+        pol_out2 = transform_polarization_waveplate(
+            pol_out,
             phase_shift_deg=90.0,
             fast_axis_deg=45.0,
-            is_forward=False       # Backward direction
         )
-        # Result: left circular [1/√2, -i/√2]
+        # Result: vertical [0, 1] (equivalent to HWP at 45° on horizontal input)
     """
     from .models import Polarization
 
@@ -248,9 +242,8 @@ def transform_polarization_waveplate(
     theta = deg2rad(fast_axis_deg)
     delta = deg2rad(phase_shift_deg)
 
-    # Apply directionality: backward direction reverses phase shift
-    if not is_forward:
-        delta = -delta
+    # NOTE: No direction-dependent sign flip. The waveplate Jones matrix is
+    # symmetric (J = J^T), so forward and backward passes are identical.
 
     # Rotation matrix to fast/slow axis basis
     c = np.cos(theta)

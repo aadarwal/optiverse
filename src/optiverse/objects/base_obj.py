@@ -40,6 +40,7 @@ class BaseObj(QtWidgets.QGraphicsObject):
 
     edited = QtCore.pyqtSignal()
     commandCreated = QtCore.pyqtSignal(object)  # Emits Command objects for undo/redo
+    requestDelete = QtCore.pyqtSignal(object)  # Emits self for undoable deletion
 
     # Metadata registry for serialization (extensible by subclasses)
     # Maps metadata key to getter function
@@ -416,9 +417,8 @@ class BaseObj(QtWidgets.QGraphicsObject):
         elif a == act_lock and act_lock is not None:
             self.set_locked(act_lock.isChecked())
         elif a == act_delete and act_delete is not None:
-            scene = self.scene()
-            if scene is not None and not self._locked:
-                scene.removeItem(self)
+            if not self._locked:
+                self.requestDelete.emit(self)
         elif a in (act_bring_to_front, act_bring_forward, act_send_backward, act_send_to_back):
             # Handle z-order changes
             self._handle_z_order_action(

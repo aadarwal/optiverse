@@ -107,6 +107,7 @@ class InspectToolHandler:
         best_ray = None
         best_distance = float("inf")
         best_point_idx: int | None = None
+        best_segment_idx: int | None = None
 
         for _i, ray_data in enumerate(ray_data_list):
             # Check each line segment in the ray path
@@ -118,6 +119,7 @@ class InspectToolHandler:
                 if dist < best_distance and dist < tolerance:
                     best_distance = dist
                     best_ray = ray_data
+                    best_segment_idx = j
                     # Use the closest endpoint of the segment
                     dist_to_start = np.linalg.norm(click_pt - points[j])
                     dist_to_end = np.linalg.norm(click_pt - points[j + 1])
@@ -125,7 +127,7 @@ class InspectToolHandler:
 
         if best_ray is not None and best_point_idx is not None:
             # Display the ray information
-            self._show_ray_info_dialog(best_ray, best_point_idx)
+            self._show_ray_info_dialog(best_ray, best_point_idx, best_segment_idx)
             return True
         else:
             QtWidgets.QMessageBox.information(
@@ -135,7 +137,9 @@ class InspectToolHandler:
             )
             return False
 
-    def _show_ray_info_dialog(self, ray_data: RayPath, point_idx: int) -> None:
+    def _show_ray_info_dialog(
+        self, ray_data: RayPath, point_idx: int, segment_idx: int | None = None
+    ) -> None:
         """Display a dialog with ray polarization and intensity information."""
         # Get position
         point = ray_data.points[point_idx]
@@ -144,8 +148,15 @@ class InspectToolHandler:
         # Get intensity (from alpha channel)
         intensity = ray_data.rgba[3] / MAX_ALPHA
 
-        # Get polarization state
-        pol = ray_data.polarization
+        # Get polarization state for the clicked segment (not just final state)
+        pol = ray_data.polarization  # fallback: final polarization
+        if (
+            segment_idx is not None
+            and hasattr(ray_data, "polarizations")
+            and ray_data.polarizations
+            and segment_idx < len(ray_data.polarizations)
+        ):
+            pol = ray_data.polarizations[segment_idx]
 
         # Format polarization info
         if pol is not None:

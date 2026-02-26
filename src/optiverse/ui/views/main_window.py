@@ -434,7 +434,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.placement_handler.component_templates = self._component_templates
 
     def _connect_item_signals(self, item):
-        """Connect standard signals for a new item (edited, commandCreated)."""
+        """Connect standard signals for a new item (edited, commandCreated, requestDelete)."""
         from ...objects import BaseObj
 
         # Connect edited signal for retrace and collaboration
@@ -446,6 +446,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # BaseObj and RulerItem both have commandCreated signal
         if isinstance(item, BaseObj):
             item.commandCreated.connect(self.undo_stack.push)
+            # Connect requestDelete for undoable context-menu deletion with retrace
+            item.requestDelete.connect(self._handle_item_delete)
         elif isinstance(item, RulerItem):
             item.commandCreated.connect(self.undo_stack.push)
 
@@ -455,6 +457,18 @@ class MainWindow(QtWidgets.QMainWindow):
     def on_drop_component(self, rec: dict, scene_pos: QtCore.QPointF):
         """Handle component drop from library (delegated to component_ops)."""
         self.component_ops.on_drop_component(rec, scene_pos)
+        self._refresh_layer_panel()
+
+    def _handle_item_delete(self, item):
+        """Handle requestDelete signal from an item's context menu (undoable + retrace)."""
+        from ...core.undo_commands import RemoveItemCommand
+
+        scene = item.scene() if item else None
+        if scene is None:
+            return
+        cmd = RemoveItemCommand(scene, item, self.component_ops._layer_state)
+        self.undo_stack.push(cmd)
+        self._schedule_retrace()
         self._refresh_layer_panel()
 
     def delete_selected(self):
