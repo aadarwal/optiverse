@@ -40,6 +40,7 @@ class BaseObj(QtWidgets.QGraphicsObject):
 
     edited = QtCore.pyqtSignal()
     commandCreated = QtCore.pyqtSignal(object)  # Emits Command objects for undo/redo
+    requestDelete = QtCore.pyqtSignal(object)  # Emits self for undoable deletion
 
     # Metadata registry for serialization (extensible by subclasses)
     # Maps metadata key to getter function
@@ -162,6 +163,8 @@ class BaseObj(QtWidgets.QGraphicsObject):
     def set_locked(self, locked: bool):
         """Set lock state (prevents movement, rotation, deletion, and selection)."""
         self._locked = locked
+        # Sync to LayerNode so layer panel refresh doesn't overwrite the lock
+        self._sync_lock_to_layer_node(locked)
         # Update cursor to indicate locked state
         if locked:
             self.setCursor(QtCore.Qt.CursorShape.ForbiddenCursor)
@@ -173,6 +176,19 @@ class BaseObj(QtWidgets.QGraphicsObject):
             self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         # Update visual appearance
         self.update()
+
+    def _sync_lock_to_layer_node(self, locked: bool):
+        """Update the LayerNode's locked flag to match the item."""
+        scene = self.scene()
+        if not scene or not scene.views():
+            return
+        window = scene.views()[0].window()
+        layer_state = getattr(window, "layer_state", None)
+        if layer_state is None:
+            return
+        node = layer_state.get_node(self.item_uuid)
+        if node:
+            node.locked = locked
 
     def setRotation(self, angle: float):
         """Override setRotation to block when locked."""
@@ -401,9 +417,8 @@ class BaseObj(QtWidgets.QGraphicsObject):
         elif a == act_lock and act_lock is not None:
             self.set_locked(act_lock.isChecked())
         elif a == act_delete and act_delete is not None:
-            scene = self.scene()
-            if scene is not None and not self._locked:
-                scene.removeItem(self)
+            if not self._locked:
+                self.requestDelete.emit(self)
         elif a in (act_bring_to_front, act_bring_forward, act_send_backward, act_send_to_back):
             # Handle z-order changes
             self._handle_z_order_action(

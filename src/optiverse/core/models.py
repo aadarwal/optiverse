@@ -565,3 +565,4 @@ class RayPath:
     rgba: tuple[int, int, int, int]  # color with alpha
     polarization: Polarization | None = None  # Polarization state of this ray
     wavelength_nm: float = 0.0  # Wavelength in nanometers (0 = not specified)
+    polarizations: list | None = None  # Per-point polarization states

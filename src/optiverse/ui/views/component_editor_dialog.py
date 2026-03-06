@@ -13,6 +13,7 @@ from ...objects.views import InterfaceLine, MultiLineCanvas
 from ...services.storage_service import StorageService
 from ..widgets.interface_tree_panel import InterfaceTreePanel
 from ..widgets.ruler_widget import CanvasWithRulers
+from ..widgets.smart_spinbox import SmartDoubleSpinBox
 from .component_image_handler import ComponentImageHandler
 from .component_library_io import ComponentLibraryIO
 from .zemax_importer import ZemaxImporter
@@ -274,7 +275,7 @@ class ComponentEditor(QtWidgets.QMainWindow):
         info_form.addRow("Category", self.category_combo)
 
         # OBJECT HEIGHT (mm) -> physical size reference for calibration
-        self.object_height_mm = QtWidgets.QDoubleSpinBox()
+        self.object_height_mm = SmartDoubleSpinBox()
         self.object_height_mm.setRange(0.01, 1e7)
         self.object_height_mm.setDecimals(3)
         self.object_height_mm.setSuffix(" mm")

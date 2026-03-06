@@ -194,6 +194,8 @@ def _generate_rays_from_source(source: SourceParams) -> list[Ray]:
             intensity=1.0,
             events=0,
             path_points=[position.copy()],  # Initialize with starting position
+            path_polarizations=[initial_polarization],  # Polarization at source
+            path_intensities=[1.0],  # Intensity at source
         )
         rays.append(ray)
 
@@ -256,6 +258,8 @@ def _trace_single_ray(
                         polarization=current_ray.polarization,
                         wavelength_nm=current_ray.wavelength_nm,
                         source_index=source_index,
+                        polarizations=current_ray.path_polarizations,
+                        intensities=current_ray.path_intensities,
                     )
                 )
             continue
@@ -335,6 +339,8 @@ def _trace_single_ray(
                 current_ray.position + current_ray.direction * current_ray.remaining_length
             )
             current_ray.path_points.append(final_point)
+            current_ray.path_polarizations.append(current_ray.polarization)
+            current_ray.path_intensities.append(current_ray.intensity)
 
             alpha = int(255 * max(0.0, min(1.0, current_ray.intensity)))
             paths.append(
@@ -344,6 +350,8 @@ def _trace_single_ray(
                     polarization=current_ray.polarization,
                     wavelength_nm=current_ray.wavelength_nm,
                     source_index=source_index,
+                    polarizations=current_ray.path_polarizations,
+                    intensities=current_ray.path_intensities,
                 )
             )
             continue
@@ -352,6 +360,9 @@ def _trace_single_ray(
         if nearest_intersection is None:
             continue
         current_ray.path_points.append(nearest_intersection.point)
+        # Record pre-interaction polarization and intensity at hit point
+        current_ray.path_polarizations.append(current_ray.polarization)
+        current_ray.path_intensities.append(current_ray.intensity)
 
         # Interact with element - POLYMORPHIC DISPATCH!
         # This is the magic: no type checking, no if-elif chains
@@ -375,6 +386,8 @@ def _trace_single_ray(
                     polarization=current_ray.polarization,
                     wavelength_nm=current_ray.wavelength_nm,
                     source_index=source_index,
+                    polarizations=current_ray.path_polarizations,
+                    intensities=current_ray.path_intensities,
                 )
             )
             continue
@@ -393,6 +406,15 @@ def _trace_single_ray(
             if not hasattr(out_ray, "path_points") or len(out_ray.path_points) == 0:
                 # Copy path points from current ray (which includes the interaction point)
                 out_ray.path_points = current_ray.path_points.copy()
+            if len(out_ray.path_polarizations) == 0:
+                out_ray.path_polarizations = current_ray.path_polarizations.copy()
+            if len(out_ray.path_intensities) == 0:
+                out_ray.path_intensities = current_ray.path_intensities.copy()
+            # Update last entries to post-interaction state
+            if len(out_ray.path_polarizations) > 0:
+                out_ray.path_polarizations[-1] = out_ray.polarization
+            if len(out_ray.path_intensities) > 0:
+                out_ray.path_intensities[-1] = out_ray.intensity
 
         # Add output rays to stack for processing
         stack.extend(output_rays)

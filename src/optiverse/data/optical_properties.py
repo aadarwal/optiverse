@@ -86,6 +86,37 @@ class DichroicProperties:
 
 
 @dataclass
+class FaradayRotatorProperties:
+    """
+    Properties for a Faraday rotator (non-reciprocal polarization rotation).
+
+    Rotates the plane of polarization by a fixed angle in the same absolute
+    direction regardless of propagation direction. This non-reciprocal behaviour
+    (due to the magneto-optic Faraday effect) means a double pass accumulates
+    rotation: forward theta + backward theta = 2*theta.
+
+    A 45-degree Faraday rotator is the basis of optical isolators.
+    """
+
+    rotation_angle_deg: float  # Rotation angle in degrees (typically 45.0)
+
+
+@dataclass
+class LinearPolarizerProperties:
+    """
+    Properties for a linear polarizer (transmits one polarization, blocks orthogonal).
+
+    Implements Malus's Law: I_out = I_in * cos²(θ), where θ is the angle
+    between the input polarization and the transmission axis.
+
+    The extinction axis is perpendicular to the transmission axis.
+    """
+
+    transmission_axis_deg: float  # Transmission axis angle in lab frame (degrees)
+    extinction_ratio_db: float = 40.0  # Extinction ratio in dB (40 dB = 10,000:1)
+
+
+@dataclass
 class BeamBlockProperties:
     """
     Properties for a beam block (absorber).
@@ -104,6 +135,8 @@ OpticalProperties = Union[
     MirrorProperties,
     BeamsplitterProperties,
     WaveplateProperties,
+    FaradayRotatorProperties,
+    LinearPolarizerProperties,
     DichroicProperties,
     BeamBlockProperties,
 ]

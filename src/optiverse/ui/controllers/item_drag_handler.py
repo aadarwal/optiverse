@@ -5,11 +5,12 @@ Extracts position/rotation tracking and undo command creation from MainWindow.
 Supports group movement where all items in a group move together.
 
 Architecture:
-- Works WITH Qt's native selection/drag system, not against it
-- Disables ItemIsMovable on secondary items during multi-selection drag
-- Primary item moves normally with magnetic snap
-- Secondary items are positioned explicitly via update_group_positions()
-- No class-level global state - all state is instance-scoped
+- The scene event filter takes FULL CONTROL of all non-Ctrl left-button item drags.
+  Press, move, and release events are consumed — Qt never sets up its own drag.
+- Ctrl+click rotation is tracked for undo but NOT consumed; BaseObj handles it.
+- Secondary items have ItemIsMovable disabled during drag (no magnetic snap on them).
+- Primary item keeps ItemIsMovable so setPos() triggers magnetic snap via itemChange.
+- No class-level global state — all state is instance-scoped in DragContext.
 """
 
 from __future__ import annotations
@@ -20,7 +21,6 @@ from typing import TYPE_CHECKING, Callable
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 if TYPE_CHECKING:
-    from ...core.layer_tree_state import LayerTreeState
     from ...core.undo_stack import UndoStack
 
 
@@ -33,7 +33,7 @@ class DragContext:
     making it easy to initialize and clean up.
     """
 
-    # The item being directly dragged by the mouse
+    # The item being directly dragged by the mouse (None = no drag active)
     primary_item: QtWidgets.QGraphicsItem | None = None
 
     # Initial positions of all dragged items (for undo)
@@ -41,7 +41,7 @@ class DragContext:
         default_factory=dict
     )
 
-    # Initial rotations (for rotation mode)
+    # Initial rotations (for rotation tracking — Ctrl+click path only)
     initial_rotations: dict[QtWidgets.QGraphicsItem, float] = field(
         default_factory=dict
     )
@@ -59,14 +59,16 @@ class DragContext:
         default_factory=set
     )
 
-    # Whether this is a group drag (LayerTreeState group)
-    is_group_drag: bool = False
-
-    # Whether this is a multi-selection drag
-    is_multi_selection: bool = False
-
     # Whether this is a group rotation (multiple items rotating together)
     is_group_rotation: bool = False
+
+    # Offset from mouse scene pos to primary item pos at press time.
+    # Used to compute primary's expected position during drag.
+    press_offset: QtCore.QPointF = field(default_factory=lambda: QtCore.QPointF())
+
+    # True when only tracking rotation (Ctrl+click), not dragging.
+    # primary_item is NOT set in this mode — is_dragging() returns False.
+    rotation_only: bool = False
 
     def clear(self) -> None:
         """Reset all drag state."""
@@ -76,23 +78,24 @@ class DragContext:
         self.secondary_items.clear()
         self.secondary_offsets.clear()
         self.items_with_movable_disabled.clear()
-        self.is_group_drag = False
-        self.is_multi_selection = False
         self.is_group_rotation = False
+        self.press_offset = QtCore.QPointF()
+        self.rotation_only = False
 
 
 class ItemDragHandler:
     """
     Handles item dragging, position tracking, and rotation for undo/redo support.
 
-    This class tracks item positions on mouse press and creates appropriate
-    undo commands on mouse release.
+    The event filter takes FULL CONTROL of all non-Ctrl item drags:
+      - handle_drag_start()  → on press: finds item, sets up state, returns True to consume
+      - handle_drag_move()   → on move: positions primary + secondaries
+      - handle_drag_end()    → on release: snaps to grid, creates undo commands
 
-    Key design principles:
-    - No class-level/global state
-    - Works with Qt's selection model, not against it
-    - Secondary items have ItemIsMovable disabled during drag
-    - Clear separation between drag tracking and item behavior
+    Rotation (Ctrl+click) is NOT consumed — BaseObj handles the interactive rotation.
+    We just track initial state and create undo commands on release:
+      - start_rotation_tracking() → on Ctrl+press
+      - handle_rotation_end()     → on release
     """
 
     def __init__(
@@ -102,188 +105,146 @@ class ItemDragHandler:
         undo_stack: UndoStack,
         snap_to_grid_getter: Callable[[], bool],
         schedule_retrace: Callable[[], None],
-        layer_state: LayerTreeState | None = None,
     ):
-        """
-        Initialize the drag handler.
-
-        Args:
-            scene: Graphics scene containing items
-            view: Graphics view for snap guide clearing
-            undo_stack: Undo stack for command creation
-            snap_to_grid_getter: Callable returning whether snap to grid is enabled
-            schedule_retrace: Callable to schedule ray retracing
-            layer_state: Optional layer state for group movement
-        """
         self.scene = scene
         self.view = view
         self.undo_stack = undo_stack
         self._get_snap_to_grid = snap_to_grid_getter
         self._schedule_retrace = schedule_retrace
-        self._layer_state = layer_state
 
         # All drag state encapsulated in DragContext
         self._drag = DragContext()
 
-    def set_layer_state(self, layer_state: LayerTreeState) -> None:
-        """Set the layer state for group movement support."""
-        self._layer_state = layer_state
+    # ------------------------------------------------------------------
+    # Public API: drag (non-Ctrl left-button)
+    # ------------------------------------------------------------------
 
-    def handle_mouse_press(self, event: QtGui.QMouseEvent):
-        """
-        Track item positions and rotations on mouse press.
-
-        Legacy method - prefer handle_mouse_press_at_scene_pos for correct coordinates.
-        """
-        # Map view coordinates to scene coordinates
-        if hasattr(self.view, "mapToScene"):
-            scene_pos = self.view.mapToScene(event.pos())
-        else:
-            scene_pos = QtCore.QPointF(event.pos())
-        self.handle_mouse_press_at_scene_pos(scene_pos, event.modifiers())
-
-    def handle_mouse_press_at_scene_pos(
+    def handle_drag_start(
         self, scene_pos: QtCore.QPointF, modifiers: QtCore.Qt.KeyboardModifier
-    ):
+    ) -> bool:
         """
-        Track item positions and rotations on mouse press.
+        Set up drag state on left-button press (non-Ctrl).
 
-        Also handles group movement - when one grouped item is pressed,
-        all group members are tracked for coordinated movement.
-
-        Args:
-            scene_pos: Mouse position in scene coordinates
-            modifiers: Keyboard modifiers active during press
+        Returns True if an item was found and drag was started — caller must
+        call ev.accept() and return True to consume the event. Returns False
+        if no item was found or the event should pass through to Qt.
         """
         from ...objects import BaseObj, RectangleItem
         from ...objects.annotations import RulerItem, TextNoteItem
 
-        # Clear previous drag state
+        # Clean up any leftover state from a previous drag
         self._restore_secondary_movable_flags()
         self._drag.clear()
 
-        # Check if this is a rotation operation (Ctrl modifier)
-        is_rotation_mode = bool(modifiers & QtCore.Qt.KeyboardModifier.ControlModifier)
+        # ---- Find item under mouse ----
+        clicked_item = self.scene.itemAt(scene_pos, QtGui.QTransform())
 
-        # Get currently selected items
+        # Walk up parent hierarchy to find the actual draggable item
+        draggable_item: QtWidgets.QGraphicsItem | None = None
+        while clicked_item is not None:
+            if isinstance(clicked_item, (BaseObj, RulerItem, TextNoteItem, RectangleItem)):
+                draggable_item = clicked_item
+                break
+            clicked_item = clicked_item.parentItem()
+
+        if draggable_item is None:
+            # No item under mouse — let Qt handle (rubber band selection)
+            return False
+
+        # ---- RulerItem endpoint check ----
+        # If clicking near a ruler endpoint, let RulerItem handle its own grab mode
+        if isinstance(draggable_item, RulerItem):
+            local_pos = draggable_item.mapFromScene(scene_pos)
+            if draggable_item._nearest_point(local_pos) is not None:
+                return False
+
+        # ---- Handle selection ----
+        # Since we consume the press event, Qt won't handle selection.
+        # We do it manually to keep the layer panel and visual feedback in sync.
+        is_shift = bool(modifiers & QtCore.Qt.KeyboardModifier.ShiftModifier)
+
+        if is_shift:
+            # Shift+click: toggle this item's selection
+            if draggable_item.isSelected():
+                # Deselecting — don't start a drag
+                draggable_item.setSelected(False)
+                return False
+            else:
+                # Add to selection (keep existing selected items)
+                draggable_item.setSelected(True)
+        elif draggable_item.isSelected():
+            # Already selected (e.g. part of multi-selection from layers panel)
+            # — keep current selection, just drag them all
+            pass
+        else:
+            # Clicking an unselected item: clear selection, select only this one
+            self.scene.clearSelection()
+            draggable_item.setSelected(True)
+
+        self._drag.primary_item = draggable_item
+
+        # ---- Build the set of items to drag ----
+        # Drag all currently selected items. No automatic group expansion —
+        # to move a group, select it in the layers panel first.
         selected_items = [
             it
             for it in self.scene.selectedItems()
             if isinstance(it, (BaseObj, RulerItem, TextNoteItem, RectangleItem))
         ]
 
-        # Find the item under the mouse cursor (the one being directly dragged)
-        clicked_item = self.scene.itemAt(scene_pos, QtGui.QTransform())
+        # ---- Store press offset ----
+        self._drag.press_offset = scene_pos - draggable_item.pos()
 
-        # Walk up parent hierarchy to find the actual draggable item
-        while clicked_item is not None:
-            if isinstance(clicked_item, (BaseObj, RulerItem, TextNoteItem, RectangleItem)):
-                # If clicking on a NEW item without Shift modifier,
-                # don't include previously selected items in the drag.
-                # This matches Qt's standard selection behavior.
-                if clicked_item not in selected_items:
-                    if not (modifiers & QtCore.Qt.KeyboardModifier.ShiftModifier):
-                        # Clear previous selection - only drag the new item
-                        selected_items = []
-                    selected_items.append(clicked_item)
-                self._drag.primary_item = clicked_item
-                break
-            clicked_item = clicked_item.parentItem()
-
-        if not self._drag.primary_item:
-            # No draggable item found
-            return
-
-        # Check for group membership and expand selection
-        if self._layer_state and hasattr(self._drag.primary_item, "item_uuid"):
-            group_uuid = self._layer_state.get_group_for_item(self._drag.primary_item.item_uuid)
-            if group_uuid:
-                uuids = set(self._layer_state.get_group_items_recursive(group_uuid))
-                if len(uuids) > 1:
-                    self._drag.is_group_drag = True
-                    for it in self.scene.items():
-                        if hasattr(it, "item_uuid") and it.item_uuid in uuids:
-                            if isinstance(
-                                it, (BaseObj, RulerItem, TextNoteItem, RectangleItem)
-                            ) and it not in selected_items:
-                                selected_items.append(it)
-
-        # Identify secondary items and calculate offsets
-        primary_pos = self._drag.primary_item.pos()
+        # ---- Identify secondary items and calculate offsets ----
+        primary_pos = draggable_item.pos()
         for item in selected_items:
-            if item != self._drag.primary_item:
+            if item is not draggable_item:
                 self._drag.secondary_items.append(item)
-                offset = item.pos() - primary_pos
-                self._drag.secondary_offsets[item] = offset
+                self._drag.secondary_offsets[item] = item.pos() - primary_pos
 
-        # If we have secondary items, set up multi-selection drag
+        # Disable ItemIsMovable on secondary items so setPos() skips magnetic snap
         if self._drag.secondary_items:
-            self._drag.is_multi_selection = True
-            # Disable ItemIsMovable on secondary items so Qt doesn't try to move them
-            # We'll move them explicitly in update_group_positions()
             self._disable_secondary_movable_flags()
 
-        # Store initial positions for all items (for undo)
+        # ---- Store initial positions for undo ----
         for it in selected_items:
             self._drag.initial_positions[it] = QtCore.QPointF(it.pos())
 
-            # Track rotations if in rotation mode
-            if is_rotation_mode and isinstance(it, (BaseObj, RectangleItem)):
-                self._drag.initial_rotations[it] = it.rotation()
+        return True
 
-        # Mark as group rotation if rotating multiple items
-        if is_rotation_mode and len(selected_items) > 1:
-            self._drag.is_group_rotation = True
-
-    def _disable_secondary_movable_flags(self) -> None:
-        """Disable ItemIsMovable on secondary items to prevent Qt from moving them."""
-        for item in self._drag.secondary_items:
-            if item.flags() & QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable:
-                item.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
-                self._drag.items_with_movable_disabled.add(item)
-
-    def _restore_secondary_movable_flags(self) -> None:
-        """Restore ItemIsMovable on items that had it disabled."""
-        for item in self._drag.items_with_movable_disabled:
-            item.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
-        self._drag.items_with_movable_disabled.clear()
-
-    def update_group_positions(self) -> None:
+    def handle_drag_move(self, scene_pos: QtCore.QPointF) -> None:
         """
-        Update positions of all secondary items during drag.
+        Move primary + secondary items during drag.
 
-        Uses offset-based positioning: each secondary item is placed at
-        primary.pos() + stored_offset. This correctly handles magnetic snap
-        by preserving relative positions regardless of where the primary snaps.
+        Computes the primary item's intended position from the mouse event
+        and moves ALL items in a single step. setPos() on the primary triggers
+        BaseObj.itemChange → magnetic snap. Secondary items are positioned at
+        primary_pos + stored offset (no snap for them).
 
-        Called from SceneEventHandler on every mouse move during drag.
+        For single-item drags, secondary_offsets is empty — only the primary moves.
         """
         if not self._drag.primary_item:
             return
 
-        if not self._drag.is_multi_selection and not self._drag.is_group_drag:
-            return
+        # Compute where the primary item should be from the mouse position
+        intended_pos = scene_pos - self._drag.press_offset
+        self._drag.primary_item.setPos(intended_pos)
 
-        # Get primary's current position (includes any snap adjustment)
+        # Read back the actual position (may differ due to magnetic snap)
         primary_pos = self._drag.primary_item.pos()
 
         # Position each secondary item at primary + offset
         for item, offset in self._drag.secondary_offsets.items():
             item.setPos(primary_pos + offset)
 
-    def is_dragging_group(self) -> bool:
-        """Check if currently dragging a group or multi-selection."""
-        return self._drag.is_group_drag or self._drag.is_multi_selection
-
-    def handle_mouse_release(self) -> bool:
+    def handle_drag_end(self) -> bool:
         """
-        Handle mouse release - snap to grid, restore flags, and create undo commands.
+        Finalize drag — snap to grid, create undo commands, clear state.
 
-        Returns:
-            True if any commands were created
+        Returns True if any undo commands were created.
         """
-        from ...core.undo_commands import MoveItemCommand, RotateItemCommand, RotateItemsCommand
-        from ...objects import BaseObj, RectangleItem
+        from ...core.undo_commands import BatchCommand, MoveItemCommand
+        from ...objects import BaseObj
 
         # Clear snap guides
         if hasattr(self.view, "clear_snap_guides"):
@@ -294,36 +255,110 @@ class ItemDragHandler:
 
         commands_created = False
 
-        # Apply snap to grid and create move commands
+        # Apply snap to grid and collect move commands
+        move_commands: list[MoveItemCommand] = []
         for it, old_pos in self._drag.initial_positions.items():
             if isinstance(it, BaseObj) and self._get_snap_to_grid():
                 p = it.pos()
                 it.setPos(round(p.x()), round(p.y()))
 
-            # Create move command if item was moved (and not rotated)
-            if it not in self._drag.initial_rotations:
-                new_pos = it.pos()
-                if old_pos != new_pos:
-                    move_cmd = MoveItemCommand(it, old_pos, new_pos)
-                    self.undo_stack.push(move_cmd)
-                    commands_created = True
+            new_pos = it.pos()
+            if old_pos != new_pos:
+                move_commands.append(MoveItemCommand(it, old_pos, new_pos))
 
-        # Handle rotation commands
+        # Push move commands — batch multiple into a single undo step
+        if move_commands:
+            if len(move_commands) == 1:
+                self.undo_stack.push(move_commands[0])
+            else:
+                self.undo_stack.push(BatchCommand(move_commands))
+            commands_created = True
+
+        # Clear drag state
+        self._drag.clear()
+
+        # Schedule retrace
+        self._schedule_retrace()
+
+        return commands_created
+
+    def is_dragging(self) -> bool:
+        """True if any drag (single or group) is active."""
+        return self._drag.primary_item is not None and not self._drag.rotation_only
+
+    # ------------------------------------------------------------------
+    # Public API: rotation tracking (Ctrl+click — NOT consumed)
+    # ------------------------------------------------------------------
+
+    def start_rotation_tracking(
+        self, scene_pos: QtCore.QPointF, modifiers: QtCore.Qt.KeyboardModifier
+    ) -> None:
+        """
+        Record initial positions/rotations for undo on Ctrl+click.
+
+        The interactive rotation is handled by BaseObj.mousePressEvent / mouseMoveEvent.
+        We just snapshot state here so we can create undo commands on release.
+        """
+        from ...objects import BaseObj, RectangleItem
+        from ...objects.annotations import RulerItem, TextNoteItem
+
+        # Clean up any leftover state
+        self._restore_secondary_movable_flags()
+        self._drag.clear()
+        self._drag.rotation_only = True
+
+        # Get currently selected items (these are the ones being rotated)
+        selected_items = [
+            it
+            for it in self.scene.selectedItems()
+            if isinstance(it, (BaseObj, RulerItem, TextNoteItem, RectangleItem))
+        ]
+
+        if not selected_items:
+            return
+
+        # Store initial positions and rotations for all rotatable items
+        for it in selected_items:
+            self._drag.initial_positions[it] = QtCore.QPointF(it.pos())
+            if isinstance(it, (BaseObj, RectangleItem)):
+                self._drag.initial_rotations[it] = it.rotation()
+
+        # Mark as group rotation if multiple items
+        if len(selected_items) > 1:
+            self._drag.is_group_rotation = True
+
+    def is_rotation_tracked(self) -> bool:
+        """True if rotation tracking is active (Ctrl+click path)."""
+        return self._drag.rotation_only and bool(self._drag.initial_rotations)
+
+    def handle_rotation_end(self) -> bool:
+        """
+        Create rotation undo commands on release after Ctrl+drag.
+
+        Returns True if any rotation commands were created.
+        """
+        from ...core.undo_commands import RotateItemCommand, RotateItemsCommand
+        from ...objects import BaseObj, RectangleItem
+
+        commands_created = False
+
         if self._drag.initial_rotations and not self._drag.is_group_rotation:
             # Single item rotation(s)
             for it, old_rotation in self._drag.initial_rotations.items():
                 new_rotation = it.rotation()
                 if abs(new_rotation - old_rotation) > 0.01:
-                    rot_cmd: RotateItemCommand = RotateItemCommand(it, old_rotation, new_rotation)
+                    rot_cmd = RotateItemCommand(it, old_rotation, new_rotation)
                     self.undo_stack.push(rot_cmd)
                     commands_created = True
 
         elif self._drag.is_group_rotation:
-            # Group rotation - use initial_positions and initial_rotations directly
+            # Group rotation
             items = list(self._drag.initial_positions.keys())
             new_positions = {it: it.pos() for it in items}
             new_rotations = {
-                it: it.rotation() for it in items if isinstance(it, (BaseObj, RectangleItem))
+                it: it.rotation()
+                for it in items
+                if isinstance(it, (BaseObj, RectangleItem))
             }
 
             # Check if anything actually changed
@@ -331,13 +366,16 @@ class ItemDragHandler:
                 self._drag.initial_positions[it] != new_positions[it] for it in items
             )
             rotation_changed = any(
-                abs(self._drag.initial_rotations.get(it, 0) - new_rotations.get(it, 0)) > 0.01
+                abs(self._drag.initial_rotations.get(it, 0) - new_rotations.get(it, 0))
+                > 0.01
                 for it in items
                 if isinstance(it, (BaseObj, RectangleItem))
             )
 
             if position_changed or rotation_changed:
-                rotatable_items = [it for it in items if isinstance(it, (BaseObj, RectangleItem))]
+                rotatable_items = [
+                    it for it in items if isinstance(it, (BaseObj, RectangleItem))
+                ]
                 if rotatable_items:
                     from PyQt6.QtWidgets import QGraphicsItem
 
@@ -362,7 +400,7 @@ class ItemDragHandler:
                         for it in rotatable_items
                         if it in new_rotations
                     }
-                    rot_items_cmd: RotateItemsCommand = RotateItemsCommand(
+                    rot_items_cmd = RotateItemsCommand(
                         rotatable_items_typed,
                         old_positions_typed,
                         new_positions_typed,
@@ -372,10 +410,29 @@ class ItemDragHandler:
                     self.undo_stack.push(rot_items_cmd)
                     commands_created = True
 
-        # Clear drag state
+        # Clear state
         self._drag.clear()
 
         # Schedule retrace
         self._schedule_retrace()
 
         return commands_created
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _disable_secondary_movable_flags(self) -> None:
+        """Disable ItemIsMovable on secondary items to prevent Qt from moving them."""
+        for item in self._drag.secondary_items:
+            if item.flags() & QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable:
+                item.setFlag(
+                    QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False
+                )
+                self._drag.items_with_movable_disabled.add(item)
+
+    def _restore_secondary_movable_flags(self) -> None:
+        """Restore ItemIsMovable on items that had it disabled."""
+        for item in self._drag.items_with_movable_disabled:
+            item.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
+        self._drag.items_with_movable_disabled.clear()

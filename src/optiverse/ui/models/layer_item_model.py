@@ -64,6 +64,7 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         try:
             self._index_data.clear()
             self._rebuild_caches()
+            self._prune_orphan_items()
             self._order = self._layer_state.get_all_items_in_order() if self._layer_state else []
             self._apply_all_effective_states()
         finally:
@@ -320,6 +321,15 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         for item in self._scene.items():
             if hasattr(item, "item_uuid") and hasattr(item, "type_name"):
                 self._uuid_to_item[item.item_uuid] = item
+
+    def _prune_orphan_items(self) -> None:
+        """Remove item nodes from LayerTreeState that have no matching scene item."""
+        if not self._layer_state:
+            return
+        all_item_uuids = self._layer_state.get_all_items_in_order()
+        orphans = [uid for uid in all_item_uuids if uid not in self._uuid_to_item]
+        for uid in orphans:
+            self._layer_state.remove_item(uid, emit=False)
 
     def _get_item_name(self, uuid: str) -> str:
         item = self._uuid_to_item.get(uuid)

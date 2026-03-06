@@ -153,40 +153,35 @@ class RayRenderer:
             if len(p.points) < 2:
                 continue
 
-            # Build QPainterPath from points
-            path = QtGui.QPainterPath(QtCore.QPointF(p.points[0][0], p.points[0][1]))
-            for q in p.points[1:]:
-                path.lineTo(q[0], q[1])
-
-            item = QtWidgets.QGraphicsPathItem(path)
-            r, g, b, a = p.rgba
-
-            # Boost saturation and brightness for OpenGL viewport (colors appear darker in OpenGL)
-            # Convert to HSV, increase saturation and value significantly, convert back
-            color = QtGui.QColor(r, g, b, a)
-            h, s, v, alpha = color.getHsv()
-
-            # Only boost HSV if OpenGL is used
-            if self.view.has_ray_overlay():
-                # getHsv() can return None for invalid colors, so ensure we have valid values
-                if h is not None and s is not None and v is not None and alpha is not None:
-                    s_boosted = min(HSV_MAX, int(s * SATURATION_BOOST_FACTOR))
-                    v_boosted = min(HSV_MAX, int(v * VALUE_BOOST_FACTOR))
-                    color.setHsv(h, s_boosted, v_boosted, alpha)
-
-            pen = QtGui.QPen(color)
-            # OpenGL viewport makes lines appear thinner, so increase width
-            # Use a scale factor to compensate (RAY_WIDTH_OPENGL_SCALE)
-            pen.setWidthF(self._ray_width_px * RAY_WIDTH_OPENGL_SCALE)
-            pen.setCosmetic(True)
-            item.setPen(pen)
-
-            # Set z-value based on source (rays render just above their source)
+            r, g, b, _a = p.rgba
             z_value = self._get_source_z_value(p.source_index)
-            item.setZValue(z_value)
+            has_per_seg = len(p.intensities) >= len(p.points)
+            pen_width = self._ray_width_px * RAY_WIDTH_OPENGL_SCALE
 
-            self.scene.addItem(item)
-            self.ray_items.append(item)
+            # Draw each segment with its own alpha based on intensity
+            for i in range(len(p.points) - 1):
+                seg_path = QtGui.QPainterPath(
+                    QtCore.QPointF(p.points[i][0], p.points[i][1])
+                )
+                seg_path.lineTo(p.points[i + 1][0], p.points[i + 1][1])
+
+                item = QtWidgets.QGraphicsPathItem(seg_path)
+
+                # Use per-point intensity for alpha (intensity at segment start)
+                if has_per_seg:
+                    seg_alpha = int(255 * max(0.0, min(1.0, p.intensities[i])))
+                else:
+                    seg_alpha = _a
+
+                color = QtGui.QColor(r, g, b, seg_alpha)
+                pen = QtGui.QPen(color)
+                pen.setWidthF(pen_width)
+                pen.setCosmetic(True)
+                item.setPen(pen)
+                item.setZValue(z_value)
+
+                self.scene.addItem(item)
+                self.ray_items.append(item)
 
     def _update_path_measures(self, paths: list[RayPath]) -> None:
         """

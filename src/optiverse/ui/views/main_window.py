@@ -285,7 +285,6 @@ class MainWindow(QtWidgets.QMainWindow):
             undo_stack=self.undo_stack,
             snap_to_grid_getter=self._get_snap_to_grid,
             schedule_retrace=self._schedule_retrace,
-            layer_state=self.layer_state,
         )
 
         # Component operations handler - copy, paste, delete, drop
@@ -316,11 +315,27 @@ class MainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle(self._format_window_title(subtitle))
 
     def _build_library_dock(self):
-        """Build component library dock with categorized tree view."""
+        """Build component library dock with categorized tree view and search bar."""
         self.libDock = QtWidgets.QDockWidget("Component Library", self)
         self.libDock.setObjectName("libDock")
+
+        # Container with search bar + tree
+        container = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        search_bar = QtWidgets.QLineEdit()
+        search_bar.setPlaceholderText("Search components...")
+        search_bar.setClearButtonEnabled(True)
+        layout.addWidget(search_bar)
+
         self.libraryTree = LibraryTree(self)
-        self.libDock.setWidget(self.libraryTree)
+        layout.addWidget(self.libraryTree)
+
+        search_bar.textChanged.connect(self.libraryTree.filter_items)
+
+        self.libDock.setWidget(container)
         self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.libDock)
 
         # Initialize library manager
@@ -418,7 +433,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.placement_handler.component_templates = self._component_templates
 
     def _connect_item_signals(self, item):
-        """Connect standard signals for a new item (edited, commandCreated)."""
+        """Connect standard signals for a new item (edited, commandCreated, requestDelete)."""
         from ...objects import BaseObj
 
         # Connect edited signal for retrace and collaboration
@@ -430,6 +445,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # BaseObj and RulerItem both have commandCreated signal
         if isinstance(item, BaseObj):
             item.commandCreated.connect(self.undo_stack.push)
+            # Connect requestDelete for undoable context-menu deletion with retrace
+            item.requestDelete.connect(self._handle_item_delete)
         elif isinstance(item, RulerItem):
             item.commandCreated.connect(self.undo_stack.push)
 
@@ -439,6 +456,18 @@ class MainWindow(QtWidgets.QMainWindow):
     def on_drop_component(self, rec: dict, scene_pos: QtCore.QPointF):
         """Handle component drop from library (delegated to component_ops)."""
         self.component_ops.on_drop_component(rec, scene_pos)
+        self._refresh_layer_panel()
+
+    def _handle_item_delete(self, item):
+        """Handle requestDelete signal from an item's context menu (undoable + retrace)."""
+        from ...core.undo_commands import RemoveItemCommand
+
+        scene = item.scene() if item else None
+        if scene is None:
+            return
+        cmd = RemoveItemCommand(scene, item, self.component_ops._layer_state)
+        self.undo_stack.push(cmd)
+        self._schedule_retrace()
         self._refresh_layer_panel()
 
     def delete_selected(self):

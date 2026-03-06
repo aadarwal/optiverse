@@ -378,6 +378,9 @@ class LayerPanel(QtWidgets.QWidget):
                     if self._layer_state:
                         self._layer_state.remove_item(uid, emit=True)
                     self._scene.removeItem(item)
+            elif self._layer_state:
+                # Orphan node: exists in layer state but not in scene — clean it up
+                self._layer_state.remove_item(uid, emit=True)
 
         self.refresh()
 

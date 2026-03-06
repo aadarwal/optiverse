@@ -35,6 +35,8 @@ class RayState:
     remaining_length: float = 1000.0  # Maximum remaining propagation length in mm
     base_rgb: tuple[int, int, int] = (220, 20, 60)  # Base color as RGB tuple
     path_points: list[np.ndarray] = field(default_factory=list)  # List of points for visualization
+    path_polarizations: list = field(default_factory=list)  # Polarization at each path point
+    path_intensities: list[float] = field(default_factory=list)  # Intensity at each path point
 
     def advance(self, distance: float) -> RayState:
         """
@@ -116,10 +118,12 @@ class RayPath:
     """
 
     points: list[np.ndarray]  # Sequence of points along path
-    rgba: tuple[int, int, int, int]  # Color with alpha
+    rgba: tuple[int, int, int, int]  # Color with alpha (uses final intensity)
     polarization: Polarization  # Final polarization state
     wavelength_nm: float  # Wavelength in nanometers
     source_index: int = 0  # Index of the source that emitted this ray
+    polarizations: list = field(default_factory=list)  # Per-point polarization states
+    intensities: list[float] = field(default_factory=list)  # Per-point intensities (0.0 to 1.0)
 
 
 # Alias for backward compatibility and simpler imports

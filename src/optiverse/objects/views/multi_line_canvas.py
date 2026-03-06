@@ -423,7 +423,11 @@ class MultiLineCanvas(QtWidgets.QLabel):
         self, screen_pos: QtCore.QPoint, threshold: float = 10.0
     ) -> tuple[int, int]:
         """
-        Find line and point at screen position.
+        Find the closest endpoint across all lines within threshold.
+
+        Checks BOTH endpoints of ALL lines and returns the one nearest to
+        the click, with a tie-break favoring selected lines. This ensures
+        both endpoints are always reachable regardless of overlap.
 
         Returns:
             (line_index, point_number) where point_number is 1 or 2, or (-1, 0) if none
@@ -435,36 +439,29 @@ class MultiLineCanvas(QtWidgets.QLabel):
         if not img_rect.contains(screen_pos):
             return (-1, 0)
 
-        # Check all lines (prioritize selected lines)
-        search_order = list(range(len(self._lines)))
-        if self._selected_lines:
-            # Check selected lines first (in order)
-            selected_sorted = sorted(list(self._selected_lines), reverse=True)
-            for sel_idx in selected_sorted:
-                if sel_idx in search_order:
-                    search_order.remove(sel_idx)
-                    search_order.insert(0, sel_idx)
+        best_dist_sq = threshold * threshold
+        best_line = -1
+        best_point = 0
 
-        for i in search_order:
-            line = self._lines[i]
-
+        for i, line in enumerate(self._lines):
             # Convert to screen coordinates using coordinate system
             x1_screen, y1_screen = self._coord_system.mm_to_screen(line.x1, line.y1)
             x2_screen, y2_screen = self._coord_system.mm_to_screen(line.x2, line.y2)
 
-            # Check point 2 first (so it takes priority if overlapping)
-            dx = screen_pos.x() - x2_screen
-            dy = screen_pos.y() - y2_screen
-            if (dx * dx + dy * dy) <= threshold * threshold:
-                return (i, 2)
+            for pt_num, (px, py) in [(1, (x1_screen, y1_screen)), (2, (x2_screen, y2_screen))]:
+                dx = screen_pos.x() - px
+                dy = screen_pos.y() - py
+                dist_sq = dx * dx + dy * dy
+                if dist_sq <= best_dist_sq:
+                    # Tie-break: prefer selected lines, then prefer closer
+                    is_selected = i in self._selected_lines
+                    was_selected = best_line in self._selected_lines if best_line >= 0 else False
+                    if dist_sq < best_dist_sq or (is_selected and not was_selected):
+                        best_dist_sq = dist_sq
+                        best_line = i
+                        best_point = pt_num
 
-            # Check point 1
-            dx = screen_pos.x() - x1_screen
-            dy = screen_pos.y() - y1_screen
-            if (dx * dx + dy * dy) <= threshold * threshold:
-                return (i, 1)
-
-        return (-1, 0)
+        return (best_line, best_point)
 
     def _get_line_at_position(self, screen_pos: QtCore.QPoint, threshold: float = 5.0) -> int:
         """

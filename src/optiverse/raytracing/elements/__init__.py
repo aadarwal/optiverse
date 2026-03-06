@@ -10,7 +10,9 @@ from .base import IOpticalElement
 from .beam_block import BeamBlockElement
 from .beamsplitter import BeamsplitterElement
 from .dichroic import DichroicElement
+from .faraday_rotator import FaradayRotatorElement
 from .lens import LensElement
+from .linear_polarizer import LinearPolarizerElement
 from .mirror import MirrorElement
 from .refractive import RefractiveElement
 from .waveplate import WaveplateElement
@@ -87,6 +89,33 @@ class Waveplate(WaveplateElement):
         )
 
 
+class FaradayRotator(FaradayRotatorElement):
+    """Faraday rotator that accepts OpticalInterface with curved geometry support."""
+
+    def __init__(self, optical_iface):
+        self._geometry = optical_iface.geometry
+        self.interface = optical_iface
+        super().__init__(
+            p1=optical_iface.geometry.p1,
+            p2=optical_iface.geometry.p2,
+            rotation_angle_deg=optical_iface.properties.rotation_angle_deg,
+        )
+
+
+class LinearPolarizer(LinearPolarizerElement):
+    """Linear polarizer that accepts OpticalInterface."""
+
+    def __init__(self, optical_iface):
+        self._geometry = optical_iface.geometry
+        self.interface = optical_iface
+        super().__init__(
+            p1=optical_iface.geometry.p1,
+            p2=optical_iface.geometry.p2,
+            transmission_axis_deg=optical_iface.properties.transmission_axis_deg,
+            extinction_ratio_db=optical_iface.properties.extinction_ratio_db,
+        )
+
+
 class Dichroic(DichroicElement):
     """Dichroic that accepts OpticalInterface with curved geometry support."""
 
@@ -122,6 +151,8 @@ __all__ = [
     "RefractiveElement",
     "BeamsplitterElement",
     "WaveplateElement",
+    "FaradayRotatorElement",
+    "LinearPolarizerElement",
     "DichroicElement",
     "BeamBlockElement",
     # Wrapper classes with curved geometry support
@@ -130,6 +161,8 @@ __all__ = [
     "RefractiveInterfaceElement",
     "Beamsplitter",
     "Waveplate",
+    "FaradayRotator",
+    "LinearPolarizer",
     "Dichroic",
     "BeamBlock",
 ]

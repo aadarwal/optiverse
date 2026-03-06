@@ -1,7 +1,7 @@
 """
 Lens element implementation.
 
-Implements thin lens approximation using paraxial optics.
+Implements an ideal thin lens using the exact (non-paraxial) deflection formula.
 """
 
 import math
@@ -15,10 +15,13 @@ from .base import IOpticalElement
 
 class LensElement(IOpticalElement):
     """
-    Thin lens element using paraxial approximation.
+    Ideal thin lens element (non-paraxial).
 
-    Uses the thin lens equation to deflect rays based on their height
-    off the optical axis.
+    Uses the exact deflection formula: θ_out = θ_in - arctan(y/f)
+    which produces perfect focusing at all ray heights, not just near
+    the optical axis. The paraxial approximation θ_out = θ_in - y/f
+    is the small-angle linearization that introduces spurious aberration
+    at large impact parameters.
     """
 
     def __init__(self, p1: np.ndarray, p2: np.ndarray, efl_mm: float):
@@ -42,16 +45,15 @@ class LensElement(IOpticalElement):
         self, ray: RayState, hit_point: np.ndarray, normal: np.ndarray, tangent: np.ndarray
     ) -> list[RayState]:
         """
-        Deflect ray using thin lens equation.
+        Deflect ray using ideal (non-paraxial) thin lens equation.
 
         Physics:
-        - Thin lens approximation: θ_out = θ_in - y/f
-        - where y is height off optical axis, f is focal length
+        - Exact formula: θ_out = θ_in - arctan(y/f)
+        - This ensures a collimated beam at any height y converges
+          exactly to the focal point, without spherical-like aberration.
         - Polarization unchanged through ideal lens
         """
-        # CRITICAL FIX: Ensure normal points in ray propagation direction
-        # The thin lens formula only works when angles are measured from
-        # the propagation direction (theta=0), not from backward (theta=180°)
+        # Ensure normal points in ray propagation direction
         if np.dot(ray.direction, normal) < 0:
             normal = -normal
 
@@ -66,9 +68,11 @@ class LensElement(IOpticalElement):
         # Compute incident angle
         theta_in = math.atan2(a_t, a_n)
 
-        # Apply thin lens equation: θ_out = θ_in - y/f
+        # Apply ideal thin lens equation: θ_out = θ_in - arctan(y/f)
+        # The arctan form is the exact angle subtended by height y at
+        # distance f, giving perfect focusing at all ray heights.
         if abs(self.efl_mm) > 1e-12:
-            theta_out = theta_in - (y / self.efl_mm)
+            theta_out = theta_in - math.atan2(y, self.efl_mm)
         else:
             theta_out = theta_in  # Infinite focal length = no deflection
 
