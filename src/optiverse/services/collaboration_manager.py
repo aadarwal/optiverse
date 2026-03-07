@@ -346,18 +346,22 @@ class CollaborationManager(QObject):
             # Host is the source of truth — upload current canvas to server
             self.rebuild_uuid_map()
             state = self.get_session_state()
+            item_count = len(state.get("items", []))
             self.log.info(
-                f"Uploading host state to server ({len(state.get('items', []))} items)",
+                f"Uploading host state to server ({item_count} items)",
                 LogCategory.COLLABORATION,
             )
+            self.status_changed.emit(f"Uploading {item_count} items to server...")
             self.collaboration_service.send_message(
                 {
                     "type": "sync:full_state",
                     "state": state,
                 }
             )
+            self.status_changed.emit(f"Connected ({user_count} users) — {item_count} items shared")
         else:
             # Client needs to receive state from host/server
+            self.status_changed.emit("Requesting state from host...")
             self.collaboration_service.request_sync()
             self.rebuild_uuid_map()
 
@@ -395,8 +399,18 @@ class CollaborationManager(QObject):
         finally:
             self._suppress_broadcast = False
 
+        # Retrace and refresh layer panel after applying remote command
+        if self.main_window.autotrace:
+            self.main_window.retrace()
+        self.main_window._refresh_layer_panel()
+
     def _apply_add_item(self, item_type: str, data: dict[str, Any]) -> None:
-        """Apply remote add item command."""
+        """Apply remote add item command.
+
+        Adds item to scene, layer state, and UUID map. Connects signals.
+        Does NOT retrace or refresh the layer panel — callers handle that
+        so batch operations (sync) can defer to the end.
+        """
         # Create item from remote data
         item = self._create_item_from_remote(item_type, data)
         if item:
@@ -409,83 +423,121 @@ class CollaborationManager(QObject):
 
             # Add to scene
             self.main_window.scene.addItem(item)
+            # Register in layer state so item appears in the layers panel
+            if hasattr(self.main_window, "layer_state") and hasattr(item, "item_uuid"):
+                self.main_window.layer_state.add_item(
+                    item.item_uuid, None, index=0, emit=False
+                )
             # Add to UUID map
             self.item_uuid_map[item.item_uuid] = item
-            # Connect signals (only BaseObj subclasses have 'edited')
-            if hasattr(item, "edited"):
-                item.edited.connect(self.main_window._maybe_retrace)
-            # Retrace if needed
-            if self.main_window.autotrace:
-                self.main_window.retrace()
+            # Connect item signals (edited, commandCreated, requestDelete)
+            # but skip the per-item layer panel refresh — caller will do it
+            self._connect_item_signals_no_refresh(item)
         else:
             self.log.error(f"ADD failed: couldn't create {item_type}", LogCategory.COLLABORATION)
 
         self.remote_item_added.emit(item_type, data)
 
+    def _connect_item_signals_no_refresh(self, item) -> None:
+        """Connect item signals without triggering a layer panel refresh.
+
+        Same as MainWindow._connect_item_signals but skips the
+        _refresh_layer_panel() call to avoid N refreshes during batch sync.
+        """
+        from functools import partial
+
+        from ..core.protocols import Editable
+        from ..objects import BaseObj
+        from ..objects.annotations import RulerItem
+
+        if isinstance(item, Editable):
+            item.edited.connect(self.main_window._maybe_retrace)  # type: ignore[attr-defined]
+            item.edited.connect(  # type: ignore[attr-defined]
+                partial(self.main_window.collaboration_manager.broadcast_update_item, item)
+            )
+
+        if isinstance(item, BaseObj):
+            item.commandCreated.connect(self.main_window.undo_stack.push)
+            item.requestDelete.connect(self.main_window._handle_item_delete)
+        elif isinstance(item, RulerItem):
+            item.commandCreated.connect(self.main_window.undo_stack.push)
+
     def _create_item_from_remote(self, item_type: str, data: dict[str, Any]):
-        """Create an optical component from remote data."""
+        """Create an optical component from remote data.
+
+        Uses deserialize_item() for registered types (component, source) which
+        properly reconstructs params, image paths, and interfaces.
+        Annotation types (ruler, text) are handled separately since they
+        don't use the type registry.
+        """
         try:
-            # Import component classes and params
-            from ..core.models import ComponentParams, SourceParams
             from ..objects.annotations import RulerItem, TextNoteItem
-            from ..objects.generic import ComponentItem
-            from ..objects.sources import SourceItem
+            from ..objects.type_registry import deserialize_item
 
             # Extract UUID from data
             item_uuid = data.get("uuid") or data.get("item_uuid")
 
-            # Prepare data dict for from_dict()
-            # Note: from_dict() will set item_uuid from dict, but then passes
-            # the whole dict to Params(**d), so we need to remove non-param fields
+            # Make a working copy to avoid mutating input
             data_copy = data.copy()
-            # Remove UUID and type fields to avoid passing to params constructor
-            data_copy.pop("uuid", None)
-            data_copy.pop("item_uuid", None)
-            data_copy.pop("item_type", None)
 
-            # Create appropriate params object with default values
-            params: ComponentParams | SourceParams | None = None
-            item: ComponentItem | SourceItem | RulerItem | TextNoteItem | None = None
-            if item_type in [
-                "lens",
-                "mirror",
-                "beamsplitter",
-                "dichroic",
-                "waveplate",
-                "slm",
-                "component",
-            ]:
-                # All optical components now use ComponentItem
-                params = ComponentParams()
-                item = ComponentItem(params, item_uuid)
-            elif item_type == "source":
-                params = SourceParams()
-                item = SourceItem(params, item_uuid)
-            elif item_type == "ruler":
-                # Rulers don't use params system
+            # Handle annotation types separately (not in type registry)
+            if item_type == "ruler":
+                data_copy.pop("uuid", None)
+                data_copy.pop("item_uuid", None)
+                data_copy.pop("item_type", None)
+                data_copy.pop("_type", None)
                 item = RulerItem()
                 if item_uuid:
                     item.item_uuid = item_uuid
-            elif item_type == "text":
-                # Text notes don't use params system
+                item.from_dict(data_copy)
+                return item
+
+            if item_type == "text":
+                data_copy.pop("uuid", None)
+                data_copy.pop("item_uuid", None)
+                data_copy.pop("item_type", None)
+                data_copy.pop("_type", None)
                 item = TextNoteItem()
                 if item_uuid:
                     item.item_uuid = item_uuid
-            else:
-                self.log.error(f"Unknown item type: {item_type}", LogCategory.COLLABORATION)
-                return None
+                item.from_dict(data_copy)
+                return item
 
-            # Load data from dict
-            item.from_dict(data_copy)
+            # For all registered types (component, source, etc.),
+            # use deserialize_item which properly reconstructs params,
+            # image paths, and interfaces.
+            # Ensure _type is present for registry lookup
+            if "_type" not in data_copy:
+                data_copy["_type"] = item_type
+
+            # Set item_uuid for deserialize_item to pick up
+            if item_uuid:
+                data_copy["item_uuid"] = item_uuid
+
+            # Remove collaboration-specific fields not expected by deserialize_item
+            data_copy.pop("uuid", None)  # deserialize_item uses item_uuid
+            data_copy.pop("item_type", None)  # deserialize_item uses _type
+
+            item = deserialize_item(data_copy)
+            if item is None:
+                self.log.error(
+                    f"deserialize_item returned None for type '{item_type}'",
+                    LogCategory.COLLABORATION,
+                )
             return item
 
-        except (KeyError, ValueError, TypeError) as e:
+        except Exception as e:
             self.log.error(f"Error creating remote item: {e}", LogCategory.COLLABORATION)
+            import traceback
+
+            self.log.error(traceback.format_exc(), LogCategory.COLLABORATION)
             return None
 
     def _apply_move_item(self, item_uuid: str, data: dict[str, Any]) -> None:
         """Apply remote move item command."""
         if item_uuid in self.item_uuid_map:
+            from ..core.raytracing_math import user_angle_to_qt
+
             item = self.item_uuid_map[item_uuid]
             pos = (data.get("x_mm", 0), data.get("y_mm", 0))
             rot = data.get("angle_deg", 0)
@@ -498,7 +550,8 @@ class CollaborationManager(QObject):
             if "x_mm" in data and "y_mm" in data:
                 item.setPos(data["x_mm"], data["y_mm"])
             if "angle_deg" in data:
-                item.setRotation(data["angle_deg"])
+                # angle_deg is stored in user convention (CW), convert to Qt (CCW)
+                item.setRotation(user_angle_to_qt(data["angle_deg"]))
         else:
             # Item not found, might need to add it
             self.log.warning(
@@ -515,6 +568,9 @@ class CollaborationManager(QObject):
 
             if self.main_window.scene:
                 self.main_window.scene.removeItem(item)
+            # Remove from layer state
+            if hasattr(self.main_window, "layer_state"):
+                self.main_window.layer_state.remove_item(item_uuid, emit=False)
             del self.item_uuid_map[item_uuid]
         else:
             self.log.warning(
@@ -596,25 +652,39 @@ class CollaborationManager(QObject):
                 f"Resolving with strategy: {conflict_resolution}", LogCategory.COLLABORATION
             )
 
-        # Clear scene before applying state (host wins by default)
+        # Clear scene and layer state before applying state
         if self.main_window.scene:
-            # Remove all items from scene
             for item in list(self.main_window.scene.items()):
                 self.main_window.scene.removeItem(item)
+        if hasattr(self.main_window, "layer_state"):
+            self.main_window.layer_state.clear()
 
         self.item_uuid_map.clear()
 
         # Suppress broadcast while applying state
         self._suppress_broadcast = True
         try:
-            # Apply all items from state
+            # Apply all items from state (no per-item retrace or layer refresh)
             items = state.get("items", [])
-            self.log.info(f"Applying {len(items)} items from state sync", LogCategory.COLLABORATION)
+            total = len(items)
+            self.log.info(f"Applying {total} items from state sync", LogCategory.COLLABORATION)
+            self.status_changed.emit(f"Syncing: 0/{total} items...")
 
-            for item_data in items:
+            succeeded = 0
+            failed = 0
+            for i, item_data in enumerate(items):
                 item_type = item_data.get("item_type")
                 if item_type:
                     self._apply_add_item(item_type, item_data)
+                    succeeded += 1
+                else:
+                    failed += 1
+                    self.log.warning(
+                        f"Skipped item {i}: no item_type", LogCategory.COLLABORATION
+                    )
+                # Update progress every few items
+                if (i + 1) % 5 == 0 or (i + 1) == total:
+                    self.status_changed.emit(f"Syncing: {i + 1}/{total} items...")
 
             # Update version
             self.session_version = state.get("version", 0)
@@ -622,9 +692,22 @@ class CollaborationManager(QObject):
             self.initial_sync_complete = True
             self.needs_resync = False
 
-            # Retrace if needed (autotrace and retrace always exist on MainWindow)
+            # Emit layer state change once (triggers layer panel rebuild)
+            if hasattr(self.main_window, "layer_state"):
+                self.main_window.layer_state.changed.emit()
+
+            # Single retrace for entire scene
             if self.main_window.autotrace:
                 self.main_window.retrace()
+
+            # Refresh layer panel once
+            self.main_window._refresh_layer_panel()
+
+            # Show completion status
+            status = f"Sync complete: {succeeded} items"
+            if failed:
+                status += f" ({failed} failed)"
+            self.status_changed.emit(status)
 
             self.log.info(
                 f"State sync complete - version {self.session_version}", LogCategory.COLLABORATION
@@ -634,13 +717,19 @@ class CollaborationManager(QObject):
 
     def _on_user_joined(self, user_id: str) -> None:
         """Handle user joined notification."""
-        self.log.info(f"👤 User joined: {user_id}", LogCategory.COLLABORATION)
+        self.log.info(f"User joined: {user_id}", LogCategory.COLLABORATION)
         self.status_changed.emit(f"{user_id} joined")
 
         # If we're the host, send full state to new client
         if self.role == "host":
-            self.log.info(f"Sending full state to new client: {user_id}", LogCategory.COLLABORATION)
+            self.rebuild_uuid_map()
             state = self.get_session_state()
+            item_count = len(state.get("items", []))
+            self.log.info(
+                f"Sending {item_count} items to new client: {user_id}",
+                LogCategory.COLLABORATION,
+            )
+            self.status_changed.emit(f"Sending {item_count} items to {user_id}...")
             self.collaboration_service.send_message(
                 {
                     "type": "sync:full_state",
@@ -648,6 +737,7 @@ class CollaborationManager(QObject):
                     "target_user": user_id,  # Optional: target specific user
                 }
             )
+            self.status_changed.emit(f"{user_id} joined — {item_count} items sent")
 
     def _on_user_left(self, user_id: str) -> None:
         """Handle user left notification."""
