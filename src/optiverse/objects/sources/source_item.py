@@ -281,11 +281,11 @@ class SourceItem(BaseObj):
             self.edited.emit()
 
         def update_from_wavelength():
-            """Update color chip from wavelength only if in Wavelength mode."""
+            """Update wavelength param and, if in Wavelength mode, update color."""
             if wl_mode.currentText() == "Wavelength":
                 wl = wl_spin.value()
                 paint_chip(chip, wavelength_to_hex(wl))
-                _apply_color_to_source()
+            _apply_color_to_source()
 
         def on_mode_changed(mode: str):
             """Handle wavelength mode change."""
