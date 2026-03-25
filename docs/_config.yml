@@ -22,9 +22,6 @@ aux_links:
 # Footer content
 footer_content: "Built with <a href=\"https://github.com/just-the-docs/just-the-docs\">Just the Docs</a>, a documentation theme for Jekyll."
 
-# Logo
-logo: "/optiverse/assets/images/optiverse.png"
-
 # Color scheme
 color_scheme: dark
 
