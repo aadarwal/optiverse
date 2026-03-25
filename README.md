@@ -1,10 +1,9 @@
-<p align="center">
-  <img src="src/optiverse/ui/icons/optiverse.png" alt="Optiverse Logo" width="96" style="vertical-align: middle;">
-  <br>
-  <strong style="font-size: 2em;">Optiverse</strong>
-  <br>
-  <em>A modern 2D ray-optics simulation and component editor built with PyQt6</em>
-</p>
+<div align="center">
+<table><tr>
+<td><img src="src/optiverse/ui/icons/optiverse.png" alt="Optiverse Logo" width="80"></td>
+<td><h1>Optiverse</h1><em>A modern 2D ray-optics simulation and component editor built with PyQt6</em></td>
+</tr></table>
+</div>
 
 [![CI](https://github.com/QPG-MIT/optiverse/actions/workflows/ci.yml/badge.svg)](https://github.com/QPG-MIT/optiverse/actions/workflows/ci.yml)
 [![Copilot Instructions](https://github.com/QPG-MIT/optiverse/actions/workflows/copilot-review.yml/badge.svg)](https://github.com/QPG-MIT/optiverse/actions/workflows/copilot-review.yml)
