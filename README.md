@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="src/optiverse/ui/icons/optiverse.png" width="64" height="64" alt="" align="absmiddle">
+  <img src="src/optiverse/ui/icons/optiverse.png" width="115" height="115" alt="" align="absmiddle">
   Optiverse
 </h1>
 <p align="center"><em>A modern 2D ray-optics simulation and component editor built with PyQt6</em></p>
