@@ -1,7 +1,7 @@
-<p align="center">
+<h1 align="center">
   <img src="src/optiverse/ui/icons/optiverse.png" width="80" height="80" alt="" align="middle">
-  <img src="assets/readme-title.svg" width="220" height="80" alt="Optiverse" align="middle">
-</p>
+  Optiverse
+</h1>
 <p align="center"><em>A modern 2D ray-optics simulation and component editor built with PyQt6</em></p>
 
 [![CI](https://github.com/QPG-MIT/optiverse/actions/workflows/ci.yml/badge.svg)](https://github.com/QPG-MIT/optiverse/actions/workflows/ci.yml)
