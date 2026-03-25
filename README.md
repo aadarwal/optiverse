@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="src/optiverse/ui/icons/optiverse.png" alt="Optiverse Logo" width="128">
+</p>
+
 # Optiverse
 
 **A modern 2D ray-optics simulation and component editor built with PyQt6**
