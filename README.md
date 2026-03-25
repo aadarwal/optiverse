@@ -1,6 +1,6 @@
 <p align="center">
-  <img src="src/optiverse/ui/icons/optiverse.png" alt="Optiverse Logo" width="80" align="middle">
-  <img src="https://readme-typing-svg.demolab.com?font=Segoe+UI&weight=700&size=45&pause=1000000&color=FFFFFF&center=true&vCenter=true&repeat=false&width=350&height=60&lines=Optiverse" alt="Optiverse">
+  <img src="src/optiverse/ui/icons/optiverse.png" width="80" height="80" alt="" align="middle">
+  <img src="assets/readme-title.svg" width="220" height="80" alt="Optiverse" align="middle">
 </p>
 <p align="center"><em>A modern 2D ray-optics simulation and component editor built with PyQt6</em></p>
 
