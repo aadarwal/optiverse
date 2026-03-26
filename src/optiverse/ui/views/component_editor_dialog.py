@@ -91,6 +91,10 @@ class ComponentEditor(QtWidgets.QMainWindow):
         # Track unsaved changes
         self._modified = False
 
+        # Track editing context for save guards
+        self._original_name: str | None = None
+        self._component_source: str | None = None  # "builtin", "user", or None (new)
+
         # Library I/O handler (initialized after UI setup in _build_library_dock)
         self._library_io: ComponentLibraryIO | None = None
 
@@ -502,6 +506,10 @@ class ComponentEditor(QtWidgets.QMainWindow):
         self.interface_panel.clear()
         self.notes.clear()
 
+        # Reset editing context
+        self._original_name = None
+        self._component_source = None
+
         # Status message
         status_bar = self.statusBar()
         if status_bar is not None:
@@ -864,6 +872,10 @@ class ComponentEditor(QtWidgets.QMainWindow):
         if not rec:
             return
 
+        # Track editing context for save guards
+        self._original_name = rec.name
+        self._component_source = data.get("_source")
+
         # Load image if available
         if rec.image_path and os.path.exists(rec.image_path):
             if rec.image_path.lower().endswith(".svg"):
@@ -902,16 +914,159 @@ class ComponentEditor(QtWidgets.QMainWindow):
         # Sync to canvas
         self._sync_interfaces_to_canvas()
 
+    # ---------- Save Guards ----------
+
+    def _get_all_component_names(self) -> set[str]:
+        """Collect all known component names (builtin + all user libraries)."""
+        from ...objects.component_registry import ComponentRegistry
+        from ...objects.definitions_loader import load_component_dicts_from_multiple
+        from ...platform.paths import get_all_custom_library_roots
+
+        names: set[str] = set()
+        for rec in ComponentRegistry.get_standard_components():
+            if name := rec.get("name", ""):
+                names.add(name)
+        custom_roots = get_all_custom_library_roots()
+        for rec in load_component_dicts_from_multiple([str(p) for p in custom_roots]):
+            if name := rec.get("name", ""):
+                names.add(name)
+        return names
+
+    def _get_builtin_names(self) -> set[str]:
+        """Return the set of standard (builtin) component names."""
+        from ...objects.component_registry import ComponentRegistry
+
+        return {r.get("name", "") for r in ComponentRegistry.get_standard_components()} - {""}
+
+    def _prompt_for_unique_name(
+        self, suggestion: str, all_names: set[str], *, allow_name: str | None = None
+    ) -> str | None:
+        """Show an input dialog that loops until the user provides a unique name or cancels.
+
+        Args:
+            suggestion: Pre-filled name suggestion.
+            all_names: Set of all existing component names.
+            allow_name: Optional name that is allowed even if it appears in *all_names*
+                        (used when replacing an existing component).
+
+        Returns:
+            A unique name string, or ``None`` if the user cancelled.
+        """
+        builtin_names = self._get_builtin_names()
+        current = suggestion
+        while True:
+            name, ok = QtWidgets.QInputDialog.getText(
+                self,
+                "Component Name",
+                "Enter a unique component name:",
+                QtWidgets.QLineEdit.EchoMode.Normal,
+                current,
+            )
+            if not ok or not name:
+                return None
+            name = name.strip()
+            if not name:
+                QtWidgets.QMessageBox.warning(self, "Invalid Name", "Name cannot be empty.")
+                continue
+            if name in builtin_names:
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Reserved Name",
+                    f"'{name}' is a standard component name and cannot be overwritten.\n"
+                    "Please choose a different name.",
+                )
+                current = name
+                continue
+            if name in all_names and name != allow_name:
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "Name Already Exists",
+                    f"A component named '{name}' already exists.\n"
+                    "Please choose a different name.",
+                )
+                current = name
+                continue
+            return name
+
     def save_component(self) -> bool:
-        """Save component to library (delegated to library_io).
+        """Save component to library with name-conflict and builtin guards.
 
         Returns:
             True if save was successful, False otherwise.
         """
-        if self._library_io:
-            if self._library_io.save_component():
-                self._modified = False
-                return True
+        if not self._library_io:
+            return False
+
+        current_name = self.name_edit.text().strip()
+        if not current_name:
+            QtWidgets.QMessageBox.warning(self, "Missing name", "Please enter a component name.")
+            return False
+
+        builtin_names = self._get_builtin_names()
+        all_names = self._get_all_component_names()
+
+        # --- Guard 1: builtin component ---
+        if self._component_source == "builtin" or current_name in builtin_names:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Standard Component",
+                f"'{current_name}' is a standard component and cannot be overwritten.\n\n"
+                "Your changes will be saved as a new component in your user library.\n"
+                "Please choose a different name.",
+            )
+            new_name = self._prompt_for_unique_name(f"{current_name} (Custom)", all_names)
+            if not new_name:
+                return False
+            self.name_edit.setText(new_name)
+
+        # --- Guard 2: existing user component with same name ---
+        elif (
+            self._original_name is not None
+            and current_name == self._original_name
+            and self._component_source == "user"
+        ):
+            msg = QtWidgets.QMessageBox(self)
+            msg.setWindowTitle("Replace or Copy?")
+            msg.setText(
+                f"Do you want to replace the existing component '{current_name}'\n"
+                "or save it as a new copy with a different name?"
+            )
+            replace_btn = msg.addButton("Replace", QtWidgets.QMessageBox.ButtonRole.AcceptRole)
+            copy_btn = msg.addButton("Save as Copy", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+            msg.addButton(QtWidgets.QMessageBox.StandardButton.Cancel)
+            msg.setDefaultButton(replace_btn)
+            msg.exec()
+
+            clicked = msg.clickedButton()
+            if clicked == copy_btn:
+                new_name = self._prompt_for_unique_name(f"{current_name} (Copy)", all_names)
+                if not new_name:
+                    return False
+                self.name_edit.setText(new_name)
+            elif clicked != replace_btn:
+                return False
+            # Replace: fall through to save with same name
+
+        # --- Guard 3: name changed or new component — uniqueness check ---
+        elif current_name in all_names and current_name != self._original_name:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Name Already Exists",
+                f"A component named '{current_name}' already exists.\n"
+                "Please choose a different name.",
+            )
+            new_name = self._prompt_for_unique_name(current_name, all_names)
+            if not new_name:
+                return False
+            self.name_edit.setText(new_name)
+
+        # --- Perform the actual save (builds record from UI, writes to disk) ---
+        if self._library_io.save_component():
+            saved_name = self.name_edit.text().strip()
+            self._original_name = saved_name
+            self._component_source = "user"
+            self._modified = False
+            return True
         return False
 
     def export_component(self):
