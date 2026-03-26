@@ -208,7 +208,7 @@ Qt messages are logged with category "Qt" at appropriate levels:
 Test the error handling system:
 
 ```bash
-python test_error_handling.py
+python tools/test_error_handling.py
 ```
 
 This will verify:
@@ -264,7 +264,7 @@ Minimal - error handling only activates when exceptions occur. The try/except ov
 - `src/optiverse/services/error_handler.py` - Error handler implementation
 - `src/optiverse/services/log_service.py` - Logging service
 - `src/optiverse/app/main.py` - Installation point
-- `test_error_handling.py` - Test script
+- `tools/test_error_handling.py` - Test script
 
 ## See Also
 

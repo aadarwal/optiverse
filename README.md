@@ -271,16 +271,10 @@ black src/ tests/
 
 **Note**: When you create a pull request, Ruff linting errors are automatically fixed by GitHub Actions and committed back to your branch. You can also run `ruff check --fix .` locally before pushing.
 
-### Building Resources
+### Building resources
 ```bash
-# Compile Qt UI files
-python tools/compile_ui.py
-
-# Compile Qt resource files  
-python tools/compile_rc.py
-
-# Create application icons
-python scripts/create_icon.py
+# Create application icons (.icns / .ico) into tools/generated_icons/
+python tools/create_icon.py
 ```
 
 ### Testing Platform Features
@@ -311,8 +305,7 @@ optiverse/
 │   └── integration/   # Legacy compatibility layer
 ├── tests/             # Test suite (pytest)
 ├── docs/              # Documentation
-├── tools/             # Utility scripts
-├── scripts/           # Build scripts
+├── tools/             # Dev utilities (icons, macOS app bundle, collaboration server)
 └── examples/          # Example assemblies and demos
 ```
 

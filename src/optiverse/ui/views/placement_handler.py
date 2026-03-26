@@ -126,13 +126,10 @@ class PlacementHandler:
         self._active = False
         self._component_type = None
 
-        # Restore cursor and mouse tracking
+        # Restore cursor. Do not disable mouse tracking: RubberBandDrag mode on the
+        # graphics view requires it for hover events and rubber-band selection.
         self._send_synthetic_mouse_move()
         self.view.unsetCursor()
-        self.view.setMouseTracking(False)
-        viewport = self.view.viewport()
-        if viewport is not None:
-            viewport.setMouseTracking(False)
 
         return prev_type
 

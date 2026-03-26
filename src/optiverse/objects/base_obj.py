@@ -58,6 +58,9 @@ class BaseObj(QtWidgets.QGraphicsObject):
         # Lock state (prevents movement, rotation, and deletion)
         self._locked = False
 
+        # Mouse is over item shape (hitbox) — used for lighter blue hover tint
+        self._hovered = False
+
         self.setFlags(
             QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable
             | QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
@@ -148,6 +151,31 @@ class BaseObj(QtWidgets.QGraphicsObject):
                     views[0].viewport().update()
 
         return super().itemChange(change, value)
+
+    def _repaint_hover_feedback(self) -> None:
+        """Repaint item, sprite, and viewport after hover state changes."""
+        self.update()
+        sp = getattr(self, "_sprite", None)
+        if sp is not None:
+            sp.update()
+        if self.scene() is not None:
+            views = self.scene().views()
+            if views:
+                views[0].viewport().update()
+
+    def hoverEnterEvent(self, ev: QtWidgets.QGraphicsSceneHoverEvent | None) -> None:
+        if ev is None:
+            return
+        self._hovered = True
+        self._repaint_hover_feedback()
+        super().hoverEnterEvent(ev)
+
+    def hoverLeaveEvent(self, ev: QtWidgets.QGraphicsSceneHoverEvent | None) -> None:
+        if ev is None:
+            return
+        self._hovered = False
+        self._repaint_hover_feedback()
+        super().hoverLeaveEvent(ev)
 
     def _sync_params_from_item(self):
         """

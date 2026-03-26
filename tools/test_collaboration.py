@@ -176,7 +176,7 @@ def main():
     print("  2. Send periodic heartbeat messages")
     print("  3. Verify connection stays alive for 15+ seconds")
     print("  4. Check that messages are received")
-    print("\nMake sure collaboration_server_v2.py is running first!")
+    print("\nMake sure tools/collaboration_server.py is running first!")
     print("=" * 70)
 
     # Give user time to read

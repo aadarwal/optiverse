@@ -13,7 +13,7 @@ macOS only (for .icns):
     brew install libicns  # or use sips (built-in)
 
 Usage:
-    python scripts/create_icon.py
+    python tools/create_icon.py
 """
 
 import subprocess
@@ -122,7 +122,7 @@ def create_ico_windows(png_path: Path, output_path: Path):
 
 def main():
     """Main entry point."""
-    # Find project root
+    # Find project root (parent of tools/)
     script_path = Path(__file__).resolve()
     project_root = script_path.parent.parent
 
@@ -140,12 +140,12 @@ def main():
     if img.width < 1024 or img.height < 1024:
         print("⚠️  Warning: Source PNG should be at least 1024x1024 for best quality")
 
-    # Output paths
-    resources_dir = project_root / "resources"
-    resources_dir.mkdir(exist_ok=True)
+    # Output paths (gitignored; see tools/generated_icons/.gitkeep)
+    out_dir = project_root / "tools" / "generated_icons"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    icns_path = resources_dir / "optiverse.icns"
-    ico_path = resources_dir / "optiverse.ico"
+    icns_path = out_dir / "optiverse.icns"
+    ico_path = out_dir / "optiverse.ico"
 
     print("\nCreating platform-specific icons...")
     print("=" * 60)
@@ -161,7 +161,7 @@ def main():
 
     print("=" * 60)
     print("✅ Icon creation complete!")
-    print(f"\nIcons saved to: {resources_dir}")
+    print(f"\nIcons saved to: {out_dir}")
 
     return 0
 

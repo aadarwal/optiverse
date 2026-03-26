@@ -392,12 +392,55 @@ class LayerPanel(QtWidgets.QWidget):
 
         self.refresh()
 
+    def _find_scene_item(self, item_uuid: str) -> QtWidgets.QGraphicsItem | None:
+        """Find a scene item by its UUID."""
+        if not self._scene:
+            return None
+        for item in self._scene.items():
+            if hasattr(item, "item_uuid") and item.item_uuid == item_uuid:
+                return item
+        return None
+
+    def _edit_item_by_uuid(self, item_uuid: str) -> None:
+        """Open the property editor for the scene item with the given UUID."""
+        item = self._find_scene_item(item_uuid)
+        if item is not None:
+            open_editor = getattr(item, "open_editor", None)
+            if callable(open_editor):
+                open_editor()
+
+    def _edit_in_component_editor_by_uuid(self, item_uuid: str) -> None:
+        """Open the Component Editor for the scene item with the given UUID."""
+        from ...objects.generic.component_item import ComponentItem
+
+        item = self._find_scene_item(item_uuid)
+        if isinstance(item, ComponentItem):
+            main_window = item._parent_window()
+            if main_window is not None and hasattr(main_window, "open_component_editor_for_item"):
+                main_window.open_component_editor_for_item(item)
+
     def _show_context_menu(self, pos: QtCore.QPoint) -> None:
         idx = self._tree.indexAt(pos)
         menu = QtWidgets.QMenu(self)
 
         if idx.isValid():
             from ..models.layer_item_model import LOCKED_ROLE, VISIBLE_ROLE
+
+            if not bool(idx.data(IS_GROUP_ROLE)):
+                if iu := idx.data(ITEM_UUID_ROLE):
+                    uid = str(iu)
+                    if edit_act := menu.addAction("Edit…"):
+                        edit_act.triggered.connect(
+                            lambda _checked=False, u=uid: self._edit_item_by_uuid(u)
+                        )
+                    from ...objects.generic.component_item import ComponentItem
+
+                    if isinstance(self._find_scene_item(uid), ComponentItem):
+                        if ce_act := menu.addAction("Edit in Component Editor…"):
+                            ce_act.triggered.connect(
+                                lambda _checked=False, u=uid: self._edit_in_component_editor_by_uuid(u)
+                            )
+                    menu.addSeparator()
 
             vis_act = menu.addAction("Toggle Visibility")
             if vis_act:

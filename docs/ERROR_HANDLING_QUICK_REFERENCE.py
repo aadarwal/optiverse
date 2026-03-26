@@ -81,7 +81,7 @@ ERROR MESSAGES:
 TESTING:
 
     # Test that error handling works
-    python test_error_handling.py
+    python tools/test_error_handling.py
 
     # View error logs in app
     Help → Show Logs → Filter: "Error Handler"

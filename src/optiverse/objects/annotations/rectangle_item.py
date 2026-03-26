@@ -33,6 +33,8 @@ class RectangleItem(QtWidgets.QGraphicsObject):
             QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable
             | QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
         )
+        self.setAcceptHoverEvents(True)
+        self._hovered = False
         self.setZValue(100.0)
         self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
         self.setTransformOriginPoint(0.0, 0.0)
@@ -70,6 +72,32 @@ class RectangleItem(QtWidgets.QGraphicsObject):
             p.setPen(QtCore.Qt.PenStyle.NoPen)
             p.setBrush(QtGui.QColor(30, 144, 255, 70))  # Translucent blue
             p.drawRect(rect)
+        elif self._hovered:
+            p.setPen(QtCore.Qt.PenStyle.NoPen)
+            p.setBrush(QtGui.QColor(30, 144, 255, 35))  # Lighter hover tint
+            p.drawRect(rect)
+
+    def hoverEnterEvent(self, ev: QtWidgets.QGraphicsSceneHoverEvent | None) -> None:
+        if ev is None:
+            return
+        self._hovered = True
+        self.update()
+        if self.scene() is not None:
+            views = self.scene().views()
+            if views:
+                views[0].viewport().update()
+        super().hoverEnterEvent(ev)
+
+    def hoverLeaveEvent(self, ev: QtWidgets.QGraphicsSceneHoverEvent | None) -> None:
+        if ev is None:
+            return
+        self._hovered = False
+        self.update()
+        if self.scene() is not None:
+            views = self.scene().views()
+            if views:
+                views[0].viewport().update()
+        super().hoverLeaveEvent(ev)
 
     def contextMenuEvent(self, ev: QtWidgets.QGraphicsSceneContextMenuEvent | None):
         if ev is None:
