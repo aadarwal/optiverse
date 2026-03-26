@@ -762,6 +762,134 @@ class MainWindow(QtWidgets.QMainWindow):
             self._comp_editor._load_from_dict(component_data)
         self._comp_editor.show()
 
+    def open_component_editor_for_item(self, item):
+        """Open the Component Editor pre-loaded with *item*'s data.
+
+        When the user saves inside the editor the library is updated (normal
+        behaviour) **and** the placed scene instance is updated in-place so
+        the canvas reflects the changes immediately.
+        """
+        from ...core.models import serialize_component
+        from ...core.undo_commands import PropertyChangeCommand
+        from ...objects.generic.component_item import ComponentItem
+
+        if not isinstance(item, ComponentItem):
+            return
+
+        component_data = item.to_component_dict()
+        initial_state = item.capture_state()
+
+        self.open_component_editor(component_data)
+
+        if self._comp_editor is None:
+            return
+
+        def _apply_back():
+            """Read the editor's current record and push changes to the placed item."""
+            editor = self._comp_editor
+            if editor is None:
+                return
+            rec = editor._build_record_from_ui()
+            if rec is None:
+                return
+
+            serialized = serialize_component(rec, self.storage_service.settings_service)
+
+            if serialized.get("interfaces"):
+                from ...core.interface_definition import InterfaceDefinition
+
+                item.params.interfaces = [
+                    InterfaceDefinition.from_dict(d) for d in serialized["interfaces"]
+                ]
+            item.params.name = rec.name
+            item.params.object_height_mm = rec.object_height_mm
+            item.params.category = rec.category
+            item.params.notes = rec.notes or ""
+            if rec.image_path:
+                item.params.image_path = rec.image_path
+
+            item._update_geom()
+            item._maybe_attach_sprite()
+            item.edited.emit()
+
+            final_state = item.capture_state()
+            if initial_state != final_state:
+                cmd = PropertyChangeCommand(item, initial_state, final_state)
+                self.undo_stack.push(cmd)
+            self._schedule_retrace()
+
+        self._comp_editor.saved.connect(_apply_back)
+
+    def apply_component_properties_to_all(self, source_item):
+        """Open the Apply-Properties-to-All dialog for *source_item*."""
+        from ...core.undo_commands import BatchPropertyChangeCommand
+        from ...objects.generic.component_item import ComponentItem
+        from .apply_properties_dialog import ApplyPropertiesToAllDialog
+
+        all_components = [
+            item
+            for item in self.scene.items()
+            if isinstance(item, ComponentItem)
+        ]
+
+        if len(all_components) < 2:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Apply Properties",
+                "There are no other components on the canvas to apply to.",
+            )
+            return
+
+        dlg = ApplyPropertiesToAllDialog(source_item, all_components, self)
+        if dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return
+
+        targets = dlg.get_targets()
+        checked = dlg.get_checked_properties()
+        if not targets:
+            return
+
+        active_keys = [k for k, v in checked.items() if v]
+        if not active_keys:
+            return
+
+        entries: list[tuple] = []
+        for target in targets:
+            old_state = target.capture_state()
+            self._apply_properties(source_item, target, active_keys)
+            new_state = target.capture_state()
+            if old_state != new_state:
+                entries.append((target, old_state, new_state))
+
+        if entries:
+            cmd = BatchPropertyChangeCommand(entries)
+            self.undo_stack.push(cmd)
+            self._schedule_retrace()
+
+    @staticmethod
+    def _apply_properties(source, target, active_keys: list[str]):
+        """Copy checked properties from *source* to *target* ComponentItem."""
+        if "object_height_mm" in active_keys:
+            target.params.object_height_mm = source.params.object_height_mm
+
+        if not source.params.interfaces or not target.params.interfaces:
+            target._update_geom()
+            target._maybe_attach_sprite()
+            target.edited.emit()
+            return
+
+        iface_keys = [k for k in active_keys if ":" in k]
+        for src_iface, tgt_iface in zip(source.params.interfaces, target.params.interfaces):
+            for key in iface_keys:
+                et, prop = key.split(":", 1)
+                if src_iface.element_type == et and tgt_iface.element_type == et:
+                    if hasattr(tgt_iface, prop):
+                        setattr(tgt_iface, prop, getattr(src_iface, prop))
+
+        target._update_geom()
+        target._maybe_attach_sprite()
+        target.edited.emit()
+
     def open_user_library_folder(self):
         """Open the user library folder in the system file explorer."""
         import subprocess

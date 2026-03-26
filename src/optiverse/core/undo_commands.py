@@ -499,6 +499,28 @@ class BatchCommand(Command):
             cmd.undo()
 
 
+class BatchPropertyChangeCommand(Command):
+    """Undo/redo batch property changes across multiple items.
+
+    Stores a list of (item, old_state, new_state) triples so that
+    capture_state/apply_state on each item drives the undo/redo cycle.
+    """
+
+    def __init__(
+        self,
+        entries: list[tuple[Undoable, dict[str, Any], dict[str, Any]]],
+    ):
+        self._entries = entries
+
+    def execute(self) -> None:
+        for item, _old, new in self._entries:
+            item.apply_state(new)
+
+    def undo(self) -> None:
+        for item, old, _new in self._entries:
+            item.apply_state(old)
+
+
 class MoveNodeCommand(Command):
     """Command to move a single node to a new parent/index in LayerTreeState."""
 
