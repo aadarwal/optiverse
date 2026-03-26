@@ -131,6 +131,7 @@ class ItemDragHandler:
         """
         from ...objects import BaseObj, RectangleItem
         from ...objects.annotations import RulerItem, TextNoteItem
+        from ...objects.annotations.angle_measure_item import AngleMeasureItem
 
         # Clean up any leftover state from a previous drag
         self._restore_secondary_movable_flags()
@@ -142,7 +143,9 @@ class ItemDragHandler:
         # Walk up parent hierarchy to find the actual draggable item
         draggable_item: QtWidgets.QGraphicsItem | None = None
         while clicked_item is not None:
-            if isinstance(clicked_item, (BaseObj, RulerItem, TextNoteItem, RectangleItem)):
+            if isinstance(
+                clicked_item, (BaseObj, RulerItem, TextNoteItem, RectangleItem, AngleMeasureItem)
+            ):
                 draggable_item = clicked_item
                 break
             clicked_item = clicked_item.parentItem()
@@ -156,6 +159,12 @@ class ItemDragHandler:
         if isinstance(draggable_item, RulerItem):
             local_pos = draggable_item.mapFromScene(scene_pos)
             if draggable_item._nearest_point(local_pos) is not None:
+                return False
+
+        # ---- AngleMeasureItem handle check ----
+        # If clicking near a vertex/point handle, let AngleMeasureItem handle its own drag
+        if isinstance(draggable_item, AngleMeasureItem):
+            if draggable_item._point_at_pos(scene_pos) is not None:
                 return False
 
         # ---- Handle selection ----
@@ -189,7 +198,9 @@ class ItemDragHandler:
         selected_items = [
             it
             for it in self.scene.selectedItems()
-            if isinstance(it, (BaseObj, RulerItem, TextNoteItem, RectangleItem))
+            if isinstance(
+                it, (BaseObj, RulerItem, TextNoteItem, RectangleItem, AngleMeasureItem)
+            )
         ]
 
         # ---- Store press offset ----
@@ -311,7 +322,9 @@ class ItemDragHandler:
         selected_items = [
             it
             for it in self.scene.selectedItems()
-            if isinstance(it, (BaseObj, RulerItem, TextNoteItem, RectangleItem))
+            if isinstance(
+                it, (BaseObj, RulerItem, TextNoteItem, RectangleItem, AngleMeasureItem)
+            )
         ]
 
         if not selected_items:
@@ -320,7 +333,7 @@ class ItemDragHandler:
         # Store initial positions and rotations for all rotatable items
         for it in selected_items:
             self._drag.initial_positions[it] = QtCore.QPointF(it.pos())
-            if isinstance(it, (BaseObj, RectangleItem)):
+            if isinstance(it, (BaseObj, RectangleItem, TextNoteItem)):
                 self._drag.initial_rotations[it] = it.rotation()
 
         # Mark as group rotation if multiple items
@@ -339,7 +352,9 @@ class ItemDragHandler:
         """
         from ...core.undo_commands import RotateItemCommand, RotateItemsCommand
         from ...objects import BaseObj, RectangleItem
+        from ...objects.annotations import TextNoteItem
 
+        _rotatable = (BaseObj, RectangleItem, TextNoteItem)
         commands_created = False
 
         if self._drag.initial_rotations and not self._drag.is_group_rotation:
@@ -358,7 +373,7 @@ class ItemDragHandler:
             new_rotations = {
                 it: it.rotation()
                 for it in items
-                if isinstance(it, (BaseObj, RectangleItem))
+                if isinstance(it, _rotatable)
             }
 
             # Check if anything actually changed
@@ -369,12 +384,12 @@ class ItemDragHandler:
                 abs(self._drag.initial_rotations.get(it, 0) - new_rotations.get(it, 0))
                 > 0.01
                 for it in items
-                if isinstance(it, (BaseObj, RectangleItem))
+                if isinstance(it, _rotatable)
             )
 
             if position_changed or rotation_changed:
                 rotatable_items = [
-                    it for it in items if isinstance(it, (BaseObj, RectangleItem))
+                    it for it in items if isinstance(it, _rotatable)
                 ]
                 if rotatable_items:
                     from PyQt6.QtWidgets import QGraphicsItem

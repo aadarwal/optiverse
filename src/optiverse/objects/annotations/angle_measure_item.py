@@ -421,7 +421,14 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
                             items = list(scene.selectedItems()) if self.isSelected() else [self]
                             uuids = [it.item_uuid for it in items if hasattr(it, "item_uuid")]
                             if uuids:
-                                main_window.layer_state.apply_z_order_operation(uuids, op)
+                                from ...core.undo_commands import ZOrderCommand
+
+                                cmd = ZOrderCommand(main_window.layer_state, uuids, op)
+                                undo_stack = getattr(main_window, "undo_stack", None)
+                                if undo_stack:
+                                    undo_stack.push(cmd)
+                                else:
+                                    cmd.execute()
 
             event.accept()
             return

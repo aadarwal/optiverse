@@ -204,8 +204,16 @@ class LayerPanel(QtWidgets.QWidget):
         uuids = [
             item.item_uuid for item in self._scene.selectedItems() if hasattr(item, "item_uuid")
         ]
-        if uuids:
-            self._layer_state.apply_z_order_operation(uuids, operation)
+        if not uuids:
+            return
+        from ...core.undo_commands import ZOrderCommand
+
+        undo_stack = self._get_undo_stack()
+        cmd = ZOrderCommand(self._layer_state, uuids, operation)
+        if undo_stack:
+            undo_stack.push(cmd)
+        else:
+            cmd.execute()
 
     def _on_model_order_changed(self) -> None:
         self.zOrderChanged.emit()

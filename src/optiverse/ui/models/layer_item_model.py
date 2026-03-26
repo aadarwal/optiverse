@@ -13,7 +13,14 @@ from typing import TYPE_CHECKING
 from PyQt6 import QtCore, QtWidgets
 
 from ...core.layer_tree_state import LayerNode, LayerTreeState
-from ...core.undo_commands import BatchCommand, Command, MoveNodeCommand
+from ...core.undo_commands import (
+    BatchCommand,
+    Command,
+    MoveNodeCommand,
+    RenameNodeCommand,
+    ToggleLockCommand,
+    ToggleVisibilityCommand,
+)
 
 if TYPE_CHECKING:
     from ...core.undo_stack import UndoStack
@@ -188,34 +195,70 @@ class LayerItemModel(QtCore.QAbstractItemModel):
             return False
 
         if role == int(QtCore.Qt.ItemDataRole.EditRole):
+            new_name = str(value).strip() or None
             if node.is_group() and self._layer_state:
-                self._layer_state.rename_group(node.uuid, str(value), emit=True)
+                old_name = node.name
+                cmd = RenameNodeCommand(
+                    self._layer_state, node.uuid, old_name, new_name, is_group=True
+                )
+                if self._undo_stack:
+                    self._undo_stack.push(cmd)
+                else:
+                    cmd.execute()
                 self.dataChanged.emit(index, index, [int(QtCore.Qt.ItemDataRole.DisplayRole)])
                 return True
             elif node.is_item():
-                # Set display_name on the item
                 item = self._uuid_to_item.get(node.uuid)
                 if item:
-                    new_name = str(value).strip()
-                    # Set display_name for annotation items
                     if hasattr(item, "display_name"):
-                        item.display_name = new_name if new_name else None
-                    # Set params.name for optical components
+                        old_name = item.display_name
                     elif hasattr(item, "params") and hasattr(item.params, "name"):
-                        item.params.name = new_name if new_name else None
-                    self.dataChanged.emit(index, index, [int(QtCore.Qt.ItemDataRole.DisplayRole)])
+                        old_name = item.params.name
+                    else:
+                        old_name = None
+                    cmd = RenameNodeCommand(
+                        self._layer_state or LayerTreeState(),
+                        node.uuid,
+                        old_name,
+                        new_name,
+                        is_group=False,
+                        item=item,
+                    )
+                    if self._undo_stack:
+                        self._undo_stack.push(cmd)
+                    else:
+                        cmd.execute()
+                    self.dataChanged.emit(
+                        index, index, [int(QtCore.Qt.ItemDataRole.DisplayRole)]
+                    )
                     return True
 
         if role == int(VISIBLE_ROLE) and self._scene and self._layer_state:
-            node.visible = bool(value)
-            self._apply_effective_visibility(node)
+            old_visible = node.visible
+            new_visible = bool(value)
+            if old_visible != new_visible:
+                cmd = ToggleVisibilityCommand(
+                    node, old_visible, new_visible, self._apply_effective_visibility
+                )
+                if self._undo_stack:
+                    self._undo_stack.push(cmd)
+                else:
+                    cmd.execute()
             self.dataChanged.emit(index, index, [int(VISIBLE_ROLE)])
             self.visibilityChanged.emit()
             return True
 
         if role == int(LOCKED_ROLE) and self._scene and self._layer_state:
-            node.locked = bool(value)
-            self._apply_effective_locked(node)
+            old_locked = node.locked
+            new_locked = bool(value)
+            if old_locked != new_locked:
+                cmd = ToggleLockCommand(
+                    node, old_locked, new_locked, self._apply_effective_locked
+                )
+                if self._undo_stack:
+                    self._undo_stack.push(cmd)
+                else:
+                    cmd.execute()
             self.dataChanged.emit(index, index, [int(LOCKED_ROLE)])
             return True
 

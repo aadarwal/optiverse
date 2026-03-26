@@ -91,7 +91,20 @@ class RectangleItem(QtWidgets.QGraphicsObject):
         elif a == act_del:
             scene = self.scene()
             if scene is not None:
-                scene.removeItem(self)
+                from ...core.undo_commands import RemoveItemCommand
+
+                layer_state = None
+                undo_stack = None
+                if scene.views():
+                    mw = scene.views()[0].window()
+                    if isinstance(mw, HasLayerState):
+                        layer_state = mw.layer_state
+                    undo_stack = getattr(mw, "undo_stack", None)
+                cmd = RemoveItemCommand(scene, self, layer_state)
+                if undo_stack:
+                    undo_stack.push(cmd)
+                else:
+                    cmd.execute()
         else:
             # Handle z-order actions
             action_map = {
@@ -108,7 +121,14 @@ class RectangleItem(QtWidgets.QGraphicsObject):
                         items = list(scene.selectedItems()) if self.isSelected() else [self]
                         uuids = [it.item_uuid for it in items if hasattr(it, "item_uuid")]
                         if uuids:
-                            main_window.layer_state.apply_z_order_operation(uuids, op)
+                            from ...core.undo_commands import ZOrderCommand
+
+                            cmd = ZOrderCommand(main_window.layer_state, uuids, op)
+                            undo_stack = getattr(main_window, "undo_stack", None)
+                            if undo_stack:
+                                undo_stack.push(cmd)
+                            else:
+                                cmd.execute()
 
     def mousePressEvent(self, ev: QtWidgets.QGraphicsSceneMouseEvent | None):
         """Handle mouse press for rotation mode (Ctrl+drag) or normal drag."""
@@ -178,15 +198,31 @@ class RectangleItem(QtWidgets.QGraphicsObject):
             super().mouseReleaseEvent(ev)
 
     def wheelEvent(self, ev: QtWidgets.QGraphicsSceneWheelEvent | None):
-        """Ctrl + wheel → rotate element."""
+        """Ctrl + wheel → rotate element (with undo tracking via WheelRotationTracker)."""
         if ev is None:
             return
         if self.isSelected() and (ev.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier):
+            from ...objects.rotation_handler import WheelRotationTracker
+
+            if not hasattr(self, "_wheel_tracker"):
+                scene = self.scene()
+                undo_stack = None
+                if scene and scene.views():
+                    mw = scene.views()[0].window()
+                    undo_stack = getattr(mw, "undo_stack", None)
+                if undo_stack:
+                    self._wheel_tracker = WheelRotationTracker(undo_stack)
+                else:
+                    self._wheel_tracker = None
+
             dy = ev.angleDelta().y()  # type: ignore[attr-defined]
             steps = dy / 120.0
             rotation_delta = 2.0 * steps
 
-            self.setRotation(self.rotation() + rotation_delta)
+            if self._wheel_tracker is not None:
+                self._wheel_tracker.track(self, rotation_delta)
+            else:
+                self.setRotation(self.rotation() + rotation_delta)
 
             ev.accept()
         else:
@@ -238,12 +274,33 @@ class RectangleItem(QtWidgets.QGraphicsObject):
 
         return item
 
+    def capture_state(self) -> dict[str, Any]:
+        """Capture current state for undo/redo."""
+        return {
+            "x": float(self.pos().x()),
+            "y": float(self.pos().y()),
+            "rotation": float(self.rotation()),
+            "width": float(self._w),
+            "height": float(self._h),
+        }
+
+    def apply_state(self, state: dict[str, Any]) -> None:
+        """Restore state from undo/redo."""
+        self.setPos(state["x"], state["y"])
+        self.setRotation(state["rotation"])
+        self.prepareGeometryChange()
+        self._w = state["width"]
+        self._h = state["height"]
+        self.update()
+
     def open_editor(self):
         scene = self.scene()
         parent_window = scene.views()[0].window() if scene and scene.views() else None
         d = QtWidgets.QDialog(parent_window)
         d.setWindowTitle("Edit Rectangle")
         f = QtWidgets.QFormLayout(d)
+
+        initial_state = self.capture_state()
 
         # Save initial state for rollback on cancel
         initial_x = self.pos().x()
@@ -318,11 +375,17 @@ class RectangleItem(QtWidgets.QGraphicsObject):
         btn.rejected.connect(d.reject)
 
         result = d.exec()
-        if not result:
-            # rollback
-            self.setPos(initial_x, initial_y)
-            self.setRotation(initial_ang)
-            self.prepareGeometryChange()
-            self._w = initial_w
-            self._h = initial_h
-            self.update()
+        if result:
+            final_state = self.capture_state()
+            if initial_state != final_state:
+                from ...core.undo_commands import RectangleChangeCommand
+
+                cmd = RectangleChangeCommand(self, initial_state, final_state)
+                scene = self.scene()
+                if scene and scene.views():
+                    mw = scene.views()[0].window()
+                    undo_stack = getattr(mw, "undo_stack", None)
+                    if undo_stack:
+                        undo_stack.push(cmd)
+        else:
+            self.apply_state(initial_state)

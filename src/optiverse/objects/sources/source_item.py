@@ -399,6 +399,11 @@ class SourceItem(BaseObj):
             # User clicked Cancel - restore initial state
             self.apply_state(initial_state)
 
+    def apply_state(self, state: dict[str, Any]) -> None:
+        """Override to sync _color from params after base apply."""
+        super().apply_state(state)
+        self._color = qcolor_from_hex(self.params.color_hex)
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         d = serialize_item(self)

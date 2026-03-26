@@ -341,3 +341,243 @@ class TestUndoRedoIntegration:
 
         assert not main_window.undo_stack.can_undo()
         assert not main_window.undo_stack.can_redo()
+
+
+class TestUndoRedoNewOperations:
+    """Tests for newly-undoable operations (rename, visibility, lock, z-order, etc.)."""
+
+    @pytest.fixture
+    def main_window(self, qapp):
+        """Create a MainWindow instance for testing."""
+        import gc
+
+        window = MainWindow()
+        window.autotrace = False
+        window.raytracing_controller._retrace_timer.stop()
+        window.file_controller._autosave_timer.stop()
+        QtWidgets.QApplication.processEvents()
+        yield window
+        window.autotrace = False
+        window.raytracing_controller._retrace_timer.stop()
+        window.file_controller._autosave_timer.stop()
+        window.file_controller.mark_clean()
+        window.raytracing_controller.clear_rays()
+        for item in list(window.scene.items()):
+            window.scene.removeItem(item)
+        QtWidgets.QApplication.processEvents()
+        window.close()
+        QtWidgets.QApplication.processEvents()
+        gc.collect()
+        QtWidgets.QApplication.processEvents()
+
+    def test_undo_visibility_toggle(self, main_window):
+        """Test that visibility toggle is undoable."""
+        add_source_to_window(main_window)
+        main_window.undo_stack.clear()
+
+        sources = [it for it in main_window.scene.items() if isinstance(it, SourceItem)]
+        item = sources[-1]
+        node = main_window.layer_state.get_node(item.item_uuid)
+        assert node is not None
+        assert node.visible is True
+
+        model = main_window.layer_panel._model
+        # Find the index for this node
+        for row in range(model.rowCount()):
+            idx = model.index(row, 0)
+            if idx.data(int(QtCore.Qt.ItemDataRole.UserRole)) == item.item_uuid:
+                break
+        else:
+            idx = model.index(0, 0)
+
+        from optiverse.ui.models.layer_item_model import VISIBLE_ROLE
+
+        model.setData(idx, False, int(VISIBLE_ROLE))
+        assert node.visible is False
+        assert main_window.undo_stack.can_undo()
+
+        main_window.undo_stack.undo()
+        assert node.visible is True
+
+    def test_undo_lock_toggle(self, main_window):
+        """Test that lock toggle is undoable."""
+        add_source_to_window(main_window)
+        main_window.undo_stack.clear()
+
+        sources = [it for it in main_window.scene.items() if isinstance(it, SourceItem)]
+        item = sources[-1]
+        node = main_window.layer_state.get_node(item.item_uuid)
+        assert node is not None
+        assert node.locked is False
+
+        model = main_window.layer_panel._model
+        for row in range(model.rowCount()):
+            idx = model.index(row, 0)
+            if idx.data(int(QtCore.Qt.ItemDataRole.UserRole)) == item.item_uuid:
+                break
+        else:
+            idx = model.index(0, 0)
+
+        from optiverse.ui.models.layer_item_model import LOCKED_ROLE
+
+        model.setData(idx, True, int(LOCKED_ROLE))
+        assert node.locked is True
+        assert main_window.undo_stack.can_undo()
+
+        main_window.undo_stack.undo()
+        assert node.locked is False
+
+    def test_undo_rectangle_delete(self, main_window):
+        """Test that rectangle context menu delete is undoable."""
+        from optiverse.objects.annotations.rectangle_item import RectangleItem
+
+        rect = RectangleItem(60, 40)
+        main_window.scene.addItem(rect)
+        main_window._connect_item_signals(rect)
+        main_window.layer_state.add_item(rect.item_uuid, None, 0, emit=True)
+        main_window.undo_stack.clear()
+
+        rects_before = [
+            it for it in main_window.scene.items() if isinstance(it, RectangleItem)
+        ]
+        assert len(rects_before) == 1
+
+        from optiverse.core.undo_commands import RemoveItemCommand
+
+        cmd = RemoveItemCommand(main_window.scene, rect, main_window.layer_state)
+        main_window.undo_stack.push(cmd)
+
+        rects_after = [it for it in main_window.scene.items() if isinstance(it, RectangleItem)]
+        assert len(rects_after) == 0
+
+        main_window.undo_stack.undo()
+        rects_restored = [
+            it for it in main_window.scene.items() if isinstance(it, RectangleItem)
+        ]
+        assert len(rects_restored) == 1
+
+    def test_undo_text_delete(self, main_window):
+        """Test that text note context menu delete is undoable."""
+        note = TextNoteItem("Test Note")
+        main_window.scene.addItem(note)
+        main_window._connect_item_signals(note)
+        main_window.layer_state.add_item(note.item_uuid, None, 0, emit=True)
+        main_window.undo_stack.clear()
+
+        notes_before = [
+            it for it in main_window.scene.items() if isinstance(it, TextNoteItem)
+        ]
+        assert len(notes_before) == 1
+
+        from optiverse.core.undo_commands import RemoveItemCommand
+
+        cmd = RemoveItemCommand(main_window.scene, note, main_window.layer_state)
+        main_window.undo_stack.push(cmd)
+
+        notes_after = [it for it in main_window.scene.items() if isinstance(it, TextNoteItem)]
+        assert len(notes_after) == 0
+
+        main_window.undo_stack.undo()
+        notes_restored = [
+            it for it in main_window.scene.items() if isinstance(it, TextNoteItem)
+        ]
+        assert len(notes_restored) == 1
+
+    def test_undo_text_edit(self, main_window):
+        """Test that inline text editing is undoable."""
+        note = TextNoteItem("Original")
+        main_window.scene.addItem(note)
+        main_window._connect_item_signals(note)
+        main_window.layer_state.add_item(note.item_uuid, None, 0, emit=True)
+        main_window.undo_stack.clear()
+
+        from optiverse.core.undo_commands import TextEditCommand
+
+        cmd = TextEditCommand(note, "Original", "Modified")
+        main_window.undo_stack.push(cmd)
+        assert note.toPlainText() == "Modified"
+
+        main_window.undo_stack.undo()
+        assert note.toPlainText() == "Original"
+
+        main_window.undo_stack.redo()
+        assert note.toPlainText() == "Modified"
+
+    def test_undo_rectangle_property_change(self, main_window):
+        """Test that rectangle property changes via editor are undoable."""
+        from optiverse.objects.annotations.rectangle_item import RectangleItem
+
+        rect = RectangleItem(60, 40)
+        rect.setPos(0, 0)
+        main_window.scene.addItem(rect)
+
+        before = rect.capture_state()
+        rect.setPos(100, 200)
+        rect.setRotation(45.0)
+        rect.prepareGeometryChange()
+        rect._w = 80.0
+        rect._h = 50.0
+        rect.update()
+        after = rect.capture_state()
+
+        from optiverse.core.undo_commands import RectangleChangeCommand
+
+        cmd = RectangleChangeCommand(rect, before, after)
+        main_window.undo_stack.push(cmd)
+
+        assert abs(rect.pos().x() - 100) < 0.01
+        assert abs(rect._w - 80.0) < 0.01
+
+        main_window.undo_stack.undo()
+        assert abs(rect.pos().x() - 0) < 0.01
+        assert abs(rect._w - 60.0) < 0.01
+
+    def test_undo_z_order(self, main_window):
+        """Test that z-order operations are undoable."""
+        add_source_to_window(main_window, 0, 0)
+        add_source_to_window(main_window, 50, 0)
+        main_window.undo_stack.clear()
+
+        items = [it for it in main_window.scene.items() if isinstance(it, SourceItem)]
+        assert len(items) >= 2
+
+        order_before = main_window.layer_state.get_all_items_in_order()
+
+        item = items[0]
+        from optiverse.core.undo_commands import ZOrderCommand
+
+        cmd = ZOrderCommand(main_window.layer_state, [item.item_uuid], "bring_to_front")
+        main_window.undo_stack.push(cmd)
+
+        order_after = main_window.layer_state.get_all_items_in_order()
+        assert main_window.undo_stack.can_undo()
+
+        main_window.undo_stack.undo()
+        order_restored = main_window.layer_state.get_all_items_in_order()
+        assert order_restored == order_before
+
+    def test_source_color_sync_on_undo(self, main_window):
+        """Test that SourceItem._color syncs correctly after undo/redo."""
+        add_source_to_window(main_window)
+        main_window.undo_stack.clear()
+
+        sources = [it for it in main_window.scene.items() if isinstance(it, SourceItem)]
+        item = sources[-1]
+
+        before_state = item.capture_state()
+        original_color_hex = item.params.color_hex
+
+        item.params.color_hex = "#00ff00"
+        item._color = item._color  # keep it mismatched intentionally
+        after_state = item.capture_state()
+
+        from optiverse.core.undo_commands import PropertyChangeCommand
+
+        cmd = PropertyChangeCommand(item, before_state, after_state)
+        main_window.undo_stack.push(cmd)
+
+        main_window.undo_stack.undo()
+        assert item.params.color_hex == original_color_hex
+        from optiverse.core.color_utils import hex_from_qcolor
+
+        assert hex_from_qcolor(item._color) == original_color_hex

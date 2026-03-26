@@ -460,7 +460,14 @@ class BaseObj(QtWidgets.QGraphicsObject):
             act_send_to_back: "send_to_back",
         }
         if op := action_map.get(selected_action):
-            layer_state.apply_z_order_operation(uuids, op)
+            from ..core.undo_commands import ZOrderCommand
+
+            cmd = ZOrderCommand(layer_state, uuids, op)
+            undo_stack = getattr(main_window, "undo_stack", None)
+            if undo_stack:
+                undo_stack.push(cmd)
+            else:
+                cmd.execute()
 
     # Abstract interface methods (subclasses should override)
     def open_editor(self):

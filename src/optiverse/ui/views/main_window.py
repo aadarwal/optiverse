@@ -441,14 +441,12 @@ class MainWindow(QtWidgets.QMainWindow):
             item.edited.connect(self._maybe_retrace)  # type: ignore[attr-defined]
             item.edited.connect(partial(self.collaboration_manager.broadcast_update_item, item))  # type: ignore[attr-defined]
 
-        # Connect commandCreated signal for undo/redo
-        # BaseObj and RulerItem both have commandCreated signal
-        if isinstance(item, BaseObj):
+        # Connect commandCreated signal for undo/redo (duck-type for all item types)
+        if hasattr(item, "commandCreated"):
             item.commandCreated.connect(self.undo_stack.push)
-            # Connect requestDelete for undoable context-menu deletion with retrace
+        # Connect requestDelete for undoable context-menu deletion with retrace
+        if hasattr(item, "requestDelete"):
             item.requestDelete.connect(self._handle_item_delete)
-        elif isinstance(item, RulerItem):
-            item.commandCreated.connect(self.undo_stack.push)
 
         # Refresh layer panel when item is added
         self._refresh_layer_panel()
@@ -777,7 +775,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         component_data = item.to_component_dict()
-        initial_state = item.capture_state()
+        baseline_state = item.capture_state()
 
         self.open_component_editor(component_data)
 
@@ -786,6 +784,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         def _apply_back():
             """Read the editor's current record and push changes to the placed item."""
+            nonlocal baseline_state
             editor = self._comp_editor
             if editor is None:
                 return
@@ -813,9 +812,10 @@ class MainWindow(QtWidgets.QMainWindow):
             item.edited.emit()
 
             final_state = item.capture_state()
-            if initial_state != final_state:
-                cmd = PropertyChangeCommand(item, initial_state, final_state)
+            if baseline_state != final_state:
+                cmd = PropertyChangeCommand(item, baseline_state, final_state)
                 self.undo_stack.push(cmd)
+                baseline_state = final_state
             self._schedule_retrace()
 
         self._comp_editor.saved.connect(_apply_back)
