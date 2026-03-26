@@ -282,6 +282,10 @@ class SourceParams:
     custom_jones_ey_real: float = 0.0
     custom_jones_ey_imag: float = 0.0
     use_custom_jones: bool = False
+    # Source type: "ray" (geometric) or "gaussian" (Gaussian beam)
+    source_type: str = "ray"
+    # Gaussian beam parameters (only used when source_type == "gaussian")
+    beam_waist_mm: float = 0.5  # 1/e^2 beam waist radius w0 in mm
 
     def get_polarization(self) -> Polarization:
         """Get Polarization object based on current parameters."""

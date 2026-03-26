@@ -74,6 +74,24 @@ class IOpticalElement(ABC):
         """
         pass
 
+    def transform_q(self, q: complex, ray: RayState, normal: np.ndarray) -> complex:
+        """
+        Transform the Gaussian beam q-parameter at this element.
+
+        Default implementation returns q unchanged (identity transform).
+        Override in subclasses that affect beam geometry (lenses, mirrors,
+        refractive surfaces).
+
+        Args:
+            q: Complex beam parameter before interaction
+            ray: Incoming ray state (for direction, wavelength, etc.)
+            normal: Surface normal at hit point
+
+        Returns:
+            Transformed q-parameter after interaction
+        """
+        return q
+
     @abstractmethod
     def get_bounding_box(self) -> tuple[np.ndarray, np.ndarray]:
         """

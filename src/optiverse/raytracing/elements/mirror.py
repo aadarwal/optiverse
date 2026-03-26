@@ -78,6 +78,15 @@ class MirrorElement(IOpticalElement):
 
         return [reflected_ray]
 
+    def transform_q(self, q: complex, ray: RayState, normal: np.ndarray) -> complex:
+        """Transform q at mirror. Flat mirror is identity; curved uses f=R/2."""
+        from ...core.gaussian_beam import transform_curved_mirror, transform_flat_mirror
+
+        geometry = getattr(self, "_geometry", None)
+        if geometry is not None and getattr(geometry, "is_curved", False):
+            return transform_curved_mirror(q, geometry.get_radius())
+        return transform_flat_mirror(q)
+
     def get_bounding_box(self) -> tuple[np.ndarray, np.ndarray]:
         """Get axis-aligned bounding box"""
         min_corner = np.minimum(self.p1, self.p2)

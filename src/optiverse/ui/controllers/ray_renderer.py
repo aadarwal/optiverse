@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 if TYPE_CHECKING:
@@ -139,6 +140,8 @@ class RayRenderer:
         Software fallback rendering using QGraphicsPathItem.
 
         Each source's rays are rendered at source.zValue() + 0.1.
+        Gaussian beams are drawn as filled envelope polygons with the
+        central ray on top.
 
         Args:
             paths: List of RayPath objects to render
@@ -152,32 +155,131 @@ class RayRenderer:
             r, g, b, _a = p.rgba
             z_value = self._get_source_z_value(p.source_index)
             has_per_seg = len(p.intensities) >= len(p.points)
-            pen_width = self._ray_width_px * RAY_WIDTH_OPENGL_SCALE
 
-            # Draw each segment with its own alpha based on intensity
-            for i in range(len(p.points) - 1):
-                seg_path = QtGui.QPainterPath(
-                    QtCore.QPointF(p.points[i][0], p.points[i][1])
-                )
-                seg_path.lineTo(p.points[i + 1][0], p.points[i + 1][1])
+            is_gaussian = len(p.beam_radii) >= len(p.points)
 
-                item = QtWidgets.QGraphicsPathItem(seg_path)
+            if is_gaussian:
+                self._render_gaussian_beam(p, r, g, b, _a, z_value, has_per_seg)
+            else:
+                pen_width = self._ray_width_px * RAY_WIDTH_OPENGL_SCALE
+                for i in range(len(p.points) - 1):
+                    seg_path = QtGui.QPainterPath(
+                        QtCore.QPointF(p.points[i][0], p.points[i][1])
+                    )
+                    seg_path.lineTo(p.points[i + 1][0], p.points[i + 1][1])
 
-                # Use per-point intensity for alpha (intensity at segment start)
-                if has_per_seg:
-                    seg_alpha = int(255 * max(0.0, min(1.0, p.intensities[i])))
-                else:
-                    seg_alpha = _a
+                    item = QtWidgets.QGraphicsPathItem(seg_path)
 
-                color = QtGui.QColor(r, g, b, seg_alpha)
-                pen = QtGui.QPen(color)
-                pen.setWidthF(pen_width)
-                pen.setCosmetic(True)
-                item.setPen(pen)
-                item.setZValue(z_value)
+                    if has_per_seg:
+                        seg_alpha = int(255 * max(0.0, min(1.0, p.intensities[i])))
+                    else:
+                        seg_alpha = _a
 
-                self.scene.addItem(item)
-                self.ray_items.append(item)
+                    color = QtGui.QColor(r, g, b, seg_alpha)
+                    pen = QtGui.QPen(color)
+                    pen.setWidthF(pen_width)
+                    pen.setCosmetic(True)
+                    item.setPen(pen)
+                    item.setZValue(z_value)
+
+                    self.scene.addItem(item)
+                    self.ray_items.append(item)
+
+    def _render_gaussian_beam(
+        self,
+        p: RayPath,
+        r: int,
+        g: int,
+        b: int,
+        base_alpha: int,
+        z_value: float,
+        has_per_seg: bool,
+    ) -> None:
+        """
+        Render a Gaussian beam path as nested envelope polygons.
+
+        Draws three concentric layers (outer to inner) at different fractions
+        of the 1/e^2 beam radius with increasing opacity, approximating the
+        Gaussian transverse intensity profile. A thin central ray line is
+        drawn on top.
+        """
+        points = p.points
+        radii = p.beam_radii
+        n = len(points)
+
+        # Compute perpendicular direction at each point
+        perps = []
+        for i in range(n):
+            if i < n - 1:
+                seg = np.array(points[i + 1]) - np.array(points[i])
+            else:
+                seg = np.array(points[i]) - np.array(points[i - 1])
+            seg_len = np.linalg.norm(seg)
+            if seg_len > 1e-12:
+                tangent = seg / seg_len
+            else:
+                tangent = np.array([1.0, 0.0])
+            perps.append(np.array([-tangent[1], tangent[0]]))
+
+        # Nested envelope layers: (radius_fraction, alpha_fraction)
+        # Outer layer = faintest, inner = most opaque
+        ENVELOPE_LAYERS = [
+            (1.0, 0.10),   # 1/e^2 boundary — very faint
+            (0.7, 0.18),   # ~half-power region
+            (0.35, 0.30),  # core
+        ]
+
+        for radius_frac, alpha_frac in ENVELOPE_LAYERS:
+            envelope_path = QtGui.QPainterPath()
+
+            # Forward pass: upper edge (+w)
+            first_upper = points[0] + radii[0] * radius_frac * perps[0]
+            envelope_path.moveTo(QtCore.QPointF(float(first_upper[0]), float(first_upper[1])))
+            for i in range(1, n):
+                upper = points[i] + radii[i] * radius_frac * perps[i]
+                envelope_path.lineTo(QtCore.QPointF(float(upper[0]), float(upper[1])))
+
+            # Backward pass: lower edge (-w)
+            for i in range(n - 1, -1, -1):
+                lower = points[i] - radii[i] * radius_frac * perps[i]
+                envelope_path.lineTo(QtCore.QPointF(float(lower[0]), float(lower[1])))
+
+            envelope_path.closeSubpath()
+
+            item = QtWidgets.QGraphicsPathItem(envelope_path)
+            fill_alpha = int(255 * alpha_frac)
+            item.setBrush(QtGui.QBrush(QtGui.QColor(r, g, b, fill_alpha)))
+            item.setPen(QtGui.QPen(QtCore.Qt.PenStyle.NoPen))
+            item.setZValue(z_value)
+
+            self.scene.addItem(item)
+            self.ray_items.append(item)
+
+        # Central ray line on top
+        RAY_WIDTH_OPENGL_SCALE = 2.0
+        pen_width = self._ray_width_px * RAY_WIDTH_OPENGL_SCALE
+        for i in range(n - 1):
+            seg_path = QtGui.QPainterPath(
+                QtCore.QPointF(float(points[i][0]), float(points[i][1]))
+            )
+            seg_path.lineTo(float(points[i + 1][0]), float(points[i + 1][1]))
+
+            item = QtWidgets.QGraphicsPathItem(seg_path)
+
+            if has_per_seg:
+                seg_alpha = int(255 * max(0.0, min(1.0, p.intensities[i])))
+            else:
+                seg_alpha = base_alpha
+
+            color = QtGui.QColor(r, g, b, seg_alpha)
+            pen = QtGui.QPen(color)
+            pen.setWidthF(pen_width)
+            pen.setCosmetic(True)
+            item.setPen(pen)
+            item.setZValue(z_value + 0.01)
+
+            self.scene.addItem(item)
+            self.ray_items.append(item)
 
     def _update_path_measures(self, paths: list[RayPath]) -> None:
         """

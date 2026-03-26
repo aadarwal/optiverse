@@ -93,6 +93,12 @@ class LensElement(IOpticalElement):
 
         return [refracted_ray]
 
+    def transform_q(self, q: complex, ray: RayState, normal: np.ndarray) -> complex:
+        """Transform q through ideal thin lens: 1/q' = 1/q - 1/f."""
+        from ...core.gaussian_beam import transform_thin_lens
+
+        return transform_thin_lens(q, self.efl_mm)
+
     def get_bounding_box(self) -> tuple[np.ndarray, np.ndarray]:
         """Get axis-aligned bounding box"""
         min_corner = np.minimum(self.p1, self.p2)

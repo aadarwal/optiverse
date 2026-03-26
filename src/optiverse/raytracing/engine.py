@@ -18,6 +18,11 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 
 from ..core.color_utils import qcolor_from_hex
+from ..core.gaussian_beam import (
+    beam_radius_from_q,
+    propagate_free_space,
+    q_from_waist,
+)
 from ..core.models import SourceParams
 from ..core.raytracing_math import NUMBA_AVAILABLE, deg2rad, ray_hit_element
 from .elements.base import IOpticalElement, RayIntersection
@@ -176,6 +181,14 @@ def _generate_rays_from_source(source: SourceParams) -> list[Ray]:
     src_col = qcolor_from_hex(source.color_hex)
     base_rgb = (src_col.red(), src_col.green(), src_col.blue())
 
+    # Gaussian beam q-parameter (None for geometric rays)
+    is_gaussian = getattr(source, "source_type", "ray") == "gaussian"
+    initial_q: complex | None = None
+    initial_beam_radius = 0.0
+    if is_gaussian and source.beam_waist_mm > 0:
+        initial_q = q_from_waist(source.beam_waist_mm, source.wavelength_nm)
+        initial_beam_radius = source.beam_waist_mm
+
     # Create rays
     rays = []
     for i, y_offset in enumerate(y_offsets):
@@ -194,9 +207,11 @@ def _generate_rays_from_source(source: SourceParams) -> list[Ray]:
             base_rgb=base_rgb,
             intensity=1.0,
             events=0,
-            path_points=[position.copy()],  # Initialize with starting position
-            path_polarizations=[initial_polarization],  # Polarization at source
-            path_intensities=[1.0],  # Intensity at source
+            path_points=[position.copy()],
+            path_polarizations=[initial_polarization],
+            path_intensities=[1.0],
+            q_parameter=initial_q,
+            path_beam_radii=[initial_beam_radius] if initial_q is not None else [],
         )
         rays.append(ray)
 
@@ -261,6 +276,7 @@ def _trace_single_ray(
                         source_index=source_index,
                         polarizations=current_ray.path_polarizations,
                         intensities=current_ray.path_intensities,
+                        beam_radii=current_ray.path_beam_radii,
                     )
                 )
             continue
@@ -343,6 +359,15 @@ def _trace_single_ray(
             current_ray.path_polarizations.append(current_ray.polarization)
             current_ray.path_intensities.append(current_ray.intensity)
 
+            # Propagate q-parameter through free space to end of ray
+            if current_ray.q_parameter is not None:
+                current_ray.q_parameter = propagate_free_space(
+                    current_ray.q_parameter, current_ray.remaining_length
+                )
+                current_ray.path_beam_radii.append(
+                    beam_radius_from_q(current_ray.q_parameter, current_ray.wavelength_nm)
+                )
+
             alpha = int(255 * max(0.0, min(1.0, current_ray.intensity)))
             paths.append(
                 RayPath(
@@ -353,6 +378,7 @@ def _trace_single_ray(
                     source_index=source_index,
                     polarizations=current_ray.path_polarizations,
                     intensities=current_ray.path_intensities,
+                    beam_radii=current_ray.path_beam_radii,
                 )
             )
             continue
@@ -365,9 +391,20 @@ def _trace_single_ray(
         current_ray.path_polarizations.append(current_ray.polarization)
         current_ray.path_intensities.append(current_ray.intensity)
 
+        # Propagate q through free space to the hit point, then transform at element
+        if current_ray.q_parameter is not None:
+            current_ray.q_parameter = propagate_free_space(
+                current_ray.q_parameter, nearest_distance
+            )
+            current_ray.path_beam_radii.append(
+                beam_radius_from_q(current_ray.q_parameter, current_ray.wavelength_nm)
+            )
+            # Transform q at the optical element
+            current_ray.q_parameter = nearest_element.transform_q(
+                current_ray.q_parameter, current_ray, nearest_intersection.normal
+            )
+
         # Interact with element - POLYMORPHIC DISPATCH!
-        # This is the magic: no type checking, no if-elif chains
-        # Just call element.interact() and it does the right thing!
         output_rays = nearest_element.interact(
             current_ray,
             nearest_intersection.point,
@@ -376,9 +413,7 @@ def _trace_single_ray(
         )
 
         # Handle absorption case (empty output_rays)
-        # The ray path ends at the absorption point and should be rendered
         if not output_rays:
-            # Ray was absorbed - save the path up to the absorption point
             alpha = int(255 * max(0.0, min(1.0, current_ray.intensity)))
             paths.append(
                 RayPath(
@@ -389,13 +424,13 @@ def _trace_single_ray(
                     source_index=source_index,
                     polarizations=current_ray.path_polarizations,
                     intensities=current_ray.path_intensities,
+                    beam_radii=current_ray.path_beam_radii,
                 )
             )
             continue
 
         # Track last element and propagate engine-specific fields to output rays
         for out_ray in output_rays:
-            # Use ray object as key (Ray objects are hashable via id)
             ray_id = id(out_ray)
             last_element_for_ray[ray_id] = nearest_element
 
@@ -405,7 +440,6 @@ def _trace_single_ray(
             if not hasattr(out_ray, "remaining_length"):
                 out_ray.remaining_length = current_ray.remaining_length - nearest_distance
             if not hasattr(out_ray, "path_points") or len(out_ray.path_points) == 0:
-                # Copy path points from current ray (which includes the interaction point)
                 out_ray.path_points = current_ray.path_points.copy()
             if len(out_ray.path_polarizations) == 0:
                 out_ray.path_polarizations = current_ray.path_polarizations.copy()
@@ -416,6 +450,13 @@ def _trace_single_ray(
                 out_ray.path_polarizations[-1] = out_ray.polarization
             if len(out_ray.path_intensities) > 0:
                 out_ray.path_intensities[-1] = out_ray.intensity
+
+            # Propagate Gaussian beam q-parameter to child rays
+            if current_ray.q_parameter is not None:
+                if out_ray.q_parameter is None:
+                    out_ray.q_parameter = current_ray.q_parameter
+                if len(out_ray.path_beam_radii) == 0:
+                    out_ray.path_beam_radii = current_ray.path_beam_radii.copy()
 
         # Add output rays to stack for processing
         stack.extend(output_rays)

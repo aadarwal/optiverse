@@ -160,6 +160,41 @@ class SourceItem(BaseObj):
         # Connect to item's edited signal to sync spinboxes
         self.edited.connect(sync_from_item)
 
+        # Source type selector
+        source_type_combo = QtWidgets.QComboBox()
+        source_type_combo.addItems(["Geometric Rays", "Gaussian Beam"])
+        is_gaussian = getattr(self.params, "source_type", "ray") == "gaussian"
+        source_type_combo.setCurrentIndex(1 if is_gaussian else 0)
+
+        # Beam waist (only for Gaussian mode)
+        beam_waist = SmartDoubleSpinBox()
+        beam_waist.setRange(0.001, 1e4)
+        beam_waist.setDecimals(4)
+        beam_waist.setSuffix(" mm")
+        beam_waist.setValue(getattr(self.params, "beam_waist_mm", 0.5))
+        beam_waist.setToolTip("1/e² beam waist radius w₀ at the source position")
+
+        # Label for beam waist (so we can show/hide it)
+        beam_waist_label = QtWidgets.QLabel("Beam waist (w₀)")
+
+        def update_source_type():
+            is_gauss = source_type_combo.currentIndex() == 1
+            self.params.source_type = "gaussian" if is_gauss else "ray"
+            beam_waist.setVisible(is_gauss)
+            beam_waist_label.setVisible(is_gauss)
+            self.edited.emit()
+
+        def update_beam_waist():
+            self.params.beam_waist_mm = beam_waist.value()
+            self.edited.emit()
+
+        source_type_combo.currentIndexChanged.connect(lambda: update_source_type())
+        beam_waist.valueChanged.connect(update_beam_waist)
+
+        # Set initial visibility
+        beam_waist.setVisible(is_gaussian)
+        beam_waist_label.setVisible(is_gaussian)
+
         # Source parameters
         size = SmartDoubleSpinBox()
         size.setRange(0, 1e6)
@@ -361,6 +396,8 @@ class SourceItem(BaseObj):
         f.addRow("X Position", x)
         f.addRow("Y Position", y)
         f.addRow("Optical Axis Angle", ang)
+        f.addRow("Source Type", source_type_combo)
+        f.addRow(beam_waist_label, beam_waist)
         f.addRow("Aperture size", size)
         f.addRow("# Rays", nr)
         f.addRow("Ray length", rlen)

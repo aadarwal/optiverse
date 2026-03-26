@@ -142,6 +142,26 @@ class RefractiveElement(IOpticalElement):
 
         return output_rays
 
+    def transform_q(self, q: complex, ray: RayState, normal: np.ndarray) -> complex:
+        """Transform q through refractive interface (flat or curved)."""
+        from ...core.gaussian_beam import (
+            transform_curved_refraction,
+            transform_flat_refraction,
+        )
+
+        dot_v_n = float(np.dot(ray.direction, normal))
+        if dot_v_n < 0:
+            n_incident, n_transmitted = self.n1, self.n2
+        else:
+            n_incident, n_transmitted = self.n2, self.n1
+
+        geometry = getattr(self, "_geometry", None)
+        if geometry is not None and getattr(geometry, "is_curved", False):
+            return transform_curved_refraction(
+                q, n_incident, n_transmitted, geometry.get_radius()
+            )
+        return transform_flat_refraction(q, n_incident, n_transmitted)
+
     def get_bounding_box(self) -> tuple[np.ndarray, np.ndarray]:
         """Get axis-aligned bounding box"""
         min_corner = np.minimum(self.p1, self.p2)

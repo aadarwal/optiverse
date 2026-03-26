@@ -37,6 +37,8 @@ class RayState:
     path_points: list[np.ndarray] = field(default_factory=list)  # List of points for visualization
     path_polarizations: list = field(default_factory=list)  # Polarization at each path point
     path_intensities: list[float] = field(default_factory=list)  # Intensity at each path point
+    q_parameter: complex | None = None  # Complex beam parameter for Gaussian beams (None = geometric ray)
+    path_beam_radii: list[float] = field(default_factory=list)  # Beam radius at each path point (mm)
 
     def advance(self, distance: float) -> RayState:
         """
@@ -124,6 +126,7 @@ class RayPath:
     source_index: int = 0  # Index of the source that emitted this ray
     polarizations: list = field(default_factory=list)  # Per-point polarization states
     intensities: list[float] = field(default_factory=list)  # Per-point intensities (0.0 to 1.0)
+    beam_radii: list[float] = field(default_factory=list)  # Per-point 1/e^2 beam radius in mm (empty = geometric ray)
 
 
 # Alias for backward compatibility and simpler imports
