@@ -5,6 +5,12 @@ All notable changes to Optiverse will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Component Editor toolbar: **Update Canvas Instances…** — after confirmation, updates every placed component on the main canvas that matches the current component name (single batch undo; pose and lock preserved).
+
 ## [0.3.2] - 2026-03-26
 
 ### Added

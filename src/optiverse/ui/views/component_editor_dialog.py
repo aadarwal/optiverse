@@ -187,6 +187,10 @@ class ComponentEditor(QtWidgets.QMainWindow):
         act_save.triggered.connect(self.save_component)
         tb.addAction(act_save)
 
+        act_update_canvas = QtGui.QAction("Update Canvas Instances…", self)
+        act_update_canvas.triggered.connect(self._on_update_canvas_instances)
+        tb.addAction(act_update_canvas)
+
         act_export = QtGui.QAction("Export Component…", self)
         act_export.triggered.connect(self.export_component)
         tb.addAction(act_export)
@@ -731,6 +735,21 @@ class ComponentEditor(QtWidgets.QMainWindow):
         """Smart paste (delegated to image_handler)."""
         if self._image_handler:
             self._image_handler.smart_paste()
+
+    def _on_update_canvas_instances(self):
+        """Push the current editor definition to all matching items on the main canvas."""
+        parent = self.parent()
+        if parent is None or not hasattr(parent, "update_canvas_instances_from_component_editor"):
+            QtWidgets.QMessageBox.information(
+                self,
+                "Update Canvas Instances",
+                (
+                    "Open the component editor from the main Optiverse window "
+                    "to update placed components."
+                ),
+            )
+            return
+        parent.update_canvas_instances_from_component_editor(self)
 
     # ---------- JSON Copy/Paste ----------
     def _build_record_from_ui(self) -> ComponentRecord | None:

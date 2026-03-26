@@ -44,6 +44,7 @@ from ..controllers.library_manager import LibraryManager
 from ..controllers.ray_renderer import RayRenderer
 from ..widgets.layer_panel import LayerPanel
 from ..widgets.library_tree import LibraryTree
+from .component_canvas_sync import apply_record_to_component_item, normalized_component_name
 from .log_window import LogWindow
 from .placement_handler import PlacementHandler
 from .ruler_placement_handler import RulerPlacementHandler
@@ -431,8 +432,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _connect_item_signals(self, item):
         """Connect standard signals for a new item (edited, commandCreated, requestDelete)."""
-        from ...objects import BaseObj
-
         # Connect edited signal for retrace and collaboration
         if isinstance(item, Editable):
             item.edited.connect(self._maybe_retrace)  # type: ignore[attr-defined]
@@ -764,7 +763,6 @@ class MainWindow(QtWidgets.QMainWindow):
         behaviour) **and** the placed scene instance is updated in-place so
         the canvas reflects the changes immediately.
         """
-        from ...core.models import serialize_component
         from ...core.undo_commands import PropertyChangeCommand
         from ...objects.generic.component_item import ComponentItem
 
@@ -789,24 +787,9 @@ class MainWindow(QtWidgets.QMainWindow):
             if rec is None:
                 return
 
-            serialized = serialize_component(rec, self.storage_service.settings_service)
-
-            if serialized.get("interfaces"):
-                from ...core.interface_definition import InterfaceDefinition
-
-                item.params.interfaces = [
-                    InterfaceDefinition.from_dict(d) for d in serialized["interfaces"]
-                ]
-            item.params.name = rec.name
-            item.params.object_height_mm = rec.object_height_mm
-            item.params.category = rec.category
-            item.params.notes = rec.notes or ""
-            if rec.image_path:
-                item.params.image_path = rec.image_path
-
-            item._update_geom()
-            item._maybe_attach_sprite()
-            item.edited.emit()
+            apply_record_to_component_item(
+                item, rec, self.storage_service.settings_service
+            )
 
             final_state = item.capture_state()
             if baseline_state != final_state:
@@ -816,6 +799,68 @@ class MainWindow(QtWidgets.QMainWindow):
             self._schedule_retrace()
 
         self._comp_editor.saved.connect(_apply_back)
+
+    def update_canvas_instances_from_component_editor(self, editor) -> None:
+        """Update every placed ComponentItem whose name matches the editor's current record.
+
+        Shows a confirmation dialog first. Uses one batch undo command for all changes.
+        """
+        from ...core.undo_commands import BatchPropertyChangeCommand
+        from ...objects.generic.component_item import ComponentItem
+
+        rec = editor._build_record_from_ui()
+        if rec is None:
+            return
+
+        key = normalized_component_name(rec.name)
+        if not key:
+            return
+
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "Update canvas instances",
+            (
+                f"This will change the main canvas.\n\n"
+                f'All placed components named "{rec.name}" will be updated to match '
+                "the definition in this editor (interfaces, image, size, notes, "
+                "and related fields).\n\n"
+                "Each instance keeps its position, rotation, z-order, and lock state.\n\n"
+                "Do you want to continue?"
+            ),
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No,
+        )
+        if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+
+        targets = [
+            it
+            for it in self.scene.items()
+            if isinstance(it, ComponentItem)
+            and normalized_component_name(it.params.name) == key
+        ]
+        if not targets:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Update canvas instances",
+                f'No placed components named "{rec.name}" were found on the canvas.',
+            )
+            return
+
+        entries: list = []
+        for item in targets:
+            old_state = item.capture_state()
+            apply_record_to_component_item(
+                item, rec, self.storage_service.settings_service
+            )
+            new_state = item.capture_state()
+            if old_state != new_state:
+                entries.append((item, old_state, new_state))
+
+        if entries:
+            cmd = BatchPropertyChangeCommand(entries)
+            self.undo_stack.push(cmd)
+        self._schedule_retrace()
 
     def apply_component_properties_to_all(self, source_item):
         """Open the Apply-Properties-to-All dialog for *source_item*."""
