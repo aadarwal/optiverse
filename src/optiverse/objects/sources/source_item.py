@@ -163,7 +163,7 @@ class SourceItem(BaseObj):
         # Source type selector
         source_type_combo = QtWidgets.QComboBox()
         source_type_combo.addItems(["Geometric Rays", "Gaussian Beam"])
-        is_gaussian = getattr(self.params, "source_type", "ray") == "gaussian"
+        is_gaussian = self.params.source_type == "gaussian"
         source_type_combo.setCurrentIndex(1 if is_gaussian else 0)
 
         # Beam waist (only for Gaussian mode)
@@ -171,7 +171,7 @@ class SourceItem(BaseObj):
         beam_waist.setRange(0.001, 1e4)
         beam_waist.setDecimals(4)
         beam_waist.setSuffix(" mm")
-        beam_waist.setValue(getattr(self.params, "beam_waist_mm", 0.5))
+        beam_waist.setValue(self.params.beam_waist_mm)
         beam_waist.setToolTip("1/e² beam waist radius w₀ at the source position")
 
         # Label for beam waist (so we can show/hide it)

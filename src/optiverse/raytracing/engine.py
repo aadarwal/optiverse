@@ -182,21 +182,28 @@ def _generate_rays_from_source(source: SourceParams) -> list[Ray]:
     base_rgb = (src_col.red(), src_col.green(), src_col.blue())
 
     # Gaussian beam q-parameter (None for geometric rays)
-    is_gaussian = getattr(source, "source_type", "ray") == "gaussian"
+    is_gaussian = source.source_type == "gaussian"
     initial_q: complex | None = None
     initial_beam_radius = 0.0
     if is_gaussian and source.beam_waist_mm > 0:
         initial_q = q_from_waist(source.beam_waist_mm, source.wavelength_nm)
         initial_beam_radius = source.beam_waist_mm
 
+    # For multi-ray Gaussian sources, only the central ray carries the
+    # q-parameter (and thus draws the beam envelope). Other rays render
+    # as thin geometric lines to avoid overlapping envelopes.
+    central_index = len(y_offsets) // 2
+
     # Create rays
     rays = []
     for i, y_offset in enumerate(y_offsets):
         angle = angles[i]
         direction = np.array([math.cos(angle), math.sin(angle)], dtype=float)
-        # Apply offset perpendicular to ray direction (90° CCW from direction)
         perpendicular = np.array([-math.sin(angle), math.cos(angle)], dtype=float)
         position = np.array([source.x_mm, source.y_mm], dtype=float) + y_offset * perpendicular
+
+        is_chief = (i == central_index) or len(y_offsets) == 1
+        ray_q = initial_q if is_chief else None
 
         ray = Ray(
             position=position,
@@ -210,8 +217,8 @@ def _generate_rays_from_source(source: SourceParams) -> list[Ray]:
             path_points=[position.copy()],
             path_polarizations=[initial_polarization],
             path_intensities=[1.0],
-            q_parameter=initial_q,
-            path_beam_radii=[initial_beam_radius] if initial_q is not None else [],
+            q_parameter=ray_q,
+            path_beam_radii=[initial_beam_radius] if ray_q is not None else [],
         )
         rays.append(ray)
 

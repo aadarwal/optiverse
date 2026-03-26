@@ -167,14 +167,3 @@ def transform_curved_mirror(q: complex, radius_mm: float) -> complex:
     if abs(radius_mm) < 1e-12:
         return q
     return transform_thin_lens(q, radius_mm / 2.0)
-
-
-def _transform_abcd(q: complex, A: float, B: float, C: float, D: float) -> complex:
-    """
-    General ABCD matrix transformation: q' = (A*q + B) / (C*q + D).
-    """
-    numerator = A * q + B
-    denominator = C * q + D
-    if abs(denominator) < 1e-30:
-        return q
-    return numerator / denominator
