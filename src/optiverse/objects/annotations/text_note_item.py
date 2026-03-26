@@ -40,6 +40,7 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
     def mouseDoubleClickEvent(self, ev: QtWidgets.QGraphicsSceneMouseEvent | None):
         if ev is None:
             return
+        self._text_before_edit = self.toPlainText()
         self.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextEditorInteraction)
         super().mouseDoubleClickEvent(ev)
 
@@ -48,6 +49,20 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
             return
         super().focusOutEvent(ev)
         self.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.NoTextInteraction)
+        old_text = getattr(self, "_text_before_edit", None)
+        if old_text is not None:
+            new_text = self.toPlainText()
+            if old_text != new_text:
+                from ...core.undo_commands import TextEditCommand
+
+                cmd = TextEditCommand(self, old_text, new_text)
+                scene = self.scene()
+                if scene and scene.views():
+                    mw = scene.views()[0].window()
+                    undo_stack = getattr(mw, "undo_stack", None)
+                    if undo_stack:
+                        undo_stack.push(cmd)
+            self._text_before_edit = None
 
     def contextMenuEvent(self, ev: QtWidgets.QGraphicsSceneContextMenuEvent | None):
         """Right-click context menu with Edit, Delete, and Z-Order options."""
@@ -66,6 +81,7 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
             return
         a = m.exec(ev.screenPos())
         if a == act_edit:
+            self._text_before_edit = self.toPlainText()
             self.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextEditorInteraction)
             cursor = self.textCursor()
             cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
@@ -74,7 +90,20 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
         elif a == act_del:
             scene = self.scene()
             if scene is not None:
-                scene.removeItem(self)
+                from ...core.undo_commands import RemoveItemCommand
+
+                layer_state = None
+                undo_stack = None
+                if scene.views():
+                    mw = scene.views()[0].window()
+                    if isinstance(mw, HasLayerState):
+                        layer_state = mw.layer_state
+                    undo_stack = getattr(mw, "undo_stack", None)
+                cmd = RemoveItemCommand(scene, self, layer_state)
+                if undo_stack:
+                    undo_stack.push(cmd)
+                else:
+                    cmd.execute()
         else:
             # Handle z-order actions
             action_map = {
@@ -91,7 +120,14 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
                         items = list(scene.selectedItems()) if self.isSelected() else [self]
                         uuids = [it.item_uuid for it in items if hasattr(it, "item_uuid")]
                         if uuids:
-                            main_window.layer_state.apply_z_order_operation(uuids, op)
+                            from ...core.undo_commands import ZOrderCommand
+
+                            cmd = ZOrderCommand(main_window.layer_state, uuids, op)
+                            undo_stack = getattr(main_window, "undo_stack", None)
+                            if undo_stack:
+                                undo_stack.push(cmd)
+                            else:
+                                cmd.execute()
 
     def clone(self, offset_mm: tuple[float, float] = (20.0, 20.0)) -> TextNoteItem:
         """Create a deep copy of this text note with optional position offset."""

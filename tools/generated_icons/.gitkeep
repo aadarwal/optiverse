@@ -1,0 +1,12 @@
+# Generated application icons (local only)
+
+- `optiverse.icns` — macOS icon bundle
+- `optiverse.ico` — Windows icon
+
+Generate with:
+
+```bash
+python tools/create_icon.py
+```
+
+Source: `src/optiverse/ui/icons/optiverse.png`

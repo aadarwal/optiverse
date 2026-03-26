@@ -61,14 +61,17 @@ class SourceItem(BaseObj):
         self._arrow.moveTo(0, 0)
         self._arrow.lineTo(18.0, 0.0)
 
+    def _hitbox_rect(self) -> QtCore.QRectF:
+        """Padded rectangular hitbox around the visual elements (bar + arrow)."""
+        pad = 8.0
+        return QtCore.QRectF(-pad, -self._half - pad, 18.0 + 2 * pad, self._half * 2 + 2 * pad)
+
     def boundingRect(self) -> QtCore.QRectF:
-        # Must encompass the hitbox (40px wide) plus some margin
-        return QtCore.QRectF(-2, -self._half - 2, 44, self._half * 2 + 4)
+        return self._hitbox_rect().adjusted(-2, -2, 2, 2)
 
     def shape(self) -> QtGui.QPainterPath:
-        # Rectangular hitbox: height of aperture, 40px wide in beam direction
         path = QtGui.QPainterPath()
-        path.addRect(QtCore.QRectF(0, -self._half, 40, self._half * 2))
+        path.addRect(self._hitbox_rect())
         return path
 
     def paint(self, p: QtGui.QPainter | None, opt, widget=None):
@@ -83,6 +86,16 @@ class SourceItem(BaseObj):
         p.drawPath(self._bar)
         p.setPen(pen2)
         p.drawPath(self._arrow)
+
+        hit = self._hitbox_rect()
+        if self.isSelected():
+            p.setPen(QtCore.Qt.PenStyle.NoPen)
+            p.setBrush(QtGui.QColor(30, 144, 255, 70))
+            p.drawRect(hit)
+        elif getattr(self, "_hovered", False):
+            p.setPen(QtCore.Qt.PenStyle.NoPen)
+            p.setBrush(QtGui.QColor(30, 144, 255, 35))
+            p.drawRect(hit)
 
     def open_editor(self):
         """Open editor dialog for source parameters."""
@@ -398,6 +411,11 @@ class SourceItem(BaseObj):
         else:
             # User clicked Cancel - restore initial state
             self.apply_state(initial_state)
+
+    def apply_state(self, state: dict[str, Any]) -> None:
+        """Override to sync _color from params after base apply."""
+        super().apply_state(state)
+        self._color = qcolor_from_hex(self.params.color_hex)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""

@@ -44,7 +44,7 @@ class UndoStack(QtCore.QObject):
         if self._undo_stack and command.id() != -1:
             last_command = self._undo_stack[-1]
             if last_command.id() == command.id() and last_command.merge_with(command):
-                # Successfully merged, no need to add new command
+                self.commandPushed.emit()
                 return
 
         # Clear redo stack when new command is pushed

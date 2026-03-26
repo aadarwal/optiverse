@@ -30,7 +30,7 @@ def invert_icon(input_path: Path, output_path: Path) -> None:
 
 
 def main():
-    # Paths
+    # Paths (project root is parent of tools/)
     icons_dir = Path(__file__).parent.parent / "src" / "optiverse" / "ui" / "icons"
     light_dir = icons_dir / "light"
     dark_dir = icons_dir / "dark"
@@ -67,4 +67,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

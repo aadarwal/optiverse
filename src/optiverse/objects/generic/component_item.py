@@ -496,6 +496,98 @@ class ComponentItem(BaseObj):
             # User clicked Cancel - restore initial state
             self.apply_state(initial_state)
 
+    def to_component_dict(self) -> dict[str, Any]:
+        """Extract a library-compatible component dict from this placed instance.
+
+        The returned dict is suitable for passing to ComponentEditor._load_from_dict().
+        """
+        data: dict[str, Any] = {
+            "name": self.params.name or "",
+            "image_path": self.params.image_path or "",
+            "object_height_mm": self.params.object_height_mm,
+            "category": self.params.category or "",
+            "notes": self.params.notes or "",
+            "angle_deg": self.params.angle_deg,
+        }
+        if self.params.interfaces:
+            data["interfaces"] = [iface.to_dict() for iface in self.params.interfaces]
+        return data
+
+    # ------------------------------------------------------------------
+    # Context menu
+    # ------------------------------------------------------------------
+
+    def contextMenuEvent(self, ev: QtWidgets.QGraphicsSceneContextMenuEvent | None):
+        """Right-click context menu with component-specific actions."""
+        if ev is None:
+            return
+
+        m = QtWidgets.QMenu()
+        act_edit = m.addAction("Edit\u2026")
+        act_edit_in_editor = m.addAction("Edit in Component Editor\u2026")
+
+        m.addSeparator()
+        act_apply_all = m.addAction("Apply Properties to All\u2026")
+
+        act_delete = m.addAction("Delete")
+
+        m.addSeparator()
+        act_lock = m.addAction("Lock")
+        if act_lock is not None:
+            act_lock.setCheckable(True)
+            act_lock.setChecked(self._locked)
+
+        if self._locked and act_delete is not None:
+            act_delete.setEnabled(False)
+            act_delete.setToolTip("Item is locked")
+
+        m.addSeparator()
+        act_bring_to_front = m.addAction("Bring to Front")
+        act_bring_forward = m.addAction("Bring Forward")
+        act_send_backward = m.addAction("Send Backward")
+        act_send_to_back = m.addAction("Send to Back")
+
+        a = m.exec(ev.screenPos())
+        if a is None:
+            return
+        if a == act_edit:
+            self.open_editor()
+        elif a == act_edit_in_editor:
+            self._open_in_component_editor()
+        elif a == act_apply_all:
+            self._apply_properties_to_all()
+        elif a == act_lock and act_lock is not None:
+            self.set_locked(act_lock.isChecked())
+        elif a == act_delete and act_delete is not None:
+            if not self._locked:
+                self.requestDelete.emit(self)
+        elif a in (act_bring_to_front, act_bring_forward, act_send_backward, act_send_to_back):
+            self._handle_z_order_action(
+                a, act_bring_to_front, act_bring_forward, act_send_backward, act_send_to_back
+            )
+
+    def _open_in_component_editor(self):
+        """Open this component in the full Component Editor window."""
+        main_window = self._parent_window()
+        if main_window is None:
+            return
+        if not hasattr(main_window, "open_component_editor_for_item"):
+            return
+        main_window.open_component_editor_for_item(self)
+
+    def _apply_properties_to_all(self):
+        """Propagate this component's properties to other components on the canvas."""
+        main_window = self._parent_window()
+        if main_window is None:
+            return
+        if not hasattr(main_window, "apply_component_properties_to_all"):
+            return
+        main_window.apply_component_properties_to_all(self)
+
+    # ------------------------------------------------------------------
+    # Serialization
+    # ------------------------------------------------------------------
+
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
         return serialize_item(self)

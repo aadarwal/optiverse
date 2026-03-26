@@ -499,6 +499,28 @@ class BatchCommand(Command):
             cmd.undo()
 
 
+class BatchPropertyChangeCommand(Command):
+    """Undo/redo batch property changes across multiple items.
+
+    Stores a list of (item, old_state, new_state) triples so that
+    capture_state/apply_state on each item drives the undo/redo cycle.
+    """
+
+    def __init__(
+        self,
+        entries: list[tuple[Undoable, dict[str, Any], dict[str, Any]]],
+    ):
+        self._entries = entries
+
+    def execute(self) -> None:
+        for item, _old, new in self._entries:
+            item.apply_state(new)
+
+    def undo(self) -> None:
+        for item, old, _new in self._entries:
+            item.apply_state(old)
+
+
 class MoveNodeCommand(Command):
     """Command to move a single node to a new parent/index in LayerTreeState."""
 
@@ -630,28 +652,32 @@ class DeleteGroupCommand(Command):
             old = layer_state.get_parent_and_index(group_uuid)
             if old:
                 self._old_parent_uuid, self._old_index = old
-            # serialize just this subtree
+            # serialize just this subtree (including visible/locked for full restore)
             def node_to_dict(n):
                 d = {"uuid": n.uuid, "type": n.node_type}
                 if n.name is not None:
                     d["name"] = n.name
                 if n.collapsed:
                     d["collapsed"] = True
+                if not n.visible:
+                    d["visible"] = False
+                if n.locked:
+                    d["locked"] = True
                 if n.children:
                     d["children"] = [node_to_dict(c) for c in n.children]
                 return d
             self._snapshot = node_to_dict(node)
 
     def execute(self) -> None:
-        """Delete the group (works for both initial execute and redo)."""
+        """Delete the group (works for both initial execute and redo).
+
+        When keep_items=False, the caller is responsible for removing child
+        items from the scene via separate RemoveItemCommand(s).
+        """
         if not self._snapshot:
             return
         if self._layer_state.get_node(self._group_uuid):
-            if self._keep_items:
-                self._layer_state.delete_group(self._group_uuid, emit=True)
-            else:
-                # If deleting items too, caller must remove from scene separately.
-                self._layer_state.delete_group(self._group_uuid, emit=True)
+            self._layer_state.delete_group(self._group_uuid, emit=True)
 
     def undo(self) -> None:
         """Restore the group."""
@@ -685,8 +711,184 @@ class DeleteGroupCommand(Command):
                     self._layer_state.set_group_collapsed(
                         gid, bool(ch.get("collapsed", False)), emit=False
                     )
+                    gnode = self._layer_state.get_node(gid)
+                    if gnode:
+                        gnode.visible = ch.get("visible", True)
+                        gnode.locked = ch.get("locked", False)
                     add_children(gid, ch.get("children", []) or [])
                 else:
                     self._layer_state.add_item(ch["uuid"], parent_uuid, index=10**9, emit=False)
+                    inode = self._layer_state.get_node(ch["uuid"])
+                    if inode:
+                        inode.visible = ch.get("visible", True)
+                        inode.locked = ch.get("locked", False)
         add_children(root.uuid, self._snapshot.get("children", []) or [])
+        rnode = self._layer_state.get_node(root.uuid)
+        if rnode:
+            rnode.visible = self._snapshot.get("visible", True)
+            rnode.locked = self._snapshot.get("locked", False)
         self._layer_state.changed.emit()
+
+
+# =============================================================================
+# Layer Panel Commands (rename, visibility, lock, z-order)
+# =============================================================================
+
+
+class RenameNodeCommand(Command):
+    """Undoable rename of a group or item in the layer panel."""
+
+    def __init__(
+        self,
+        layer_state: LayerTreeState,
+        uuid: str,
+        old_name: str | None,
+        new_name: str | None,
+        *,
+        is_group: bool = False,
+        item: QtWidgets.QGraphicsItem | None = None,
+    ):
+        self._layer_state = layer_state
+        self._uuid = uuid
+        self._old_name = old_name
+        self._new_name = new_name
+        self._is_group = is_group
+        self._item = item
+
+    def execute(self) -> None:
+        self._apply(self._new_name)
+
+    def undo(self) -> None:
+        self._apply(self._old_name)
+
+    def _apply(self, name: str | None) -> None:
+        if self._is_group:
+            self._layer_state.rename_group(self._uuid, name or "Group", emit=True)
+        elif self._item is not None:
+            if hasattr(self._item, "display_name"):
+                self._item.display_name = name if name else None
+            elif hasattr(self._item, "params") and hasattr(self._item.params, "name"):
+                self._item.params.name = name if name else None
+
+
+class ToggleVisibilityCommand(Command):
+    """Undoable visibility toggle for a layer node."""
+
+    def __init__(self, node, old_visible: bool, new_visible: bool, apply_fn):
+        self._node = node
+        self._old = old_visible
+        self._new = new_visible
+        self._apply_fn = apply_fn
+
+    def execute(self) -> None:
+        self._node.visible = self._new
+        self._apply_fn(self._node)
+
+    def undo(self) -> None:
+        self._node.visible = self._old
+        self._apply_fn(self._node)
+
+
+class ToggleLockCommand(Command):
+    """Undoable lock toggle for a layer node."""
+
+    def __init__(self, node, old_locked: bool, new_locked: bool, apply_fn):
+        self._node = node
+        self._old = old_locked
+        self._new = new_locked
+        self._apply_fn = apply_fn
+
+    def execute(self) -> None:
+        self._node.locked = self._new
+        self._apply_fn(self._node)
+
+    def undo(self) -> None:
+        self._node.locked = self._old
+        self._apply_fn(self._node)
+
+
+class ZOrderCommand(Command):
+    """Undoable z-order operation on layer tree nodes."""
+
+    def __init__(
+        self,
+        layer_state: LayerTreeState,
+        uuids: list[str],
+        operation: str,
+    ):
+        self._layer_state = layer_state
+        self._uuids = list(uuids)
+        self._operation = operation
+        # Snapshot all affected parents' children lists before the operation
+        self._before_snapshot: dict[str | None, list[str]] = {}
+        self._snapshot_parents(self._before_snapshot)
+        self._after_snapshot: dict[str | None, list[str]] = {}
+
+    def _snapshot_parents(self, target: dict[str | None, list[str]]) -> None:
+        """Record children UUID lists for every parent that contains an affected node."""
+        seen: set[str | None] = set()
+        for uid in self._uuids:
+            node = self._layer_state.get_node(uid)
+            if not node:
+                continue
+            parent_uuid = node.parent.uuid if node.parent else None
+            if parent_uuid in seen:
+                continue
+            seen.add(parent_uuid)
+            siblings = node.parent.children if node.parent else self._layer_state.get_root_nodes()
+            target[parent_uuid] = [ch.uuid for ch in siblings]
+
+    def execute(self) -> None:
+        self._layer_state.apply_z_order_operation(self._uuids, self._operation)
+        if not self._after_snapshot:
+            self._snapshot_parents(self._after_snapshot)
+
+    def undo(self) -> None:
+        self._restore_order(self._before_snapshot)
+
+    def _restore_order(self, snapshot: dict[str | None, list[str]]) -> None:
+        self._layer_state.begin_update()
+        try:
+            for parent_uuid, child_uuids in snapshot.items():
+                for i, uid in enumerate(child_uuids):
+                    self._layer_state.move_node(uid, parent_uuid, i, emit=False)
+        finally:
+            self._layer_state.end_update()
+
+
+class TextEditCommand(Command):
+    """Undoable inline text edit for TextNoteItem."""
+
+    def __init__(self, item, old_text: str, new_text: str):
+        self._item = item
+        self._old_text = old_text
+        self._new_text = new_text
+
+    def execute(self) -> None:
+        self._item.setPlainText(self._new_text)
+
+    def undo(self) -> None:
+        self._item.setPlainText(self._old_text)
+
+
+class RectangleChangeCommand(Command):
+    """Undoable property change for RectangleItem (pos, rotation, size)."""
+
+    def __init__(self, item, before: dict[str, Any], after: dict[str, Any]):
+        self._item = item
+        self._before = before
+        self._after = after
+
+    def execute(self) -> None:
+        self._apply(self._after)
+
+    def undo(self) -> None:
+        self._apply(self._before)
+
+    def _apply(self, state: dict[str, Any]) -> None:
+        self._item.setPos(state["x"], state["y"])
+        self._item.setRotation(state["rotation"])
+        self._item.prepareGeometryChange()
+        self._item._w = state["width"]
+        self._item._h = state["height"]
+        self._item.update()

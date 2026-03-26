@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "optiverse"
-version = "0.3.1"
+version = "0.3.2"
 description = "Optiverse: 2D ray-optics sandbox and component editor (PyQt6, modular)"
 readme = "README.md"
 requires-python = ">=3.9"  # 3.9-3.11 recommended for Numba JIT speedup
@@ -15,7 +15,7 @@ dependencies = [
   "PyQt6-WebEngine>=6.5",
   "numpy>=1.24",
   "numba>=0.58",  # JIT compilation for 4-8x raytracing speedup (Python 3.9-3.11)
-  "PyOpenGL>=3.1.10",  # Hardware-accelerated ray rendering (100x+ speedup)
+  "PyOpenGL>=3.1.10",  # Hardware-accelerated ray rendering
   "websockets>=12.0",
   "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",  # macOS menu bar app name
 ]
@@ -51,7 +51,6 @@ timeout = 300  # 5 minute timeout per test to prevent hangs in CI
 [tool.coverage.run]
 branch = true
 source = ["src/optiverse"]
-omit = ["*/resources/gen/*"]
 
 [tool.coverage.report]
 show_missing = true
@@ -76,8 +75,21 @@ strict_optional = true
 warn_return_any = true
 warn_unused_configs = true
 warn_redundant_casts = true
-warn_unused_ignores = true
+warn_unused_ignores = false
 show_error_codes = true
 pretty = true
+namespace_packages = true
+
+[[tool.mypy.overrides]]
+module = [
+    "PyQt6.*",
+    "OpenGL.*",
+    "numba.*",
+    "Foundation.*",
+    "AppKit.*",
+    "optiverse.ui.objects",
+    "optiverse.ui.raytracing",
+]
+ignore_missing_imports = true
 
 

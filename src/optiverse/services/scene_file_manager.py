@@ -257,6 +257,8 @@ class SceneFileManager:
             try:
                 item = PathMeasureItem.from_dict(pm_data, ray_data)
                 self.scene.addItem(item)
+                if self._connect_item_signals:
+                    self._connect_item_signals(item)
             except (KeyError, ValueError, TypeError) as e:
                 # KeyError: missing required fields, ValueError/TypeError: invalid data
                 self.log_service.error(f"Error loading path measure: {e}", "Load")

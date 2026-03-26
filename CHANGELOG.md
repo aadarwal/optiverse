@@ -5,6 +5,36 @@ All notable changes to Optiverse will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-03-26
+
+### Added
+
+- **Placed components on canvas**: context menu **Edit in Component Editor…** (save updates library and instance, undoable) and **Apply Properties to All…** (choose scope and fields, single batch undo)
+- **Layer panel context menu**: **Edit…**, **Edit in Component Editor…** for items, and **Z-Order** submenu (bring forward/back, to front/back)
+- **Save guards** when saving from the Component Editor to reduce accidental silent duplication
+- **Undo commands** for operations that were previously missing from the stack: layer rename; visibility and lock toggles; z-order changes; inline text note edits; rectangle property edits from the editor dialog
+
+### Changed
+
+- **Hover and hitboxes**: Clearer hover feedback and more forgiving hit targets for sources, component sprites, rectangle annotations, and shared base item behavior
+- **Developer layout**: Build and icon scripts live under `tools/`; generated `.icns` / `.ico` go to `tools/generated_icons/`; Ruff and Mypy settings consolidated in `pyproject.toml`
+
+### Fixed
+
+- **Undo/redo consistency**: Layer model changes, z-order from multiple UI paths, annotation deletes, path measure wiring on load, component editor save baseline, and related cases no longer leave Ctrl+Z targeting the wrong action
+- **Group rotation undo**: Restores rotations for ruler and angle measure items included in the group
+- **Drag + autosave**: Undo merge during moves emits `commandPushed` so the autosave debounce resets correctly
+- **Collaboration**: Starting the local server from the dialog raises `OSError` on failure so errors surface properly
+- **Rotation tracking**: Missing `AngleMeasureItem` import in rotation startup
+- **Raytracing engine**: Removed dead parallel-detection branch (condition was never true)
+- **Documentation site**: GitHub Pages header shows the home button label again
+
+### Removed
+
+- Tracked `optiverse.iconset/` PNGs (icons are generated locally); root `resources/` placeholder directory
+- Obsolete `tools/` helpers (`compile_ui.py`, `compile_rc.py`, old lint/WebSocket test scripts); duplicate `.ruff.toml` and `mypy.ini` (see `pyproject.toml`)
+- Unused `StorageService.ensure_standard_components` and other dead code paths cleaned up for the release
+
 ## [0.3.1] - 2026-03-25
 
 ### Added

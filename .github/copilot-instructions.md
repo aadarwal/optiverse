@@ -99,15 +99,8 @@ pytest --cov=src --cov-report=html  # Coverage report
 
 ### Type Checking & Linting
 ```bash
-mypy src/                      # Type checking (config in mypy.ini)
+mypy src/                      # Type checking (config in pyproject.toml)
 ruff check .                   # Fast linting (config in pyproject.toml)
-```
-
-### Compiling UI Resources
-When adding `.ui` or `.qrc` files:
-```bash
-python tools/compile_ui.py     # Convert Qt Designer files
-python tools/compile_rc.py     # Compile resource files
 ```
 
 ### Collaboration Server

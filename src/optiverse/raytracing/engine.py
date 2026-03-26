@@ -73,8 +73,9 @@ def trace_rays_polymorphic(
     # Auto-detect: only enable parallel if Numba is available
     if parallel is None:
         parallel = NUMBA_AVAILABLE
-        if not NUMBA_AVAILABLE and parallel:
-            _logger.debug("Parallel processing disabled (Numba not available)")
+    if not NUMBA_AVAILABLE and parallel:
+        _logger.debug("Parallel processing disabled (Numba not available)")
+        parallel = False
 
     # Build ray job list with source index for linking rays to sources
     ray_jobs: list[tuple[Ray, list[IOpticalElement], int, float, float, SourceParams, int]] = []

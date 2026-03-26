@@ -137,6 +137,7 @@ class ComponentSvgSprite(QGraphicsSvgItem):
 
         # Track parent selection state for cache invalidation
         self._parent_was_selected = False
+        self._parent_was_hovered = False
 
     def paint(
         self,
@@ -155,20 +156,29 @@ class ComponentSvgSprite(QGraphicsSvgItem):
         # Check if parent selection state changed
         par = self.parentItem()
         is_selected = par is not None and par.isSelected()
+        is_hovered = bool(par is not None and getattr(par, "_hovered", False))
 
         # Invalidate cache if selection state changed
         if is_selected != self._parent_was_selected:
             self._parent_was_selected = is_selected
             self.update()  # Force cache refresh
+        if is_hovered != self._parent_was_hovered:
+            self._parent_was_hovered = is_hovered
+            self.update()  # Force cache refresh
 
         # Draw the SVG
         super().paint(p, opt, widget)
 
-        # Add blue tint if parent is selected
+        # Add blue tint if parent is selected (stronger) or hovered (lighter)
         if is_selected:
             p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
             p.setPen(QtCore.Qt.PenStyle.NoPen)
             p.setBrush(QtGui.QColor(30, 144, 255, 70))  # Translucent blue
+            p.drawRect(self.boundingRect())
+        elif is_hovered:
+            p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+            p.setPen(QtCore.Qt.PenStyle.NoPen)
+            p.setBrush(QtGui.QColor(30, 144, 255, 35))  # Lighter hover tint
             p.drawRect(self.boundingRect())
 
 
@@ -293,6 +303,7 @@ class ComponentSprite(QtWidgets.QGraphicsPixmapItem):
 
         # Track parent selection state for cache invalidation
         self._parent_was_selected = False
+        self._parent_was_hovered = False
 
     def paint(
         self,
@@ -311,20 +322,29 @@ class ComponentSprite(QtWidgets.QGraphicsPixmapItem):
         # Check if parent selection state changed
         par = self.parentItem()
         is_selected = par is not None and par.isSelected()
+        is_hovered = bool(par is not None and getattr(par, "_hovered", False))
 
         # Invalidate cache if selection state changed
         if is_selected != self._parent_was_selected:
             self._parent_was_selected = is_selected
             self.update()  # Force cache refresh
+        if is_hovered != self._parent_was_hovered:
+            self._parent_was_hovered = is_hovered
+            self.update()  # Force cache refresh
 
         # Draw the pixmap
         super().paint(p, opt, widget)
 
-        # Add blue tint if parent is selected
+        # Add blue tint if parent is selected (stronger) or hovered (lighter)
         if is_selected:
             p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
             p.setPen(QtCore.Qt.PenStyle.NoPen)
             p.setBrush(QtGui.QColor(30, 144, 255, 70))  # Translucent blue
+            p.drawRect(self.boundingRect())
+        elif is_hovered:
+            p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+            p.setPen(QtCore.Qt.PenStyle.NoPen)
+            p.setBrush(QtGui.QColor(30, 144, 255, 35))  # Lighter hover tint
             p.drawRect(self.boundingRect())
 
     @staticmethod
