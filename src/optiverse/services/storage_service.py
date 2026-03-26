@@ -348,16 +348,6 @@ class StorageService:
             except (OSError, KeyError, TypeError, ValueError) as e:
                 _logger.warning("Failed to save component: %s", e)
 
-    def ensure_standard_components(self) -> None:
-        """
-        Ensure standard components are loaded.
-
-        Note: Standard components are now loaded from the built-in library,
-        not copied to user library. This method is kept for backwards compatibility.
-        """
-        # No longer needed - standard components are loaded separately
-        pass
-
     def get_library_root(self) -> Path:
         """Get the library root directory."""
         if self._library_root is None:

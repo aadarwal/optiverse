@@ -312,6 +312,7 @@ class ItemDragHandler:
         """
         from ...objects import BaseObj, RectangleItem
         from ...objects.annotations import RulerItem, TextNoteItem
+        from ...objects.annotations.angle_measure_item import AngleMeasureItem
 
         # Clean up any leftover state
         self._restore_secondary_movable_flags()
@@ -333,7 +334,7 @@ class ItemDragHandler:
         # Store initial positions and rotations for all rotatable items
         for it in selected_items:
             self._drag.initial_positions[it] = QtCore.QPointF(it.pos())
-            if isinstance(it, (BaseObj, RectangleItem, TextNoteItem)):
+            if isinstance(it, (BaseObj, RectangleItem, TextNoteItem, RulerItem, AngleMeasureItem)):
                 self._drag.initial_rotations[it] = it.rotation()
 
         # Mark as group rotation if multiple items
@@ -352,9 +353,10 @@ class ItemDragHandler:
         """
         from ...core.undo_commands import RotateItemCommand, RotateItemsCommand
         from ...objects import BaseObj, RectangleItem
-        from ...objects.annotations import TextNoteItem
+        from ...objects.annotations import RulerItem, TextNoteItem
+        from ...objects.annotations.angle_measure_item import AngleMeasureItem
 
-        _rotatable = (BaseObj, RectangleItem, TextNoteItem)
+        _rotatable = (BaseObj, RectangleItem, TextNoteItem, RulerItem, AngleMeasureItem)
         commands_created = False
 
         if self._drag.initial_rotations and not self._drag.is_group_rotation:

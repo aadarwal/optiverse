@@ -494,7 +494,7 @@ class ActionBuilder:
         mTools.addAction(w.act_clear)
         mTools.addSeparator()
         mTools.addAction(w.act_inspect)
-        mTools.addAction(w.act_measure_path)
+        # Path Measure hidden: feature is buggy (toolbar button also hidden)
         mTools.addAction(w.act_measure_angle)
         mTools.addSeparator()
         mTools.addAction(w.act_editor)

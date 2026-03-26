@@ -86,8 +86,6 @@ class ComponentEditor(QtWidgets.QMainWindow):
 
         # Create undo stack
         self.undo_stack = UndoStack()
-        self.undo_stack.canUndoChanged.connect(self._update_undo_actions)
-        self.undo_stack.canRedoChanged.connect(self._update_undo_actions)
         self.undo_stack.commandPushed.connect(self._mark_modified)
 
         # Track unsaved changes
@@ -226,11 +224,6 @@ class ComponentEditor(QtWidgets.QMainWindow):
         sc_save = QtGui.QShortcut(QtGui.QKeySequence.StandardKey.Save, self)
         sc_save.setContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
         sc_save.activated.connect(self.save_component)
-
-    def _update_undo_actions(self):
-        """Update undo/redo action states (called by undo stack signals)."""
-        # Actions can be added here if needed
-        pass
 
     def _mark_modified(self):
         """Mark the component as having unsaved changes."""

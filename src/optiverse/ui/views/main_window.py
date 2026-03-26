@@ -26,10 +26,7 @@ from ...core.ui_constants import (
     ZOOM_FACTOR,
 )
 from ...core.undo_stack import UndoStack
-from ...objects import (
-    GraphicsView,
-    RulerItem,
-)
+from ...objects import GraphicsView
 from ...services.collaboration_manager import CollaborationManager
 from ...services.log_service import get_log_service
 from ...services.settings_service import SettingsService

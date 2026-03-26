@@ -320,7 +320,7 @@ class CollaborationDialog(QtWidgets.QDialog):
 
             # Check if process died
             if self.server_process.poll() is not None:
-                raise Exception(
+                raise OSError(
                     "Server crashed on startup. Please ensure:\n"
                     "1. websockets library is installed: pip install websockets\n"
                     "2. Port is not already in use\n"
@@ -331,7 +331,7 @@ class CollaborationDialog(QtWidgets.QDialog):
             if not self._check_port_listening(host, port):
                 self.server_process.terminate()
                 self.server_process = None
-                raise Exception(
+                raise OSError(
                     f"Server started but not listening on port {port}.\n"
                     "The server process is running but may have errors.\n"
                     "Try running manually: python tools/collaboration_server.py"

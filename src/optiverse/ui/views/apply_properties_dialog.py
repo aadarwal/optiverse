@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-from PyQt6 import QtCore, QtWidgets
+from PyQt6 import QtWidgets
 
 from ...core.interface_types import INTERFACE_TYPES
 

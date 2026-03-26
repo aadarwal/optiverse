@@ -68,11 +68,11 @@ class InterfaceDefinition:
     phase_shift_deg: float = 90.0  # Phase shift in degrees (90° for QWP, 180° for HWP)
     fast_axis_deg: float = 0.0  # Fast axis angle in lab frame (degrees)
 
-    # Linear polarizer properties (future)
+    # Linear polarizer properties
     transmission_axis_deg: float = 0.0  # Transmission axis angle (degrees)
     extinction_ratio_db: float = 40.0  # How well it blocks orthogonal polarization (dB)
 
-    # Faraday rotator properties (future)
+    # Faraday rotator properties
     rotation_angle_deg: float = 45.0  # Rotation angle in degrees (non-reciprocal)
 
     # Curved surface properties (for Zemax import)

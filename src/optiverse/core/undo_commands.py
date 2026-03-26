@@ -669,15 +669,15 @@ class DeleteGroupCommand(Command):
             self._snapshot = node_to_dict(node)
 
     def execute(self) -> None:
-        """Delete the group (works for both initial execute and redo)."""
+        """Delete the group (works for both initial execute and redo).
+
+        When keep_items=False, the caller is responsible for removing child
+        items from the scene via separate RemoveItemCommand(s).
+        """
         if not self._snapshot:
             return
         if self._layer_state.get_node(self._group_uuid):
-            if self._keep_items:
-                self._layer_state.delete_group(self._group_uuid, emit=True)
-            else:
-                # If deleting items too, caller must remove from scene separately.
-                self._layer_state.delete_group(self._group_uuid, emit=True)
+            self._layer_state.delete_group(self._group_uuid, emit=True)
 
     def undo(self) -> None:
         """Restore the group."""

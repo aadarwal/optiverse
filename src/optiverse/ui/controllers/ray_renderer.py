@@ -143,10 +143,6 @@ class RayRenderer:
         Args:
             paths: List of RayPath objects to render
         """
-        # Constants for rendering adjustments
-        SATURATION_BOOST_FACTOR = 1.3
-        VALUE_BOOST_FACTOR = 1.2
-        HSV_MAX = 255
         RAY_WIDTH_OPENGL_SCALE = 2.0
 
         for p in paths:
