@@ -9,6 +9,7 @@ appear just above their source and move together in the layer tree.
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -196,87 +197,83 @@ class RayRenderer:
         has_per_seg: bool,
     ) -> None:
         """
-        Render a Gaussian beam path as nested envelope polygons.
+        Render a Gaussian beam as a smooth intensity profile.
 
-        Draws three concentric layers (outer to inner) at different fractions
-        of the 1/e^2 beam radius with increasing opacity, approximating the
-        Gaussian transverse intensity profile. A thin central ray line is
-        drawn on top.
+        Each segment is drawn as a gradient-filled trapezoid with a
+        QLinearGradient perpendicular to the beam direction. The gradient
+        color stops follow exp(-2 r^2 / w^2) to produce a physically
+        accurate Gaussian transverse intensity profile. No ray lines are
+        drawn — the beam appears as a continuous glow.
         """
         points = p.points
         radii = p.beam_radii
         n = len(points)
 
-        # Compute perpendicular direction at each point
-        perps = []
-        for i in range(n):
-            if i < n - 1:
-                seg = np.array(points[i + 1]) - np.array(points[i])
-            else:
-                seg = np.array(points[i]) - np.array(points[i - 1])
+        # Gaussian color stops: positions from 0 (one edge) to 1 (other edge)
+        # with intensity = exp(-2 * ((pos - 0.5)*2)^2) = exp(-8*(pos-0.5)^2)
+        # We sample symmetrically around 0.5 for a smooth profile.
+        N_STOPS = 13
+        peak_alpha = 0.75
+        gaussian_stops: list[tuple[float, float]] = []
+        for j in range(N_STOPS):
+            t = j / (N_STOPS - 1)  # 0..1 across the beam width
+            u = (t - 0.5) * 2.0    # -1..+1 normalized radius
+            intensity = math.exp(-2.0 * u * u) * peak_alpha
+            gaussian_stops.append((t, intensity))
+
+        for i in range(n - 1):
+            p0 = np.asarray(points[i], dtype=float)
+            p1 = np.asarray(points[i + 1], dtype=float)
+            w0 = float(radii[i])
+            w1 = float(radii[i + 1])
+
+            seg = p1 - p0
             seg_len = np.linalg.norm(seg)
-            if seg_len > 1e-12:
-                tangent = seg / seg_len
+            if seg_len < 1e-12:
+                continue
+            tangent = seg / seg_len
+            perp = np.array([-tangent[1], tangent[0]])
+
+            # Intensity scaling from ray intensity
+            if has_per_seg:
+                seg_intensity = max(0.0, min(1.0, p.intensities[i]))
             else:
-                tangent = np.array([1.0, 0.0])
-            perps.append(np.array([-tangent[1], tangent[0]]))
+                seg_intensity = base_alpha / 255.0
 
-        # Nested envelope layers: (radius_fraction, alpha_fraction)
-        # Outer layer = faintest, inner = most opaque
-        ENVELOPE_LAYERS = [
-            (1.0, 0.10),   # 1/e^2 boundary — very faint
-            (0.7, 0.18),   # ~half-power region
-            (0.35, 0.30),  # core
-        ]
+            # Four corners of the trapezoid (scene coordinates)
+            c_ul = p0 + w0 * perp   # upper-left
+            c_ur = p1 + w1 * perp   # upper-right
+            c_lr = p1 - w1 * perp   # lower-right
+            c_ll = p0 - w0 * perp   # lower-left
 
-        for radius_frac, alpha_frac in ENVELOPE_LAYERS:
-            envelope_path = QtGui.QPainterPath()
+            # Build trapezoid path
+            trap = QtGui.QPainterPath()
+            trap.moveTo(QtCore.QPointF(float(c_ul[0]), float(c_ul[1])))
+            trap.lineTo(QtCore.QPointF(float(c_ur[0]), float(c_ur[1])))
+            trap.lineTo(QtCore.QPointF(float(c_lr[0]), float(c_lr[1])))
+            trap.lineTo(QtCore.QPointF(float(c_ll[0]), float(c_ll[1])))
+            trap.closeSubpath()
 
-            # Forward pass: upper edge (+w)
-            first_upper = points[0] + radii[0] * radius_frac * perps[0]
-            envelope_path.moveTo(QtCore.QPointF(float(first_upper[0]), float(first_upper[1])))
-            for i in range(1, n):
-                upper = points[i] + radii[i] * radius_frac * perps[i]
-                envelope_path.lineTo(QtCore.QPointF(float(upper[0]), float(upper[1])))
+            # Gradient perpendicular to beam at the segment midpoint
+            mid = 0.5 * (p0 + p1)
+            w_mid = 0.5 * (w0 + w1)
+            grad_start = mid + w_mid * perp   # "upper" edge (t=0)
+            grad_end = mid - w_mid * perp     # "lower" edge (t=1)
 
-            # Backward pass: lower edge (-w)
-            for i in range(n - 1, -1, -1):
-                lower = points[i] - radii[i] * radius_frac * perps[i]
-                envelope_path.lineTo(QtCore.QPointF(float(lower[0]), float(lower[1])))
+            gradient = QtGui.QLinearGradient(
+                QtCore.QPointF(float(grad_start[0]), float(grad_start[1])),
+                QtCore.QPointF(float(grad_end[0]), float(grad_end[1])),
+            )
+            gradient.setSpread(QtGui.QGradient.Spread.PadSpread)
 
-            envelope_path.closeSubpath()
+            for t, intensity in gaussian_stops:
+                a = int(255 * intensity * seg_intensity)
+                gradient.setColorAt(t, QtGui.QColor(r, g, b, a))
 
-            item = QtWidgets.QGraphicsPathItem(envelope_path)
-            fill_alpha = int(255 * alpha_frac)
-            item.setBrush(QtGui.QBrush(QtGui.QColor(r, g, b, fill_alpha)))
+            item = QtWidgets.QGraphicsPathItem(trap)
+            item.setBrush(QtGui.QBrush(gradient))
             item.setPen(QtGui.QPen(QtCore.Qt.PenStyle.NoPen))
             item.setZValue(z_value)
-
-            self.scene.addItem(item)
-            self.ray_items.append(item)
-
-        # Central ray line on top
-        RAY_WIDTH_OPENGL_SCALE = 2.0
-        pen_width = self._ray_width_px * RAY_WIDTH_OPENGL_SCALE
-        for i in range(n - 1):
-            seg_path = QtGui.QPainterPath(
-                QtCore.QPointF(float(points[i][0]), float(points[i][1]))
-            )
-            seg_path.lineTo(float(points[i + 1][0]), float(points[i + 1][1]))
-
-            item = QtWidgets.QGraphicsPathItem(seg_path)
-
-            if has_per_seg:
-                seg_alpha = int(255 * max(0.0, min(1.0, p.intensities[i])))
-            else:
-                seg_alpha = base_alpha
-
-            color = QtGui.QColor(r, g, b, seg_alpha)
-            pen = QtGui.QPen(color)
-            pen.setWidthF(pen_width)
-            pen.setCosmetic(True)
-            item.setPen(pen)
-            item.setZValue(z_value + 0.01)
 
             self.scene.addItem(item)
             self.ray_items.append(item)

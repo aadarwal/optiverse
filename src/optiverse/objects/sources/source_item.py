@@ -177,11 +177,26 @@ class SourceItem(BaseObj):
         # Label for beam waist (so we can show/hide it)
         beam_waist_label = QtWidgets.QLabel("Beam waist (w₀)")
 
+        # Labels for ray-specific fields (so we can show/hide per mode)
+        size_label = QtWidgets.QLabel("Aperture size")
+        nr_label = QtWidgets.QLabel("# Rays")
+        spr_label = QtWidgets.QLabel("Angular spread (±)")
+
+        def _set_mode_visibility(is_gauss: bool):
+            """Toggle field visibility based on source type."""
+            beam_waist.setVisible(is_gauss)
+            beam_waist_label.setVisible(is_gauss)
+            size.setVisible(not is_gauss)
+            size_label.setVisible(not is_gauss)
+            nr.setVisible(not is_gauss)
+            nr_label.setVisible(not is_gauss)
+            spr.setVisible(not is_gauss)
+            spr_label.setVisible(not is_gauss)
+
         def update_source_type():
             is_gauss = source_type_combo.currentIndex() == 1
             self.params.source_type = "gaussian" if is_gauss else "ray"
-            beam_waist.setVisible(is_gauss)
-            beam_waist_label.setVisible(is_gauss)
+            _set_mode_visibility(is_gauss)
             self.edited.emit()
 
         def update_beam_waist():
@@ -190,10 +205,6 @@ class SourceItem(BaseObj):
 
         source_type_combo.currentIndexChanged.connect(lambda: update_source_type())
         beam_waist.valueChanged.connect(update_beam_waist)
-
-        # Set initial visibility
-        beam_waist.setVisible(is_gaussian)
-        beam_waist_label.setVisible(is_gaussian)
 
         # Source parameters
         size = SmartDoubleSpinBox()
@@ -392,16 +403,19 @@ class SourceItem(BaseObj):
         pol_type.currentTextChanged.connect(update_polarization)
         pol_angle.valueChanged.connect(update_polarization)
 
+        # Set initial field visibility based on source type
+        _set_mode_visibility(is_gaussian)
+
         # Add all fields to form
         f.addRow("X Position", x)
         f.addRow("Y Position", y)
         f.addRow("Optical Axis Angle", ang)
         f.addRow("Source Type", source_type_combo)
         f.addRow(beam_waist_label, beam_waist)
-        f.addRow("Aperture size", size)
-        f.addRow("# Rays", nr)
+        f.addRow(size_label, size)
+        f.addRow(nr_label, nr)
         f.addRow("Ray length", rlen)
-        f.addRow("Angular spread (±)", spr)
+        f.addRow(spr_label, spr)
         f.addRow("Color Mode", wl_mode)
         f.addRow("Wavelength Preset", wl_preset)
         f.addRow("Wavelength", wl_spin)
