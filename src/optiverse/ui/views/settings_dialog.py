@@ -328,18 +328,8 @@ class SettingsDialog(QtWidgets.QDialog):
             return 0
 
     def _on_cell_changed(self, row: int, col: int):
-        """Handle checkbox toggle in the Enabled column."""
-        if col != 0 or self._library_service is None:
-            return
-        chk_item = self.library_table.item(row, 0)
-        if not chk_item:
-            return
-        source = chk_item.data(QtCore.Qt.ItemDataRole.UserRole + 1)
-        if source == "builtin":
-            return
-        path = chk_item.data(QtCore.Qt.ItemDataRole.UserRole)
-        enabled = chk_item.checkState() == QtCore.Qt.CheckState.Checked
-        self._library_service.set_enabled(Path(path), enabled)
+        """Checkbox toggles are purely local — applied on OK / Apply."""
+        pass
 
     def _add_library_path(self):
         """Add an existing directory as a library."""
@@ -453,9 +443,22 @@ class SettingsDialog(QtWidgets.QDialog):
         self.settings_changed.emit()
 
     def _save_settings(self):
-        """Save settings to SettingsService."""
-        # When using LibraryService, mutations are already persisted live.
+        """Save settings to SettingsService (called on OK / Apply)."""
         if self._library_service is not None:
+            # Batch-apply enabled/disabled states from checkboxes
+            disabled: set[str] = set()
+            for i in range(self.library_table.rowCount()):
+                chk = self.library_table.item(i, 0)
+                if not chk:
+                    continue
+                source = chk.data(QtCore.Qt.ItemDataRole.UserRole + 1)
+                if source == "builtin":
+                    continue
+                path = chk.data(QtCore.Qt.ItemDataRole.UserRole)
+                if chk.checkState() != QtCore.Qt.CheckState.Checked:
+                    disabled.add(str(Path(path).resolve()))
+            self._library_service._write_disabled_paths(disabled)
+            self._library_service.refresh()
             return
 
         # Fallback: collect paths from table (skip builtin/user_default/scanned)
