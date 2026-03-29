@@ -81,7 +81,8 @@ def test_component_sprite_factory(qtbot, tmp_path):
     parent = QtWidgets.QGraphicsRectItem(0, 0, 10, 10)
     scene.addItem(parent)
 
-    # Test SVG sprite creation
+    # Test SVG sprite creation — factory always returns ComponentSprite
+    # (SVG is pre-rendered to pixmap for zoom performance)
     svg_sprite = create_component_sprite(
         str(svg_file),
         (-5.0, 0.0, 5.0, 0.0),  # reference line
@@ -89,14 +90,13 @@ def test_component_sprite_factory(qtbot, tmp_path):
         parent,
     )
 
-    # Verify SVG sprite type
-    assert isinstance(svg_sprite, ComponentSvgSprite)
+    assert isinstance(svg_sprite, ComponentSprite)
+    assert not isinstance(svg_sprite, ComponentSvgSprite)
     assert svg_sprite.picked_line_length_mm > 0
 
     # Test PNG sprite creation
     png_sprite = create_component_sprite(str(png_file), (-5.0, 0.0, 5.0, 0.0), 10.0, parent)
 
-    # Verify PNG sprite type
     assert isinstance(png_sprite, ComponentSprite)
     assert not isinstance(png_sprite, ComponentSvgSprite)
 

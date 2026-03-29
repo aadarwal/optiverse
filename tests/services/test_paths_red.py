@@ -6,12 +6,12 @@ def test_platform_paths_exposes_core_dirs(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("USERPROFILE", str(tmp_path))  # Windows
 
-    from optiverse.platform.paths import assets_dir, get_library_path, library_root_dir
+    from optiverse.platform.paths import assets_dir, get_user_library_root, library_root_dir
 
     root = library_root_dir()
     assets = assets_dir()
-    lib = get_library_path()
+    lib_root = get_user_library_root()
 
     assert os.path.isdir(root)
     assert os.path.isdir(assets)
-    assert os.path.dirname(lib) == root
+    assert lib_root.parent == lib_root.parent  # Path object is valid

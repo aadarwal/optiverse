@@ -518,7 +518,10 @@ class CollaborationManager(QObject):
             data_copy.pop("uuid", None)  # deserialize_item uses item_uuid
             data_copy.pop("item_type", None)  # deserialize_item uses _type
 
-            item = deserialize_item(data_copy)
+            roots = None
+            if hasattr(self.main_window, "library_service"):
+                roots = self.main_window.library_service.get_all_roots()
+            item = deserialize_item(data_copy, library_roots=roots)
             if item is None:
                 self.log.error(
                     f"deserialize_item returned None for type '{item_type}'",
@@ -594,7 +597,10 @@ class CollaborationManager(QObject):
                 data_copy = data.copy()
                 if "_type" not in data_copy:
                     data_copy["_type"] = item_type
-                updated_item = deserialize_item(data_copy)
+                roots = None
+                if hasattr(self.main_window, "library_service"):
+                    roots = self.main_window.library_service.get_all_roots()
+                updated_item = deserialize_item(data_copy, library_roots=roots)
                 if updated_item:
                     # Copy state to existing item
                     if hasattr(item, "params") and hasattr(updated_item, "params"):

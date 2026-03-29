@@ -142,6 +142,55 @@ class RefractiveElement(IOpticalElement):
 
         return output_rays
 
+    def transform_q(
+        self,
+        q: complex,
+        ray: RayState,
+        normal: np.ndarray,
+        *,
+        hit_point: np.ndarray | None = None,
+        tangent: np.ndarray | None = None,
+    ) -> complex:
+        """Tangential-plane ABCD at flat or curved refractive interface (oblique incidence)."""
+        from ...core.gaussian_beam import apply_abcd
+        from ...core.raytracing_math import normalize
+
+        dot_v_n = float(np.dot(ray.direction, normal))
+        if dot_v_n < 0:
+            n_incident, n_transmitted = self.n1, self.n2
+            surface_normal = np.asarray(normal, dtype=float)
+        else:
+            n_incident, n_transmitted = self.n2, self.n1
+            surface_normal = -np.asarray(normal, dtype=float)
+
+        v = normalize(ray.direction)
+        sn = normalize(surface_normal)
+        cos_i = max(-float(np.dot(v, sn)), 1e-12)
+        sin_i_sq = max(0.0, 1.0 - cos_i * cos_i)
+        sin_i = math.sqrt(sin_i_sq)
+        eta = n_incident / n_transmitted
+        sin_t = eta * sin_i
+        if sin_t >= 1.0 - 1e-14:
+            return q
+        cos_t = max(math.sqrt(max(0.0, 1.0 - sin_t * sin_t)), 1e-12)
+
+        geometry = getattr(self, "_geometry", None)
+        if geometry is not None and getattr(geometry, "is_curved", False):
+            R = float(geometry.get_radius())
+            if abs(R) < 1e-12:
+                A = cos_t / cos_i
+                D = (n_incident * cos_i) / (n_transmitted * cos_t)
+                return apply_abcd(q, A, 0.0, 0.0, D)
+            numer = n_transmitted * cos_t - n_incident * cos_i
+            C = -numer / (R * cos_i * cos_t)
+            A = cos_t / cos_i
+            D = (n_incident * cos_i) / (n_transmitted * cos_t)
+            return apply_abcd(q, A, 0.0, C, D)
+
+        A = cos_t / cos_i
+        D = (n_incident * cos_i) / (n_transmitted * cos_t)
+        return apply_abcd(q, A, 0.0, 0.0, D)
+
     def get_bounding_box(self) -> tuple[np.ndarray, np.ndarray]:
         """Get axis-aligned bounding box"""
         min_corner = np.minimum(self.p1, self.p2)

@@ -6,7 +6,6 @@ Defines the contract that all optical elements must implement.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 
@@ -25,7 +24,7 @@ class RayIntersection:
     normal: np.ndarray  # Surface normal at hit point (normalized)
     center: np.ndarray  # Center point of the surface segment
     length: float  # Length of the surface segment
-    interface: Optional[object] = None  # Optional: Reference to optical interface
+    interface: object | None = None  # Optional: Reference to optical interface
 
 
 class IOpticalElement(ABC):
@@ -73,6 +72,34 @@ class IOpticalElement(ABC):
             Empty list means ray was absorbed
         """
         pass
+
+    def transform_q(
+        self,
+        q: complex,
+        ray: RayState,
+        normal: np.ndarray,
+        *,
+        hit_point: np.ndarray | None = None,
+        tangent: np.ndarray | None = None,
+    ) -> complex:
+        """
+        Transform the Gaussian beam q-parameter at this element.
+
+        Default implementation returns q unchanged (identity transform).
+        Override in subclasses that affect beam geometry (lenses, mirrors,
+        refractive surfaces).
+
+        Args:
+            q: Complex beam parameter before interaction (after drift to the surface)
+            ray: Incoming ray state (for direction, wavelength, etc.)
+            normal: Surface normal at hit point
+            hit_point: Intersection point (optional; used for lens height on aperture)
+            tangent: Surface tangent at hit (optional; used with hit_point for lenses)
+
+        Returns:
+            Transformed q-parameter after interaction
+        """
+        return q
 
     @abstractmethod
     def get_bounding_box(self) -> tuple[np.ndarray, np.ndarray]:

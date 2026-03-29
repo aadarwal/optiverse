@@ -438,7 +438,8 @@ class LayerPanel(QtWidgets.QWidget):
                     if isinstance(self._find_scene_item(uid), ComponentItem):
                         if ce_act := menu.addAction("Edit in Component Editor…"):
                             ce_act.triggered.connect(
-                                lambda _checked=False, u=uid: self._edit_in_component_editor_by_uuid(u)
+                                lambda _checked=False, u=uid:
+                                    self._edit_in_component_editor_by_uuid(u)
                             )
                     menu.addSeparator()
 

@@ -12,10 +12,23 @@ from PyQt6.QtTest import QTest
 
 from optiverse.services.collaboration_service import CollaborationService
 
-# Skip all tests in this module if we're on CI or server is not available
-# CI environments typically set CI=true
+
+def _server_reachable() -> bool:
+    """Check if the collaboration server is reachable."""
+    import socket
+
+    try:
+        with socket.create_connection(("localhost", 8765), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+# Skip all tests if server is not running or we're on CI
 pytestmark = pytest.mark.skipif(
-    os.environ.get("CI") == "true" or os.environ.get("GITHUB_ACTIONS") == "true",
+    not _server_reachable()
+    or os.environ.get("CI") == "true"
+    or os.environ.get("GITHUB_ACTIONS") == "true",
     reason="Collaboration server tests require a running server at localhost:8765",
 )
 

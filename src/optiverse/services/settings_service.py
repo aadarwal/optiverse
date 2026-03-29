@@ -7,8 +7,7 @@ from PyQt6 import QtCore
 
 
 class SettingsService:
-    # Maximum number of recent files to store
-    MAX_RECENT_FILES = 10
+    MAX_RECENT_FILES = 10  # fallback; overridden at runtime by preferences
 
     def __init__(self, organization: str = "PhotonicSandbox", application: str = "PhotonicSandbox"):
         self._settings = QtCore.QSettings(organization, application)
@@ -68,8 +67,9 @@ class SettingsService:
         files = [f for f in files if f != normalized]
         # Add to front
         files.insert(0, normalized)
-        # Trim to max
-        files = files[: self.MAX_RECENT_FILES]
+        from ..core import preferences
+
+        files = files[: preferences.max_recent_files]
         self._settings.setValue("recent_files", files)
 
     def clear_recent_files(self) -> None:

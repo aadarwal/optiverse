@@ -5,6 +5,60 @@ All notable changes to Optiverse will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [0.3.3] - 2026-03-28
+
+### Added
+
+- **Update Canvas Instances**: Component Editor **Canvas** menu **Update Canvas Instances…** — after confirmation, updates every placed component on the main canvas that matches the current component name (single batch undo; pose and lock preserved)
+- **Gaussian Beam Propagation**: Full Gaussian beam support using the complex beam parameter (q-parameter)
+  - ABCD matrix transforms through lenses, curved refractive surfaces, and free-space propagation
+  - Source editor toggle for Gaussian mode with configurable beam waist
+  - Per-point beam radius (`1/e²`) tracked along every ray path
+  - GLSL per-pixel Gaussian shader for smooth beam envelope rendering (replaces contour polygon rasteriser)
+  - Mirror reflection splits Gaussian beams at each segment to prevent corner artifacts
+  - Inspect tool shows beam waist, Rayleigh range, and divergence at any point along the beam
+- **Component Editor Save To**: **Create New…** (pick a folder and register it as a library) and **Manage Libraries…** (opens Preferences on the Library page)
+- **Preferences expansion**: Four new Preferences pages — **General** (autosave toggle + interval, max recent files), **Appearance** (dark mode, scale bar visibility), **Canvas & Editing** (grid snap size, magnetic snap tolerance, rotation snap angle, scroll-wheel sensitivity, auto-trace, default ray width, max ray events, clone offset), **Export Defaults** (PNG scale, PDF DPI, export margin). All settings are persisted via `QSettings` and take effect immediately or on next startup as appropriate.
+- **Runtime preferences module** (`core/preferences.py`): module-level attributes loaded from `SettingsService` on startup and refreshed when Preferences are saved; consumers read values directly without coupling to `QSettings`.
+
+### Changed
+
+- **Component Editor**: Full **menu bar** (File, Edit, Library, Canvas); on macOS menus render **inside the editor window** (`setNativeMenuBar(False)`) so they clearly belong to the tool; removed the duplicate **toolbar** (text-only menus, no redundant icon strip)
+- **Component Editor** interface list: **incremental** tree updates and suppressed auto-scroll when selection is updated from the canvas, fixing the list **jumping to the top** on mis-clicks
+- **Component Editor** coordinates: **SmartDoubleSpinBox** fields for direct mm editing (replaces double-click coordinate labels)
+- **Component Editor** name field: after loading or renaming, the caret is placed at the **start** so long names show the beginning instead of the truncated tail
+- **Theme stylesheets**: Added `QTableWidget`, `QHeaderView`, and `QListWidget` rules to both dark and light QSS themes for consistent rendering (fixes grid-line color mismatch in dark mode)
+
+### Fixed
+
+- **Raytracing engine**: `remaining_length` is now correctly decremented after each optical interaction — previously rays could propagate beyond the source's configured `ray_length_mm` after hitting any element
+- **Waveplate directionality tests**: Corrected 5 tests that had wrong physics expectations — waveplate Jones matrix is symmetric (`J = J^T`), so forward and backward passes are identical; the mirror between passes (not the waveplate direction) is what flips handedness in double-pass setups
+- **TIR test geometry**: Fixed surface normal direction in total-internal-reflection test so the ray is correctly interpreted as traveling from glass (n=1.5) into air (n=1.0)
+- **Angle convention in raytracing tests**: Corrected source angle from 90° to 270° (user-angle convention where 270° = +Y direction) across parity, use-case, and refractive tests
+- **Refractive rotation side test**: Swap `n1`/`n2` when flipping surface endpoints so both orientations model the same physical interface
+- **Collaboration tests**: Replaced `QGraphicsScene` with lightweight mocks to eliminate Qt widget dependency in unit tests
+- **Beamsplitter widget test**: Updated to verify tool-controller infrastructure instead of removed direct-insert API
+- **UI best practices test**: Fixed renamed attribute paths (`editor_state` → `_editor_state`, `_clipboard` → `component_ops._clipboard`) and keyboard shortcut API
+- **Gaussian beam rendering**: Free stale VBO data after GPU upload; cleaned up docstrings for software/GLSL render paths
+- **Type hints**: Modernized `Optional[X]` → `X | None` and `Union[...]` → `|` syntax across source and test files
+- **External Component Storing**: Centralized library management via new `LibraryService` — fixes settings-configured library paths being silently ignored by the dock, scene loading, and collaboration. Components from all configured libraries now appear correctly everywhere.
+  - **Library enable/disable**: Libraries can be toggled on/off in Preferences without removing them (ideal for switching between project contexts)
+  - **Save To selector**: Component Editor lets you choose which library to save into
+  - **Link vs Copy import**: Importing a library folder now offers "Link" (register the path, ideal for git repos) or "Copy" (legacy behavior)
+  - **Missing component report**: Scene loading warns when components cannot be resolved, with guidance to configure library paths
+  - **Preferences overhaul**: Library page uses a table with Name, Path, Components, Status columns and enable/disable checkboxes
+  - **Open Library Folder submenu**: Tools menu lists all known libraries for quick access
+- **Component Editor** file dialogs: cancelling **Export**, **Import**, or **Load library from path** no longer closes the editor (explicit `QFileDialog` with `WA_QuitOnClose` disabled)
+- **Component Editor** interface tree: selection styling uses **palette** roles for correct contrast in dark mode
+- **Component Editor** save: saving no longer copies component JSON to the **clipboard** automatically
+- **Layer model**: Guard against stale C++ objects (`sip.isdeleted`) when resolving cached `QGraphicsItem` references, preventing crashes during rapid undo/delete sequences
+
+### Removed
+
+- **Component Editor**: Obsolete legacy methods from an older UI revision and the redundant main **toolbar**
+
 ## [0.3.2] - 2026-03-26
 
 ### Added

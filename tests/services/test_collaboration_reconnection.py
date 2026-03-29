@@ -13,7 +13,20 @@ import uuid
 from datetime import datetime, timedelta
 from unittest.mock import Mock
 
-from PyQt6.QtWidgets import QGraphicsScene
+
+class _FakeSerializable:
+    """Minimal class that satisfies the Serializable runtime_checkable protocol."""
+
+    type_name: str = ""
+    item_uuid: str = ""
+
+    def __init__(self, item_uuid="", type_name="lens", data=None):
+        self.item_uuid = item_uuid
+        self.type_name = type_name
+        self._data = data or {}
+
+    def to_dict(self):
+        return self._data
 
 
 class TestDisconnectionDetection(unittest.TestCase):
@@ -45,17 +58,20 @@ class TestDisconnectionDetection(unittest.TestCase):
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
 
         collab = CollaborationManager(main_window)
         collab.role = "client"
         collab.enabled = True
 
-        # Add items
-        item = Mock()
-        item.item_uuid = str(uuid.uuid4())
-        item.to_dict = Mock(return_value={"uuid": item.item_uuid, "x_mm": 100.0})
-        item.__class__.__name__ = "LensItem"
+        # Add item that satisfies Serializable protocol
+        item_id = str(uuid.uuid4())
+        item = _FakeSerializable(
+            item_uuid=item_id,
+            type_name="lens",
+            data={"uuid": item_id, "x_mm": 100.0},
+        )
         collab.item_uuid_map[item.item_uuid] = item
 
         # Get state before disconnection
@@ -97,20 +113,23 @@ class TestReconnection(unittest.TestCase):
 
         # Mock service
         collab.collaboration_service = Mock()
-        collab.collaboration_service.request_sync = Mock()
+        collab.collaboration_service.send_message = Mock()
 
         # Simulate reconnection
         collab._on_connected()
 
-        # Should request sync
-        assert collab.collaboration_service.request_sync.called
+        # _on_connected sends a sync:request message via send_message
+        assert collab.collaboration_service.send_message.called
+        sent_msg = collab.collaboration_service.send_message.call_args[0][0]
+        assert sent_msg["type"] == "sync:request"
 
     def test_reconnection_sends_local_version(self):
         """Test that client sends local version when reconnecting."""
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
 
         collab = CollaborationManager(main_window)
         collab.role = "client"
@@ -145,9 +164,10 @@ class TestConflictResolution(unittest.TestCase):
         """Test that host's version is used when versions conflict."""
         from optiverse.services.collaboration_manager import CollaborationManager
 
-        # Setup client
+        # Setup client with mock scene (avoid QGraphicsScene + Mock item incompatibility)
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
         main_window.autotrace = False
 
         collab = CollaborationManager(main_window)
@@ -158,9 +178,17 @@ class TestConflictResolution(unittest.TestCase):
         # Client has local items
         local_item = Mock()
         local_item.item_uuid = str(uuid.uuid4())
-        local_item.__class__.__name__ = "LensItem"
         collab.item_uuid_map[local_item.item_uuid] = local_item
-        main_window.scene.addItem(local_item)
+
+        # Mock _create_item_from_remote to return a fake item for state sync
+        mirror_uuid = str(uuid.uuid4())
+
+        def fake_create(item_type, data):
+            item = Mock()
+            item.item_uuid = data.get("uuid") or data.get("item_uuid", "")
+            return item
+
+        collab._create_item_from_remote = Mock(side_effect=fake_create)
 
         # Receive host's state (different version)
         host_state = {
@@ -169,7 +197,7 @@ class TestConflictResolution(unittest.TestCase):
                 "items": [
                     {
                         "item_type": "mirror",
-                        "uuid": str(uuid.uuid4()),
+                        "uuid": mirror_uuid,
                         "x_mm": 200.0,
                         "y_mm": 100.0,
                         "angle_deg": 45.0,
@@ -186,9 +214,6 @@ class TestConflictResolution(unittest.TestCase):
 
         # Client should have adopted host's state
         assert collab.session_version == 5
-
-        # Local items should be replaced
-        # (exact behavior depends on implementation)
 
     def test_detect_version_conflict(self):
         """Test detection of version mismatch."""
@@ -226,29 +251,24 @@ class TestConflictResolution(unittest.TestCase):
         """Test that scene is cleared before applying host's state on conflict."""
         from optiverse.services.collaboration_manager import CollaborationManager
 
-        # Setup client with existing items
+        # Setup client with mock scene
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = [Mock(), Mock()]  # Simulate existing items
         main_window.autotrace = False
-
-        # Add local items
-        local_item1 = Mock()
-        local_item1.item_uuid = str(uuid.uuid4())
-        local_item1.__class__.__name__ = "LensItem"
-        main_window.scene.addItem(local_item1)
-
-        local_item2 = Mock()
-        local_item2.item_uuid = str(uuid.uuid4())
-        local_item2.__class__.__name__ = "MirrorItem"
-        main_window.scene.addItem(local_item2)
 
         collab = CollaborationManager(main_window)
         collab.role = "client"
         collab.enabled = True
         collab.session_version = 3
 
-        # Track scene clearing
-        main_window.scene.clear = Mock()
+        # Mock _create_item_from_remote for the incoming item
+        def fake_create(item_type, data):
+            item = Mock()
+            item.item_uuid = data.get("uuid") or data.get("item_uuid", "")
+            return item
+
+        collab._create_item_from_remote = Mock(side_effect=fake_create)
 
         # Receive host's conflicting state
         host_state = {
@@ -272,8 +292,8 @@ class TestConflictResolution(unittest.TestCase):
         # Apply state
         collab._on_sync_state_received(host_state)
 
-        # Scene should have been cleared
-        # (Implementation detail: might use scene.clear() or remove items individually)
+        # Scene items should have been removed individually
+        assert main_window.scene.removeItem.called
 
 
 class TestResync(unittest.TestCase):
@@ -284,12 +304,21 @@ class TestResync(unittest.TestCase):
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
         main_window.autotrace = False
 
         collab = CollaborationManager(main_window)
         collab.role = "client"
         collab.enabled = True
+
+        # Mock _create_item_from_remote to return items with correct UUIDs
+        def fake_create(item_type, data):
+            item = Mock()
+            item.item_uuid = data.get("uuid") or data.get("item_uuid", "")
+            return item
+
+        collab._create_item_from_remote = Mock(side_effect=fake_create)
 
         # Receive full state sync
         full_state = {
@@ -327,7 +356,8 @@ class TestResync(unittest.TestCase):
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
         main_window.autotrace = False
 
         collab = CollaborationManager(main_window)
@@ -351,7 +381,8 @@ class TestResync(unittest.TestCase):
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
 
         collab = CollaborationManager(main_window)
         collab.role = "client"

@@ -549,7 +549,7 @@ class TestUndoRedoNewOperations:
         cmd = ZOrderCommand(main_window.layer_state, [item.item_uuid], "bring_to_front")
         main_window.undo_stack.push(cmd)
 
-        order_after = main_window.layer_state.get_all_items_in_order()
+        main_window.layer_state.get_all_items_in_order()
         assert main_window.undo_stack.can_undo()
 
         main_window.undo_stack.undo()

@@ -12,7 +12,8 @@ import hashlib
 import json
 import os
 import tempfile
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from PyQt6 import QtWidgets
 
@@ -40,6 +41,7 @@ class SceneFileManager:
         on_modified: Callable[[bool], None],
         parent_widget: QtWidgets.QWidget,
         connect_item_signals: Callable | None = None,
+        get_library_roots: Callable[[], list] | None = None,
     ):
         """
         Initialize the scene file manager.
@@ -51,6 +53,7 @@ class SceneFileManager:
             on_modified: Callback when modified state changes
             parent_widget: Parent widget for dialogs
             connect_item_signals: Optional callback to connect signals for items
+            get_library_roots: Callable returning current library root paths
         """
         self.scene = scene
         self.log_service = log_service
@@ -58,6 +61,7 @@ class SceneFileManager:
         self._on_modified = on_modified
         self.parent_widget = parent_widget
         self._connect_item_signals = connect_item_signals
+        self._get_library_roots = get_library_roots
 
         # File state
         self._saved_file_path: str | None = None
@@ -199,8 +203,14 @@ class SceneFileManager:
         except OSError as e:
             self.log_service.error(f"Failed to clear autosave: {e}", "Autosave")
 
-    def load_from_data(self, data: dict) -> bool:
+    def load_from_data(self, data: dict, library_roots: list | None = None) -> bool:
         """Load scene from data dict.
+
+        Args:
+            data: Scene data dictionary.
+            library_roots: Pre-computed library root paths for resolving
+                component image URIs.  Obtain via
+                ``LibraryService.get_all_roots()``.
 
         Returns:
             True if legacy migration occurred (so caller can mark modified), else False.
@@ -221,16 +231,20 @@ class SceneFileManager:
         if self._layer_state:
             self._layer_state.clear(emit=False)
 
-        # Load items
+        # Load items — track failures for post-load report
+        failed_items: list[str] = []
         for item_data in data.get("items", []):
             try:
-                item = deserialize_item(item_data)
+                item = deserialize_item(item_data, library_roots=library_roots)
+                if item is None:
+                    failed_items.append(item_data.get("_type", "<unknown>"))
+                    continue
                 self.scene.addItem(item)
                 if self._connect_item_signals:
                     self._connect_item_signals(item)
             except (KeyError, ValueError, TypeError) as e:
-                # KeyError: missing required fields, ValueError/TypeError: invalid data
                 self.log_service.error(f"Error loading item: {e}", "Load")
+                failed_items.append(item_data.get("_type", "<unknown>"))
 
         # Load annotations
         for ruler_data in data.get("rulers", []):
@@ -283,6 +297,22 @@ class SceneFileManager:
                 # No layer info; still establish a stable ordering from z-values
                 tmp = LayerTreeState.from_legacy([], items_with_z)
                 self._layer_state.replace_from(tmp, emit=True)
+
+        if failed_items:
+            summary = ", ".join(failed_items[:10])
+            if len(failed_items) > 10:
+                summary += f" … and {len(failed_items) - 10} more"
+            self.log_service.warning(
+                f"{len(failed_items)} item(s) could not be loaded: {summary}", "Load",
+            )
+            QtWidgets.QMessageBox.warning(
+                self.parent_widget,
+                "Missing Components",
+                f"{len(failed_items)} component(s) could not be loaded.\n\n"
+                f"Types: {summary}\n\n"
+                "The components may belong to a library that is not currently configured. "
+                "You can add library paths in Preferences → Component Libraries.",
+            )
 
         return migrated
 
@@ -363,7 +393,8 @@ class SceneFileManager:
             )
 
             if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-                self.load_from_data(data)
+                roots = self._get_library_roots() if self._get_library_roots else None
+                self.load_from_data(data, library_roots=roots)
                 self._saved_file_path = original_path
                 self._autosave_path = str(most_recent)
                 self.mark_modified()
@@ -424,7 +455,8 @@ class SceneFileManager:
         except (OSError, json.JSONDecodeError) as e:
             raise AssemblyLoadError(path, str(e)) from e
 
-        migrated = self.load_from_data(data)
+        roots = self._get_library_roots() if self._get_library_roots else None
+        migrated = self.load_from_data(data, library_roots=roots)
         self._saved_file_path = path
         self._unsaved_id = None
         if migrated:

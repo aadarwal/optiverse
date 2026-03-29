@@ -19,18 +19,13 @@ class TestExtractedModulesImport:
         assert hasattr(LogCategory, "RAYTRACING")
         assert hasattr(LogCategory, "COPY_PASTE")
 
-    def test_import_zorder_utils(self):
+    def test_import_layer_zorder(self):
         """Test that z-order utilities can be imported."""
-        from optiverse.core.zorder_utils import (
-            apply_z_order_change,
-            get_z_order_items_from_item,
-            handle_z_order_from_menu,
-        )
+        from optiverse.core.layer_tree_state import LayerTreeState
+        from optiverse.core.layer_zorder_applier import LayerZOrderApplier
 
-        # Verify the functions are callable
-        assert callable(apply_z_order_change)
-        assert callable(handle_z_order_from_menu)
-        assert callable(get_z_order_items_from_item)
+        assert callable(LayerTreeState)
+        assert callable(LayerZOrderApplier)
 
     def test_import_protocols(self):
         """Test that new protocols can be imported."""
@@ -42,10 +37,10 @@ class TestExtractedModulesImport:
         )
 
         # Verify these are runtime checkable protocols
-        assert hasattr(HasUndoStack, "__protocol_attrs__")
-        assert hasattr(HasCollaboration, "__protocol_attrs__")
-        assert hasattr(HasSettings, "__protocol_attrs__")
-        assert hasattr(HasSnapping, "__protocol_attrs__")
+        assert getattr(HasUndoStack, "_is_runtime_protocol", False)
+        assert getattr(HasCollaboration, "_is_runtime_protocol", False)
+        assert getattr(HasSettings, "_is_runtime_protocol", False)
+        assert getattr(HasSnapping, "_is_runtime_protocol", False)
 
     def test_import_constants(self):
         """Test that MIME type constants are available."""
@@ -102,30 +97,3 @@ class TestProtocolsAreRuntimeCheckable:
         assert isinstance(obj, HasSettings)
 
 
-class TestZOrderUtils:
-    """Test z-order utility functions."""
-
-    def test_get_z_order_items_empty_scene(self, qapp):
-        """Test get_z_order_items_from_item with no scene."""
-        from optiverse.core.zorder_utils import get_z_order_items_from_item
-        from PyQt6 import QtWidgets
-
-        # Create an item not in a scene
-        item = QtWidgets.QGraphicsRectItem()
-
-        # Should return empty list when item has no scene
-        result = get_z_order_items_from_item(item)
-        assert result == []
-
-    def test_get_z_order_items_single_item(self, qapp, scene):
-        """Test get_z_order_items_from_item with single unselected item."""
-        from optiverse.core.zorder_utils import get_z_order_items_from_item
-        from PyQt6 import QtWidgets
-
-        item = QtWidgets.QGraphicsRectItem(0, 0, 10, 10)
-        scene.addItem(item)
-
-        # Should return just this item when not selected
-        result = get_z_order_items_from_item(item)
-        assert len(result) == 1
-        assert result[0] is item

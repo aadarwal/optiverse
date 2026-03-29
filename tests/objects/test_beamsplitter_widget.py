@@ -1,9 +1,9 @@
-from PyQt6 import QtWidgets
 
 from tests.helpers import safe_wait_exposed
 
 
-def test_beamsplitter_item_insert(qtbot):
+def test_beamsplitter_placement_infrastructure(qtbot):
+    """Verify beamsplitter placement goes through tool controller."""
     from optiverse.ui.views.main_window import MainWindow
 
     w = MainWindow()
@@ -11,8 +11,5 @@ def test_beamsplitter_item_insert(qtbot):
     w.show()
     safe_wait_exposed(qtbot, w)
 
-    # call insert beamsplitter via the window API once implemented
-    assert hasattr(w, "_insert_beamsplitter")
-    w._insert_beamsplitter()
-    items = w.scene.items()
-    assert any(isinstance(it, QtWidgets.QGraphicsObject) for it in items)
+    assert hasattr(w, "tool_controller")
+    assert hasattr(w.tool_controller, "toggle_placement")

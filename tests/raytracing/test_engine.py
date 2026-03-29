@@ -382,7 +382,7 @@ class TestPolymorphicDispatch:
         from optiverse.data import BeamsplitterProperties
 
         geom = LineSegment(np.array([50.0, -20.0]), np.array([50.0, 20.0]))
-        props = BeamsplitterProperties(split_T=50.0, split_R=50.0)
+        props = BeamsplitterProperties(transmission=0.5, reflection=0.5)
         iface = OpticalInterface(geometry=geom, properties=props)
         bs = create_polymorphic_element(iface)
 
@@ -506,8 +506,9 @@ class TestRaySeparationRotation:
         # Rays should be offset by -5, 0, +5 times this vector
 
         # Check that separation is perpendicular to ray direction
-        # Ray direction at 45°: [cos(45°), sin(45°)] = [√2/2, √2/2]
-        ray_dir = np.array([np.cos(np.radians(45)), np.sin(np.radians(45))])
+        # User-angle convention: 45° CW from right → math angle = -45°
+        # Direction: [cos(-45°), sin(-45°)] = [cos(45°), -sin(45°)]
+        ray_dir = np.array([np.cos(np.radians(45)), -np.sin(np.radians(45))])
 
         # Vector from first ray to last ray
         separation_vector = positions[2] - positions[0]
@@ -594,7 +595,8 @@ class TestRaySeparationRotation:
             ), f"At {angle}°: Expected 20mm separation, got {separation_magnitude}"
 
             # Verify perpendicular to ray direction
-            ray_dir = np.array([np.cos(np.radians(angle)), np.sin(np.radians(angle))])
+            # User-angle convention: angle° CW from right → math angle = -angle°
+            ray_dir = np.array([np.cos(np.radians(angle)), -np.sin(np.radians(angle))])
             dot_product = np.dot(separation_vector, ray_dir)
             assert (
                 abs(dot_product) < 0.01

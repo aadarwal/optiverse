@@ -7,12 +7,14 @@ This module extracts library loading and import logic from MainWindow.
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 if TYPE_CHECKING:
+    from ...services.library_service import LibraryService
     from ...services.log_service import LogService
     from ...services.storage_service import StorageService
 
@@ -60,6 +62,7 @@ class LibraryManager:
         get_dark_mode: Callable[[], bool],
         get_style: Callable[[], QtWidgets.QStyle],
         parent_widget: QtWidgets.QWidget,
+        library_service: LibraryService | None = None,
     ):
         """
         Initialize library manager.
@@ -71,6 +74,7 @@ class LibraryManager:
             get_dark_mode: Callable returning current dark mode state
             get_style: Callable returning current widget style
             parent_widget: Parent widget for dialogs
+            library_service: Centralized library source-of-truth
         """
         self.library_tree = library_tree
         self.storage_service = storage_service
@@ -78,6 +82,7 @@ class LibraryManager:
         self._get_dark_mode = get_dark_mode
         self._get_style = get_style
         self.parent_widget = parent_widget
+        self._library_service = library_service
 
         # Component templates for toolbar placement
         self.component_templates: dict[str, dict] = {}
@@ -86,12 +91,15 @@ class LibraryManager:
         """
         Load and populate component library organized by category.
 
+        Uses ``LibraryService`` when available to include *all* configured
+        library roots (settings, scanned, built-in).  Falls back to the
+        legacy ``get_all_custom_library_roots()`` if no service is set.
+
         Returns:
             Dictionary mapping toolbar type strings to component data
         """
         from ...objects.component_registry import ComponentRegistry
         from ...objects.definitions_loader import load_component_dicts_from_multiple
-        from ...platform.paths import get_all_custom_library_roots
 
         self.library_tree.clear()
 
@@ -100,9 +108,21 @@ class LibraryManager:
         for rec in builtin_records:
             rec["_source"] = "builtin"
 
-        # Load custom library components
-        custom_library_paths = get_all_custom_library_roots()
-        user_records = load_component_dicts_from_multiple([str(p) for p in custom_library_paths])
+        # Load user / custom library components from all configured roots
+        if self._library_service is not None:
+            custom_library_paths = [
+                lib.path
+                for lib in self._library_service.get_all()
+                if lib.source_type != "builtin" and lib.exists and lib.enabled
+            ]
+        else:
+            from ...platform.paths import get_all_custom_library_roots
+
+            custom_library_paths = get_all_custom_library_roots()
+
+        user_records = load_component_dicts_from_multiple(
+            [str(p) for p in custom_library_paths],
+        )
         for rec in user_records:
             rec["_source"] = "user"
 
@@ -204,10 +224,13 @@ class LibraryManager:
         """
         Import components from another library folder.
 
+        Offers two modes:
+        - **Link**: Add the folder as a new library path (non-destructive).
+        - **Copy**: Copy every component into the user library (legacy behaviour).
+
         Returns:
-            True if any components were imported
+            True if any components were imported / linked
         """
-        # Ask user to select a library folder
         source_dir = QtWidgets.QFileDialog.getExistingDirectory(
             self.parent_widget,
             "Select Component Library Folder to Import",
@@ -220,7 +243,6 @@ class LibraryManager:
 
         source_path = Path(source_dir)
 
-        # Find component folders
         component_folders = [
             p for p in source_path.iterdir() if p.is_dir() and (p / "component.json").exists()
         ]
@@ -234,39 +256,54 @@ class LibraryManager:
             )
             return False
 
-        # Ask for confirmation
-        reply = QtWidgets.QMessageBox.question(
-            self.parent_widget,
-            "Import Library",
-            f"Found {len(component_folders)} component(s) in:\n{source_dir}\n\n"
-            f"Import all components into your user library?",
-            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
-            QtWidgets.QMessageBox.StandardButton.Yes,
+        # Offer Link vs Copy
+        msg_box = QtWidgets.QMessageBox(self.parent_widget)
+        msg_box.setWindowTitle("Import Library")
+        msg_box.setText(
+            f"Found {len(component_folders)} component(s) in:\n{source_dir}"
         )
+        msg_box.setInformativeText(
+            "Link: register this folder as a library path (recommended for git repos).\n"
+            "Copy: duplicate all components into your default user library."
+        )
+        link_btn = msg_box.addButton("Link", QtWidgets.QMessageBox.ButtonRole.AcceptRole)
+        copy_btn = msg_box.addButton("Copy", QtWidgets.QMessageBox.ButtonRole.ActionRole)
+        msg_box.addButton(QtWidgets.QMessageBox.StandardButton.Cancel)
+        msg_box.exec()
 
-        if reply != QtWidgets.QMessageBox.StandardButton.Yes:
-            return False
+        clicked = msg_box.clickedButton()
+        if clicked == link_btn:
+            if self._library_service is not None:
+                self._library_service.add_path(source_path)
+            QtWidgets.QMessageBox.information(
+                self.parent_widget,
+                "Library Linked",
+                f"Library at\n{source_dir}\nhas been added to your library paths.",
+            )
+            return True
 
-        # Import each component
-        imported_count = 0
-        skipped_count = 0
-
-        for comp_folder in component_folders:
-            try:
-                success = self.storage_service.import_component(str(comp_folder), overwrite=False)
-                if success:
-                    imported_count += 1
-                else:
+        if clicked == copy_btn:
+            imported_count = 0
+            skipped_count = 0
+            for comp_folder in component_folders:
+                try:
+                    success = self.storage_service.import_component(
+                        str(comp_folder), overwrite=False,
+                    )
+                    if success:
+                        imported_count += 1
+                    else:
+                        skipped_count += 1
+                except OSError as e:
+                    self.log_service.warning(
+                        f"Failed to import {comp_folder.name}: {e}", "Import",
+                    )
                     skipped_count += 1
-            except OSError as e:
-                self.log_service.warning(f"Failed to import {comp_folder.name}: {e}", "Import")
-                skipped_count += 1
 
-        # Show results
-        message = f"Import complete!\n\nImported: {imported_count} component(s)\n"
-        if skipped_count > 0:
-            message += f"Skipped: {skipped_count} component(s) (already exist or invalid)"
+            message = f"Import complete!\n\nImported: {imported_count} component(s)\n"
+            if skipped_count > 0:
+                message += f"Skipped: {skipped_count} component(s) (already exist or invalid)"
+            QtWidgets.QMessageBox.information(self.parent_widget, "Import Complete", message)
+            return imported_count > 0
 
-        QtWidgets.QMessageBox.information(self.parent_widget, "Import Complete", message)
-
-        return imported_count > 0
+        return False

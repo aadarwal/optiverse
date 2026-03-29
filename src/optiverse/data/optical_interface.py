@@ -165,7 +165,11 @@ class OpticalInterface:
         element_type = old_interface.element_type
 
         if element_type == "lens":
-            properties: OpticalProperties = LensProperties(efl_mm=old_interface.efl_mm)
+            ca = getattr(old_interface, "clear_aperture_mm", 0.0)
+            properties = LensProperties(
+                efl_mm=old_interface.efl_mm,
+                clear_aperture_mm=float(ca) if ca is not None else 0.0,
+            )
         elif element_type == "mirror":
             properties = cast(
                 OpticalProperties, MirrorProperties(reflectivity=old_interface.reflectivity / 100.0)

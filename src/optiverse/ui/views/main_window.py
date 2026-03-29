@@ -44,6 +44,7 @@ from ..controllers.library_manager import LibraryManager
 from ..controllers.ray_renderer import RayRenderer
 from ..widgets.layer_panel import LayerPanel
 from ..widgets.library_tree import LibraryTree
+from .component_canvas_sync import apply_record_to_component_item, normalized_component_name
 from .log_window import LogWindow
 from .placement_handler import PlacementHandler
 from .ruler_placement_handler import RulerPlacementHandler
@@ -154,6 +155,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # Services
         self.settings_service = SettingsService()
         self.storage_service = StorageService(settings_service=self.settings_service)
+
+        from ...services.library_service import LibraryService
+
+        self.library_service = LibraryService(self.settings_service, parent=self)
+
         self.undo_stack = UndoStack()
         self.collaboration_manager = CollaborationManager(self)
         self.log_service = get_log_service()
@@ -166,15 +172,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self._zorder_applier = LayerZOrderApplier(self.layer_state, self.scene, parent=self)
         self._zorder_applier.zValuesApplied.connect(self._schedule_retrace)
 
-        # Load saved preferences
-        self.magnetic_snap = self.settings_service.get_value("magnetic_snap", True, bool)
+        # Load all preferences from QSettings into the runtime preferences module
+        from ...core import preferences
+        from ...core.preferences import load_from_settings
 
-        # Load dark mode preference and apply theme to match
+        load_from_settings(self.settings_service)
+
+        # Apply persisted toggles
+        self.magnetic_snap = self.settings_service.get_value("magnetic_snap", True, bool)
+        self.snap_to_grid = self.settings_service.get_value("canvas/snap_to_grid", False, bool)
+
         dark_mode_saved = self.settings_service.get_value(
             "dark_mode", self.view.is_dark_mode(), bool
         )
         self.view.set_dark_mode(dark_mode_saved)
-        # Apply theme to ensure app-wide styling matches the saved preference
+        self.view.show_scale_bar = preferences.show_scale_bar
         from ..theme_manager import apply_theme
 
         apply_theme(dark_mode_saved)
@@ -184,6 +196,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Build library dock first (needed before menus reference libDock)
         self._build_library_dock()
+
+        # Auto-refresh library dock when library paths change
+        self.library_service.libraries_changed.connect(self.populate_library)
 
         # Build layer panel dock (for z-order and grouping)
         self._build_layer_dock()
@@ -204,6 +219,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Initialize handlers that need actions (after action_builder creates them)
         self._init_event_handlers()
+
+        # Apply startup-only preferences (autotrace, ray width, autosave, max events)
+        self.autotrace = self.settings_service.get_value("canvas/autotrace", True, bool)
+        self._ray_width_px = self.settings_service.get_value(
+            "canvas/default_ray_width_px", 2.0, float
+        )
+        self.raytracing_controller.max_events = preferences.max_raytracing_events
+        if preferences.autosave_enabled:
+            self.file_controller.set_autosave_interval(preferences.autosave_interval_ms)
+        else:
+            self.file_controller.disable_autosave()
 
         # Install event filter for snap and ruler placement
         self.scene.installEventFilter(self)
@@ -234,6 +260,7 @@ class MainWindow(QtWidgets.QMainWindow):
             connect_item_signals=self._connect_item_signals,
             layer_state=self.layer_state,
             settings_service=self.settings_service,
+            library_service=self.library_service,
         )
         # Connect file controller signals
         self.file_controller.traceRequested.connect(self._schedule_retrace)
@@ -343,6 +370,7 @@ class MainWindow(QtWidgets.QMainWindow):
             get_dark_mode=self.view.is_dark_mode,
             get_style=self.style,
             parent_widget=self,
+            library_service=self.library_service,
         )
         self._component_templates = self.library_manager.populate()
 
@@ -431,8 +459,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _connect_item_signals(self, item):
         """Connect standard signals for a new item (edited, commandCreated, requestDelete)."""
-        from ...objects import BaseObj
-
         # Connect edited signal for retrace and collaboration
         if isinstance(item, Editable):
             item.edited.connect(self._maybe_retrace)  # type: ignore[attr-defined]
@@ -748,7 +774,9 @@ class MainWindow(QtWidgets.QMainWindow):
         except ImportError as e:
             QtWidgets.QMessageBox.critical(self, "Import error", str(e))
             return
-        self._comp_editor = ComponentEditorDialog(self.storage_service, self)
+        self._comp_editor = ComponentEditorDialog(
+            self.storage_service, self, library_service=self.library_service,
+        )
         self._comp_editor.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
         # Connect saved signal to reload library (saved is always a signal on ComponentEditorDialog)
         self._comp_editor.saved.connect(self.populate_library)
@@ -764,7 +792,6 @@ class MainWindow(QtWidgets.QMainWindow):
         behaviour) **and** the placed scene instance is updated in-place so
         the canvas reflects the changes immediately.
         """
-        from ...core.models import serialize_component
         from ...core.undo_commands import PropertyChangeCommand
         from ...objects.generic.component_item import ComponentItem
 
@@ -789,24 +816,9 @@ class MainWindow(QtWidgets.QMainWindow):
             if rec is None:
                 return
 
-            serialized = serialize_component(rec, self.storage_service.settings_service)
-
-            if serialized.get("interfaces"):
-                from ...core.interface_definition import InterfaceDefinition
-
-                item.params.interfaces = [
-                    InterfaceDefinition.from_dict(d) for d in serialized["interfaces"]
-                ]
-            item.params.name = rec.name
-            item.params.object_height_mm = rec.object_height_mm
-            item.params.category = rec.category
-            item.params.notes = rec.notes or ""
-            if rec.image_path:
-                item.params.image_path = rec.image_path
-
-            item._update_geom()
-            item._maybe_attach_sprite()
-            item.edited.emit()
+            apply_record_to_component_item(
+                item, rec, self.storage_service.settings_service
+            )
 
             final_state = item.capture_state()
             if baseline_state != final_state:
@@ -816,6 +828,68 @@ class MainWindow(QtWidgets.QMainWindow):
             self._schedule_retrace()
 
         self._comp_editor.saved.connect(_apply_back)
+
+    def update_canvas_instances_from_component_editor(self, editor) -> None:
+        """Update every placed ComponentItem whose name matches the editor's current record.
+
+        Shows a confirmation dialog first. Uses one batch undo command for all changes.
+        """
+        from ...core.undo_commands import BatchPropertyChangeCommand
+        from ...objects.generic.component_item import ComponentItem
+
+        rec = editor._build_record_from_ui()
+        if rec is None:
+            return
+
+        key = normalized_component_name(rec.name)
+        if not key:
+            return
+
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "Update canvas instances",
+            (
+                f"This will change the main canvas.\n\n"
+                f'All placed components named "{rec.name}" will be updated to match '
+                "the definition in this editor (interfaces, image, size, notes, "
+                "and related fields).\n\n"
+                "Each instance keeps its position, rotation, z-order, and lock state.\n\n"
+                "Do you want to continue?"
+            ),
+            QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No,
+        )
+        if reply != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+
+        targets = [
+            it
+            for it in self.scene.items()
+            if isinstance(it, ComponentItem)
+            and normalized_component_name(it.params.name) == key
+        ]
+        if not targets:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Update canvas instances",
+                f'No placed components named "{rec.name}" were found on the canvas.',
+            )
+            return
+
+        entries: list = []
+        for item in targets:
+            old_state = item.capture_state()
+            apply_record_to_component_item(
+                item, rec, self.storage_service.settings_service
+            )
+            new_state = item.capture_state()
+            if old_state != new_state:
+                entries.append((item, old_state, new_state))
+
+        if entries:
+            cmd = BatchPropertyChangeCommand(entries)
+            self.undo_stack.push(cmd)
+        self._schedule_retrace()
 
     def apply_component_properties_to_all(self, source_item):
         """Open the Apply-Properties-to-All dialog for *source_item*."""
@@ -876,7 +950,9 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         iface_keys = [k for k in active_keys if ":" in k]
-        for src_iface, tgt_iface in zip(source.params.interfaces, target.params.interfaces):
+        for src_iface, tgt_iface in zip(
+            source.params.interfaces, target.params.interfaces, strict=True
+        ):
             for key in iface_keys:
                 et, prop = key.split(":", 1)
                 if src_iface.element_type == et and tgt_iface.element_type == et:
@@ -889,43 +965,104 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def open_user_library_folder(self):
         """Open the user library folder in the system file explorer."""
+        from ...platform.paths import get_user_library_root
+
+        self._open_folder(str(get_user_library_root()))
+
+    def _open_folder(self, path: str):
+        """Open *path* in the platform's file manager."""
         import subprocess
         import sys
 
-        from ...platform.paths import get_user_library_root
-
-        library_path = get_user_library_root()
-
         try:
             if sys.platform == "win32":
-                os.startfile(str(library_path))
+                os.startfile(path)
             elif sys.platform == "darwin":
-                subprocess.run(["open", str(library_path)])
-            else:  # linux
-                subprocess.run(["xdg-open", str(library_path)])
+                subprocess.run(["open", path])
+            else:
+                subprocess.run(["xdg-open", path])
         except (OSError, subprocess.SubprocessError) as e:
             QtWidgets.QMessageBox.information(
                 self,
-                "User Library Location",
-                f"User library location:\n{library_path}\n\n"
-                f"(Could not open folder automatically: {str(e)})",
+                "Library Location",
+                f"Location:\n{path}\n\n"
+                f"(Could not open folder automatically: {e})",
             )
+
+    def _populate_open_library_menu(self):
+        """Rebuild the 'Open Library Folder' submenu with all known libraries."""
+        menu = self.open_library_menu  # type: ignore[attr-defined]
+        menu.clear()
+        for lib in self.library_service.get_all():
+            if not lib.exists:
+                continue
+            label = f"{lib.name}  ({lib.source_type})"
+            if not lib.enabled:
+                label += "  [disabled]"
+            action = menu.addAction(label)
+            action.setEnabled(lib.enabled)
+            path_str = str(lib.path)
+            action.triggered.connect(lambda checked, p=path_str: self._open_folder(p))
 
     def open_preferences(self):
         """Open preferences/settings dialog."""
         from .settings_dialog import SettingsDialog
 
-        dialog = SettingsDialog(self.settings_service, self)
+        dialog = SettingsDialog(self.settings_service, self, library_service=self.library_service)
         dialog.settings_changed.connect(self._on_settings_changed)
         dialog.exec()
 
     def _on_settings_changed(self):
-        """Handle settings changes."""
-        # Reload library to pick up new library paths
-        self.populate_library()
+        """Handle settings changes from the Preferences dialog."""
+        from ...core import preferences
+        from ...core.preferences import load_from_settings
 
-        # Log the change
-        self.log_service.info("Settings updated - library reloaded", "Settings")
+        load_from_settings(self.settings_service)
+
+        # -- Library --
+        self.library_service.refresh()
+
+        # -- Appearance --
+        new_dark = self.settings_service.get_value(
+            "dark_mode", self.view.is_dark_mode(), bool
+        )
+        if new_dark != self.view.is_dark_mode():
+            self._toggle_dark_mode(new_dark)
+            self.act_dark_mode.setChecked(new_dark)
+        self.view.show_scale_bar = preferences.show_scale_bar
+        self.view.viewport().update()
+
+        # -- Canvas & Editing --
+        self.snap_to_grid = self.settings_service.get_value(
+            "canvas/snap_to_grid", False, bool
+        )
+        self.act_snap.setChecked(self.snap_to_grid)
+
+        self.magnetic_snap = self.settings_service.get_value("magnetic_snap", True, bool)
+        self.act_magnetic_snap.setChecked(self.magnetic_snap)
+        self._snap_helper.tolerance_px = preferences.magnetic_snap_tolerance_px
+
+        autotrace_pref = self.settings_service.get_value("canvas/autotrace", True, bool)
+        self.autotrace = autotrace_pref
+        self.act_autotrace.setChecked(autotrace_pref)
+
+        ray_width_pref = self.settings_service.get_value(
+            "canvas/default_ray_width_px", 2.0, float
+        )
+        self._ray_width_px = ray_width_pref
+        for act in self._raywidth_group.actions():
+            act.setChecked(abs(float(act.text().split()[0]) - ray_width_pref) < 1e-9)
+
+        self.raytracing_controller.max_events = preferences.max_raytracing_events
+
+        # -- Autosave --
+        if preferences.autosave_enabled:
+            self.file_controller.set_autosave_interval(preferences.autosave_interval_ms)
+        else:
+            self.file_controller.disable_autosave()
+
+        self._schedule_retrace()
+        self.log_service.info("Settings updated", "Settings")
 
     def import_component_library(self):
         """Import components from another library folder (delegated to library manager)."""

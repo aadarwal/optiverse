@@ -6,7 +6,8 @@ Extracts component manipulation logic from MainWindow.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from PyQt6 import QtCore, QtWidgets
 
@@ -225,8 +226,9 @@ class ComponentOperationsHandler:
             # Calculate offset to move centroid to target position
             paste_offset = (target_pos.x() - centroid_x, target_pos.y() - centroid_y)
         else:
-            # Default offset for pasted items so they're visible
-            paste_offset = (20.0, 20.0)
+            from ...core import preferences
+
+            paste_offset = (preferences.clone_offset_x_mm, preferences.clone_offset_y_mm)
 
         pasted_items = []
 

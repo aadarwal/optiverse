@@ -13,7 +13,6 @@ The cube handles:
 - Refraction at all air-glass boundaries (Snell's law)
 """
 
-from typing import Optional
 
 from ...core.interface_definition import InterfaceDefinition
 from ...core.models import ComponentParams
@@ -28,8 +27,8 @@ def create_beamsplitter_cube_50_50(
     split_ratio: float = 50.0,  # 50/50 split
     is_polarizing: bool = False,
     pbs_axis_deg: float = 0.0,
-    image_path: Optional[str] = None,
-    name: Optional[str] = None,
+    image_path: str | None = None,
+    name: str | None = None,
 ) -> ComponentParams:
     """
     Create a realistic beam splitter cube with proper refraction.
@@ -158,8 +157,8 @@ def create_pbs_cube(
     rotation_deg: float = 45.0,
     pbs_axis_deg: float = 0.0,  # Horizontal transmission axis
     n_glass: float = 1.517,
-    image_path: Optional[str] = None,
-    name: Optional[str] = None,
+    image_path: str | None = None,
+    name: str | None = None,
 ) -> ComponentParams:
     """
     Create a Polarizing Beam Splitter (PBS) cube.
@@ -201,8 +200,8 @@ def create_prism(
     center_y: float = 0.0,
     rotation_deg: float = 0.0,
     n_glass: float = 1.517,
-    image_path: Optional[str] = None,
-    name: Optional[str] = None,
+    image_path: str | None = None,
+    name: str | None = None,
 ) -> ComponentParams:
     """
     Create a simple triangular prism (45-45-90 triangle).

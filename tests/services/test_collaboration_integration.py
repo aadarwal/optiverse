@@ -6,7 +6,23 @@ Tests the full flow from broadcast to reception with real components.
 
 import json
 import unittest
-from unittest.mock import Mock
+import uuid
+from unittest.mock import Mock, patch
+
+
+class _FakeSerializable:
+    """Minimal class that satisfies the Serializable runtime_checkable protocol."""
+
+    type_name: str = ""
+    item_uuid: str = ""
+
+    def __init__(self, item_uuid="", type_name="lens", data=None):
+        self.item_uuid = item_uuid
+        self.type_name = type_name
+        self._data = data or {}
+
+    def to_dict(self):
+        return self._data
 
 
 class TestCollaborationFullFlow(unittest.TestCase):
@@ -41,20 +57,19 @@ class TestCollaborationFullFlow(unittest.TestCase):
 
     def test_broadcast_add_sends_message(self):
         """Test that broadcasting add sends a proper message."""
-        import uuid
+        self.collab_a.initial_sync_complete = True
 
-        # Create a mock item
-        item = Mock()
-        item.item_uuid = str(uuid.uuid4())
-        item.__class__.__name__ = "LensItem"
-        item.to_dict = Mock(
-            return_value={
-                "uuid": item.item_uuid,
+        item_id = str(uuid.uuid4())
+        item = _FakeSerializable(
+            item_uuid=item_id,
+            type_name="lens",
+            data={
+                "uuid": item_id,
                 "x_mm": 100.0,
                 "y_mm": 50.0,
                 "angle_deg": 0.0,
                 "efl_mm": 100.0,
-            }
+            },
         )
 
         # Broadcast add from user A
@@ -75,13 +90,13 @@ class TestCollaborationFullFlow(unittest.TestCase):
 
     def test_broadcast_move_sends_message(self):
         """Test that broadcasting move sends a proper message."""
-        import uuid
+        self.collab_a.initial_sync_complete = True
 
-        item = Mock()
-        item.item_uuid = str(uuid.uuid4())
-        item.__class__.__name__ = "MirrorItem"
-        item.to_dict = Mock(
-            return_value={"uuid": item.item_uuid, "x_mm": 200.0, "y_mm": 100.0, "angle_deg": 45.0}
+        item_id = str(uuid.uuid4())
+        item = _FakeSerializable(
+            item_uuid=item_id,
+            type_name="mirror",
+            data={"uuid": item_id, "x_mm": 200.0, "y_mm": 100.0, "angle_deg": 45.0},
         )
 
         # Broadcast move from user A
@@ -100,10 +115,12 @@ class TestCollaborationFullFlow(unittest.TestCase):
 
     def test_simulate_add_from_a_to_b(self):
         """Simulate user A adding item and user B receiving it."""
-        import uuid
-
-        # User A's item
         item_uuid = str(uuid.uuid4())
+
+        # Mock _create_item_from_remote so deserialize_item isn't needed
+        fake_item = Mock()
+        fake_item.item_uuid = item_uuid
+        self.collab_b._create_item_from_remote = Mock(return_value=fake_item)
 
         # Create the message that would be sent
         message = {
@@ -141,8 +158,6 @@ class TestCollaborationFullFlow(unittest.TestCase):
 
     def test_simulate_move_from_a_to_b(self):
         """Simulate user A moving item and user B receiving update."""
-        import uuid
-
         # Create an existing item on both sides
         item_uuid = str(uuid.uuid4())
 
@@ -172,12 +187,11 @@ class TestCollaborationFullFlow(unittest.TestCase):
 
         # Verify item was moved
         item_b.setPos.assert_called_once_with(300.0, 200.0)
-        item_b.setRotation.assert_called_once_with(45.0)
+        # angle_deg is converted from user convention (CW) to Qt convention (CCW) via negation
+        item_b.setRotation.assert_called_once_with(-45.0)
 
     def test_simulate_delete_from_a_to_b(self):
         """Simulate user A deleting item and user B receiving delete."""
-        import uuid
-
         # Create an existing item on both sides
         item_uuid = str(uuid.uuid4())
 
@@ -211,8 +225,6 @@ class TestCollaborationFullFlow(unittest.TestCase):
 
     def test_suppression_flag_prevents_rebroadcast(self):
         """Test that suppression flag prevents infinite loops."""
-        import uuid
-
         item_uuid = str(uuid.uuid4())
 
         # Create item on user B
@@ -265,8 +277,13 @@ class TestComponentFactory(unittest.TestCase):
         self.main_window.scene = Mock()
         self.collab = CollaborationManager(self.main_window)
 
-    def test_create_lens_from_remote(self):
+    @patch("optiverse.objects.type_registry.deserialize_item")
+    def test_create_lens_from_remote(self, mock_deserialize):
         """Test creating a lens from remote data."""
+        fake_item = Mock()
+        fake_item.item_uuid = "test-uuid-123"
+        mock_deserialize.return_value = fake_item
+
         data = {
             "uuid": "test-uuid-123",
             "x_mm": 100.0,
@@ -281,8 +298,13 @@ class TestComponentFactory(unittest.TestCase):
         self.assertIsNotNone(item)
         self.assertEqual(item.item_uuid, "test-uuid-123")
 
-    def test_create_mirror_from_remote(self):
+    @patch("optiverse.objects.type_registry.deserialize_item")
+    def test_create_mirror_from_remote(self, mock_deserialize):
         """Test creating a mirror from remote data."""
+        fake_item = Mock()
+        fake_item.item_uuid = "test-mirror-uuid"
+        mock_deserialize.return_value = fake_item
+
         data = {
             "uuid": "test-mirror-uuid",
             "x_mm": 200.0,
@@ -296,8 +318,13 @@ class TestComponentFactory(unittest.TestCase):
         self.assertIsNotNone(item)
         self.assertEqual(item.item_uuid, "test-mirror-uuid")
 
-    def test_create_source_from_remote(self):
+    @patch("optiverse.objects.type_registry.deserialize_item")
+    def test_create_source_from_remote(self, mock_deserialize):
         """Test creating a source from remote data."""
+        fake_item = Mock()
+        fake_item.item_uuid = "test-source-uuid"
+        mock_deserialize.return_value = fake_item
+
         data = {
             "uuid": "test-source-uuid",
             "x_mm": 0.0,

@@ -40,7 +40,7 @@ def make_elem(kind: str, p1, p2, efl=None, T=None, R=None):
     return create_polymorphic_element(iface)
 
 
-def make_source(x, y, ang_deg=90.0, ray_length=100.0):
+def make_source(x, y, ang_deg=270.0, ray_length=100.0):
     return SourceParams(
         x_mm=float(x),
         y_mm=float(y),
@@ -54,7 +54,7 @@ def make_source(x, y, ang_deg=90.0, ray_length=100.0):
 
 def test_reflection_on_mirror():
     elements = [make_elem("mirror", (-5.0, 0.0), (5.0, 0.0))]
-    sources = [make_source(0.0, -10.0, ang_deg=90.0, ray_length=30.0)]
+    sources = [make_source(0.0, -10.0, ang_deg=270.0, ray_length=30.0)]
     paths = trace_rays_polymorphic(elements, sources, max_events=2)
     assert len(paths) >= 1
     # Expect hit at y=0, then reflection downward
@@ -67,7 +67,7 @@ def test_reflection_on_mirror():
 def test_lens_zero_offset_no_deflection():
     # Lens centered at origin along x-axis; ray goes through center => no deflection
     elements = [make_elem("lens", (-5.0, 0.0), (5.0, 0.0), efl=100.0)]
-    sources = [make_source(0.0, -10.0, ang_deg=90.0, ray_length=30.0)]
+    sources = [make_source(0.0, -10.0, ang_deg=270.0, ray_length=30.0)]
     paths = trace_rays_polymorphic(elements, sources, max_events=2)
     assert len(paths) >= 1
     pts = paths[0].points
@@ -78,7 +78,7 @@ def test_lens_zero_offset_no_deflection():
 
 def test_beamsplitter_splits_into_two():
     elements = [make_elem("bs", (-5.0, 0.0), (5.0, 0.0), T=60.0, R=40.0)]
-    sources = [make_source(0.0, -10.0, ang_deg=90.0, ray_length=30.0)]
+    sources = [make_source(0.0, -10.0, ang_deg=270.0, ray_length=30.0)]
     paths = trace_rays_polymorphic(elements, sources, max_events=2)
     # We expect at least 2 branches
     assert len(paths) >= 2

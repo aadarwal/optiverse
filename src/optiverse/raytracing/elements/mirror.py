@@ -78,6 +78,28 @@ class MirrorElement(IOpticalElement):
 
         return [reflected_ray]
 
+    def transform_q(
+        self,
+        q: complex,
+        ray: RayState,
+        normal: np.ndarray,
+        *,
+        hit_point: np.ndarray | None = None,
+        tangent: np.ndarray | None = None,
+    ) -> complex:
+        """Flat mirror: identity ABCD. Curved: tangential C = -2/(R cos(theta))."""
+        from ...core.gaussian_beam import apply_abcd
+
+        geometry = getattr(self, "_geometry", None)
+        if geometry is not None and getattr(geometry, "is_curved", False):
+            R = float(geometry.get_radius())
+            if abs(R) < 1e-12:
+                return apply_abcd(q, 1.0, 0.0, 0.0, 1.0)
+            cos_theta = max(abs(float(np.dot(ray.direction, normal))), 1e-12)
+            C = -2.0 / (R * cos_theta)
+            return apply_abcd(q, 1.0, 0.0, C, 1.0)
+        return apply_abcd(q, 1.0, 0.0, 0.0, 1.0)
+
     def get_bounding_box(self) -> tuple[np.ndarray, np.ndarray]:
         """Get axis-aligned bounding box"""
         min_corner = np.minimum(self.p1, self.p2)

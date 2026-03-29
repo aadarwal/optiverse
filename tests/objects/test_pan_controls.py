@@ -158,18 +158,16 @@ class TestMiddleButtonPanning:
 
 
 class TestSpaceKeyPanning:
-    """Test space key panning behavior."""
+    """Test that space key does NOT activate panning (removed to avoid retrace conflict)."""
 
-    def test_space_key_press_enables_scroll_hand_drag(self):
-        """Space key press should switch to ScrollHandDrag mode."""
+    def test_space_key_press_does_not_enable_scroll_hand_drag(self):
+        """Space key press should NOT switch to ScrollHandDrag (feature removed)."""
         scene = QtWidgets.QGraphicsScene()
         view = GraphicsView(scene)
 
-        # Initial state
         assert view.dragMode() == QtWidgets.QGraphicsView.DragMode.RubberBandDrag
         assert not view._hand
 
-        # Simulate space key press
         key_event = QtGui.QKeyEvent(
             QtCore.QEvent.Type.KeyPress,
             QtCore.Qt.Key.Key_Space,
@@ -177,16 +175,14 @@ class TestSpaceKeyPanning:
         )
         view.keyPressEvent(key_event)
 
-        # Should enable hand mode
-        assert view._hand
-        assert view.dragMode() == QtWidgets.QGraphicsView.DragMode.ScrollHandDrag
+        assert not view._hand
+        assert view.dragMode() == QtWidgets.QGraphicsView.DragMode.RubberBandDrag
 
-    def test_space_key_release_restores_rubber_band_drag(self):
-        """Space key release should restore RubberBandDrag mode."""
+    def test_space_key_release_keeps_rubber_band_drag(self):
+        """Space key release should keep RubberBandDrag (space panning removed)."""
         scene = QtWidgets.QGraphicsScene()
         view = GraphicsView(scene)
 
-        # Press space
         key_press = QtGui.QKeyEvent(
             QtCore.QEvent.Type.KeyPress,
             QtCore.Qt.Key.Key_Space,
@@ -194,10 +190,6 @@ class TestSpaceKeyPanning:
         )
         view.keyPressEvent(key_press)
 
-        assert view._hand
-        assert view.dragMode() == QtWidgets.QGraphicsView.DragMode.ScrollHandDrag
-
-        # Release space
         key_release = QtGui.QKeyEvent(
             QtCore.QEvent.Type.KeyRelease,
             QtCore.Qt.Key.Key_Space,
@@ -205,7 +197,6 @@ class TestSpaceKeyPanning:
         )
         view.keyReleaseEvent(key_release)
 
-        # Should restore to normal mode
         assert not view._hand
         assert view.dragMode() == QtWidgets.QGraphicsView.DragMode.RubberBandDrag
 
@@ -213,32 +204,29 @@ class TestSpaceKeyPanning:
 class TestPanControlInteraction:
     """Test interaction between different pan control methods."""
 
-    def test_space_and_middle_button_dont_conflict(self):
-        """Space key and middle button should not conflict with each other."""
+    def test_space_does_not_interfere_with_middle_button(self):
+        """Space key (no-op) should not interfere with middle button panning."""
         scene = QtWidgets.QGraphicsScene()
         view = GraphicsView(scene)
 
-        # Press space first
+        # Space key should be a no-op for panning
         key_press = QtGui.QKeyEvent(
             QtCore.QEvent.Type.KeyPress,
             QtCore.Qt.Key.Key_Space,
             QtCore.Qt.KeyboardModifier.NoModifier,
         )
         view.keyPressEvent(key_press)
-        assert view._hand
-        assert view.dragMode() == QtWidgets.QGraphicsView.DragMode.ScrollHandDrag
+        assert not view._hand
+        assert view.dragMode() == QtWidgets.QGraphicsView.DragMode.RubberBandDrag
 
-        # Release space - should go back to RubberBandDrag
         key_release = QtGui.QKeyEvent(
             QtCore.QEvent.Type.KeyRelease,
             QtCore.Qt.Key.Key_Space,
             QtCore.Qt.KeyboardModifier.NoModifier,
         )
         view.keyReleaseEvent(key_release)
-        assert not view._hand
-        assert view.dragMode() == QtWidgets.QGraphicsView.DragMode.RubberBandDrag
 
-        # Now try middle button
+        # Middle button should still work independently
         middle_press = QtGui.QMouseEvent(
             QtCore.QEvent.Type.MouseButtonPress,
             QtCore.QPointF(100, 100),
@@ -247,11 +235,8 @@ class TestPanControlInteraction:
             QtCore.Qt.KeyboardModifier.NoModifier,
         )
         view.mousePressEvent(middle_press)
-
-        # Should enable ScrollHandDrag again
         assert view.dragMode() == QtWidgets.QGraphicsView.DragMode.ScrollHandDrag
 
-        # Release middle button
         middle_release = QtGui.QMouseEvent(
             QtCore.QEvent.Type.MouseButtonRelease,
             QtCore.QPointF(150, 150),
@@ -260,8 +245,6 @@ class TestPanControlInteraction:
             QtCore.Qt.KeyboardModifier.NoModifier,
         )
         view.mouseReleaseEvent(middle_release)
-
-        # Should restore to RubberBandDrag
         assert view.dragMode() == QtWidgets.QGraphicsView.DragMode.RubberBandDrag
 
     def test_multiple_rapid_middle_button_clicks(self):
@@ -317,16 +300,23 @@ class TestViewportUpdateMode:
 
         BoundingRectViewportUpdate causes artifacts with scale bar.
         FullViewportUpdate ensures foreground is properly redrawn.
+        On Mac, MinimalViewportUpdate is used instead.
         """
+        from optiverse.platform.paths import is_macos
+
         scene = QtWidgets.QGraphicsScene()
         view = GraphicsView(scene)
 
-        # Should use FullViewportUpdate to avoid scale bar artifacts
-        # during panning (scale bar is drawn in drawForeground)
-        assert (
-            view.viewportUpdateMode()
-            == QtWidgets.QGraphicsView.ViewportUpdateMode.FullViewportUpdate
-        )
+        if is_macos():
+            assert (
+                view.viewportUpdateMode()
+                == QtWidgets.QGraphicsView.ViewportUpdateMode.MinimalViewportUpdate
+            )
+        else:
+            assert (
+                view.viewportUpdateMode()
+                == QtWidgets.QGraphicsView.ViewportUpdateMode.FullViewportUpdate
+            )
 
 
 class TestTransformationAnchorBehavior:

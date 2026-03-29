@@ -19,4 +19,7 @@ def test_storage_library_roundtrip(tmp_path, monkeypatch):
     svc.save_library([comp])
     items = svc.load_library()
     assert isinstance(items, list)
-    assert items and items[0]["name"] == "lens100"
+    # Find our saved component in the loaded items
+    matching = [item for item in items if item.get("name") == "lens100"]
+    assert len(matching) >= 1
+    assert matching[0]["name"] == "lens100"
