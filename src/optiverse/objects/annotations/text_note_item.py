@@ -32,6 +32,7 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
         f.setPointSizeF(11.0)
         self.setFont(f)
         self.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.NoTextInteraction)
+        self._text_before_edit: str | None = None
 
         # Compensate for the view's Y-axis inversion (view has scale(1, -1))
         # Apply scale(1, -1) to flip text back to readable orientation

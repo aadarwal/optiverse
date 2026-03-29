@@ -7,10 +7,10 @@ Encapsulates rotation logic to keep BaseObj focused on core functionality.
 from __future__ import annotations
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING
 
-from PyQt6 import QtCore
+from PyQt6 import QtCore, QtWidgets
 
 from ..core.constants import WHEEL_ROTATION_FINALIZE_DELAY_MS
 from ..core.undo_stack import UndoStack
@@ -257,21 +257,22 @@ class WheelRotationTracker:
         """
         self._get_undo_stack = get_undo_stack
         self._timer: QtCore.QTimer | None = None
-        self._start_rotations: dict[BaseObj, float] | None = None
-        self._start_positions: dict[BaseObj, QtCore.QPointF] | None = None
-        self._items: list[BaseObj] | None = None
+        self._start_rotations: dict[QtWidgets.QGraphicsItem, float] | None = None
+        self._start_positions: dict[QtWidgets.QGraphicsItem, QtCore.QPointF] | None = None
+        self._items: list[QtWidgets.QGraphicsItem] | None = None
 
-    def track(self, items: list[BaseObj]) -> None:
+    def track(self, items: Sequence[QtWidgets.QGraphicsItem]) -> None:
         """
         Start tracking rotation for the given items (if not already tracking).
 
         Args:
-            items: Items being rotated
+            items: Items being rotated (optical BaseObj or annotations such as RectangleItem)
         """
         if self._start_rotations is None:
-            self._start_rotations = {item: item.rotation() for item in items}
-            self._start_positions = {item: QtCore.QPointF(item.pos()) for item in items}
-            self._items = items
+            item_list = list(items)
+            self._start_rotations = {item: item.rotation() for item in item_list}
+            self._start_positions = {item: QtCore.QPointF(item.pos()) for item in item_list}
+            self._items = item_list
 
         # Reset/start timer
         if self._timer:

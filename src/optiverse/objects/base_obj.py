@@ -123,8 +123,9 @@ class BaseObj(QtWidgets.QGraphicsObject):
                 self.edited.emit()
 
                 # Broadcast position/rotation change to collaboration
-                if self.scene():
-                    views = self.scene().views()
+                scene_bc = self.scene()
+                if scene_bc:
+                    views = scene_bc.views()
                     if views:
                         main_window = views[0].window()
                         if isinstance(main_window, HasCollaboration):
@@ -142,10 +143,13 @@ class BaseObj(QtWidgets.QGraphicsObject):
                 sp.update()
 
             # Force viewport repaint to clear any cached rendering
-            if self.scene() is not None:
-                views = self.scene().views()
+            scene_sel = self.scene()
+            if scene_sel is not None:
+                views = scene_sel.views()
                 if views:
-                    views[0].viewport().update()
+                    vp = views[0].viewport()
+                    if vp is not None:
+                        vp.update()
 
         return super().itemChange(change, value)
 
@@ -155,10 +159,13 @@ class BaseObj(QtWidgets.QGraphicsObject):
         sp = getattr(self, "_sprite", None)
         if sp is not None:
             sp.update()
-        if self.scene() is not None:
-            views = self.scene().views()
+        scene = self.scene()
+        if scene is not None:
+            views = scene.views()
             if views:
-                views[0].viewport().update()
+                vp = views[0].viewport()
+                if vp is not None:
+                    vp.update()
 
     def hoverEnterEvent(self, ev: QtWidgets.QGraphicsSceneHoverEvent | None) -> None:
         if ev is None:

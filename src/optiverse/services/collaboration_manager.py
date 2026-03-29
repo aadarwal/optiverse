@@ -486,22 +486,22 @@ class CollaborationManager(QObject):
                 data_copy.pop("item_uuid", None)
                 data_copy.pop("item_type", None)
                 data_copy.pop("_type", None)
-                item = RulerItem()
+                ruler_item = RulerItem()
                 if item_uuid:
-                    item.item_uuid = item_uuid
-                item.from_dict(data_copy)
-                return item
+                    ruler_item.item_uuid = item_uuid
+                ruler_item.from_dict(data_copy)
+                return ruler_item
 
             if item_type == "text":
                 data_copy.pop("uuid", None)
                 data_copy.pop("item_uuid", None)
                 data_copy.pop("item_type", None)
                 data_copy.pop("_type", None)
-                item = TextNoteItem()
+                text_item = TextNoteItem()
                 if item_uuid:
-                    item.item_uuid = item_uuid
-                item.from_dict(data_copy)
-                return item
+                    text_item.item_uuid = item_uuid
+                text_item.from_dict(data_copy)
+                return text_item
 
             # For all registered types (component, source, etc.),
             # use deserialize_item which properly reconstructs params,

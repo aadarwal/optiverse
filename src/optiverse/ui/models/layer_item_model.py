@@ -254,13 +254,13 @@ class LayerItemModel(QtCore.QAbstractItemModel):
             old_visible = node.visible
             new_visible = bool(value)
             if old_visible != new_visible:
-                cmd = ToggleVisibilityCommand(
+                vis_cmd = ToggleVisibilityCommand(
                     node, old_visible, new_visible, self._apply_effective_visibility
                 )
                 if self._undo_stack:
-                    self._undo_stack.push(cmd)
+                    self._undo_stack.push(vis_cmd)
                 else:
-                    cmd.execute()
+                    vis_cmd.execute()
             self.dataChanged.emit(index, index, [int(VISIBLE_ROLE)])
             self.visibilityChanged.emit()
             return True
@@ -269,13 +269,13 @@ class LayerItemModel(QtCore.QAbstractItemModel):
             old_locked = node.locked
             new_locked = bool(value)
             if old_locked != new_locked:
-                cmd = ToggleLockCommand(
+                lock_cmd = ToggleLockCommand(
                     node, old_locked, new_locked, self._apply_effective_locked
                 )
                 if self._undo_stack:
-                    self._undo_stack.push(cmd)
+                    self._undo_stack.push(lock_cmd)
                 else:
-                    cmd.execute()
+                    lock_cmd.execute()
             self.dataChanged.emit(index, index, [int(LOCKED_ROLE)])
             return True
 
