@@ -78,11 +78,17 @@ class ComponentEditor(QtWidgets.QMainWindow):
 
     saved = QtCore.pyqtSignal()
 
-    def __init__(self, storage: StorageService, parent: QtWidgets.QWidget | None = None):
+    def __init__(
+        self,
+        storage: StorageService,
+        parent: QtWidgets.QWidget | None = None,
+        library_service=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Component Editor")
         self.resize(1100, 680)
         self.storage = storage
+        self._library_service = library_service
 
         # Create undo stack
         self.undo_stack = UndoStack()
@@ -237,6 +243,18 @@ class ComponentEditor(QtWidgets.QMainWindow):
         """Mark the component as having unsaved changes."""
         self._modified = True
 
+    def _populate_save_to_combo(self):
+        """Populate the 'Save To' dropdown with writable library directories."""
+        self.save_to_combo.clear()
+        if self._library_service is not None:
+            for lib in self._library_service.get_writable():
+                self.save_to_combo.addItem(lib.name, str(lib.path))
+        else:
+            from ...platform.paths import get_user_library_root
+
+            root = get_user_library_root()
+            self.save_to_combo.addItem(root.name, str(root))
+
     def _build_side_dock(self):
         """Build side dock with component settings (v2 interface-based)."""
         dock = QtWidgets.QDockWidget("Component Settings", self)
@@ -274,6 +292,12 @@ class ComponentEditor(QtWidgets.QMainWindow):
         self.category_combo.setToolTip("Select a category or type a custom one")
         self.category_combo.currentTextChanged.connect(self._mark_modified)
         info_form.addRow("Category", self.category_combo)
+
+        # Save-to library selector
+        self.save_to_combo = QtWidgets.QComboBox()
+        self.save_to_combo.setToolTip("Library directory where the component will be saved")
+        self._populate_save_to_combo()
+        info_form.addRow("Save To", self.save_to_combo)
 
         # OBJECT HEIGHT (mm) -> physical size reference for calibration
         self.object_height_mm = SmartDoubleSpinBox()
@@ -849,11 +873,23 @@ class ComponentEditor(QtWidgets.QMainWindow):
 
     # ---------- Library ----------
     def _refresh_library_list(self):
-        """Refresh library list widget."""
-        self.libList.clear()
-        rows = self.storage.load_library()
+        """Refresh library list widget, loading from all known libraries."""
+        from ...objects.definitions_loader import load_component_dicts_from_multiple
 
-        for row in rows:
+        self.libList.clear()
+
+        # Collect component dicts from every library root
+        if self._library_service is not None:
+            roots = [
+                lib.path for lib in self._library_service.get_all()
+                if lib.source_type != "builtin" and lib.exists and lib.enabled
+            ]
+        else:
+            roots = [self.storage.get_library_root()]
+
+        all_rows = load_component_dicts_from_multiple([str(p) for p in roots])
+
+        for row in all_rows:
             rec = deserialize_component(row, self.storage.settings_service)
             if not rec:
                 continue
@@ -866,7 +902,6 @@ class ComponentEditor(QtWidgets.QMainWindow):
                 else self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_FileIcon)
             )
 
-            # Display element type and interface count instead of kind
             if rec.interfaces and len(rec.interfaces) > 0:
                 if len(rec.interfaces) > 1:
                     type_label = f"Multi-element ({len(rec.interfaces)} interfaces)"
@@ -877,7 +912,7 @@ class ComponentEditor(QtWidgets.QMainWindow):
                 type_label = "Unknown"
 
             it = QtWidgets.QListWidgetItem(icon, f"{name}\n({type_label})")
-            it.setData(QtCore.Qt.ItemDataRole.UserRole, row)  # store plain dict
+            it.setData(QtCore.Qt.ItemDataRole.UserRole, row)
             self.libList.addItem(it)
 
     def _load_from_item(self, item: QtWidgets.QListWidgetItem):
@@ -939,13 +974,22 @@ class ComponentEditor(QtWidgets.QMainWindow):
         """Collect all known component names (builtin + all user libraries)."""
         from ...objects.component_registry import ComponentRegistry
         from ...objects.definitions_loader import load_component_dicts_from_multiple
-        from ...platform.paths import get_all_custom_library_roots
 
         names: set[str] = set()
         for rec in ComponentRegistry.get_standard_components():
             if name := rec.get("name", ""):
                 names.add(name)
-        custom_roots = get_all_custom_library_roots()
+
+        if self._library_service is not None:
+            custom_roots = [
+                lib.path for lib in self._library_service.get_all()
+                if lib.source_type != "builtin" and lib.exists and lib.enabled
+            ]
+        else:
+            from ...platform.paths import get_all_custom_library_roots
+
+            custom_roots = get_all_custom_library_roots()
+
         for rec in load_component_dicts_from_multiple([str(p) for p in custom_roots]):
             if name := rec.get("name", ""):
                 names.add(name)
@@ -1080,6 +1124,15 @@ class ComponentEditor(QtWidgets.QMainWindow):
             self.name_edit.setText(new_name)
 
         # --- Perform the actual save (builds record from UI, writes to disk) ---
+        # Point StorageService at the library selected in "Save To" dropdown
+        selected_path = self.save_to_combo.currentData()
+        if selected_path:
+            target_storage = StorageService(
+                library_path=selected_path,
+                settings_service=self.storage.settings_service,
+            )
+            self._library_io.storage = target_storage
+
         if self._library_io.save_component():
             saved_name = self.name_edit.text().strip()
             self._original_name = saved_name

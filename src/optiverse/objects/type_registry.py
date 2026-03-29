@@ -213,7 +213,11 @@ def serialize_item(item: Serializable) -> dict[str, Any]:
     return d
 
 
-def deserialize_item(data: dict[str, Any], strict: bool = False):
+def deserialize_item(
+    data: dict[str, Any],
+    strict: bool = False,
+    library_roots: list | None = None,
+):
     """
     Generic item deserialization using registry lookup.
 
@@ -224,6 +228,12 @@ def deserialize_item(data: dict[str, Any], strict: bool = False):
         data: Dictionary from JSON deserialization
         strict: If True, raises UnknownTypeError for unknown types.
                 If False (default), logs warning and returns None.
+        library_roots: Optional pre-computed library root paths for resolving
+            ``@component/`` and ``@library/`` image paths.  When provided the
+            caller is responsible for including *all* configured roots (e.g.
+            via ``LibraryService.get_all_roots()``).  When *None* the function
+            falls back to ``get_all_library_roots()`` which may miss paths
+            from user settings.
 
     Returns:
         Reconstructed item instance, or None if type not found (when strict=False)
@@ -250,11 +260,8 @@ def deserialize_item(data: dict[str, Any], strict: bool = False):
 
     # Convert library-relative or package-relative path to absolute
     if "image_path" in d and d["image_path"]:
-        # Try to get library roots from current context
-        # Note: During deserialization, we don't have item context yet
-        # So we'll just use default library paths
-        library_roots = get_all_library_roots()
-        d["image_path"] = to_absolute_path(d["image_path"], library_roots)
+        roots = library_roots if library_roots is not None else get_all_library_roots()
+        d["image_path"] = to_absolute_path(d["image_path"], roots)
 
     # Deserialize interfaces from dicts to InterfaceDefinition objects
     if "interfaces" in d and d["interfaces"]:
