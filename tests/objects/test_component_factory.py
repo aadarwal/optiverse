@@ -8,6 +8,7 @@ component creation to ensure consistency.
 
 from optiverse.objects import ComponentItem
 from optiverse.objects.component_factory import ComponentFactory
+from optiverse.platform.paths import to_absolute_path
 
 
 class TestComponentFactoryLens:
@@ -620,10 +621,11 @@ class TestComponentFactoryImagePath:
     """Tests for image path handling."""
 
     def test_image_path_preserved(self):
-        """Factory preserves image_path from data."""
+        """Factory applies the same path normalization as to_absolute_path (OS-specific)."""
+        raw_path = "/path/to/lens.png"
         data = {
             "name": "Lens with Image",
-            "image_path": "/path/to/lens.png",
+            "image_path": raw_path,
             "object_height_mm": 50.0,
             "angle_deg": 90.0,
             "interfaces": [
@@ -644,7 +646,7 @@ class TestComponentFactoryImagePath:
         }
 
         item = ComponentFactory.create_item_from_dict(data, 0, 0)
-        assert item.params.image_path == "/path/to/lens.png"
+        assert item.params.image_path == to_absolute_path(raw_path)
 
     def test_no_image_path(self):
         """Factory handles missing image_path."""
