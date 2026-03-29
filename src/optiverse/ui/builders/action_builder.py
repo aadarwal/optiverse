@@ -288,6 +288,10 @@ class ActionBuilder:
         w.act_open_library_folder = QtGui.QAction("Open User Library Folder…", w)
         w.act_open_library_folder.triggered.connect(w.open_user_library_folder)
 
+        # Submenu populated dynamically with every known library
+        w.open_library_menu = QtWidgets.QMenu("Open Library Folder", w)
+        w.open_library_menu.aboutToShow.connect(w._populate_open_library_menu)
+
         w.act_import_library = QtGui.QAction("Import Component Library…", w)
         w.act_import_library.triggered.connect(w.import_component_library)
 
@@ -500,7 +504,7 @@ class ActionBuilder:
         mTools.addAction(w.act_editor)
         mTools.addAction(w.act_reload)
         mTools.addSeparator()
-        mTools.addAction(w.act_open_library_folder)
+        mTools.addMenu(w.open_library_menu)
         mTools.addAction(w.act_import_library)
         mTools.addSeparator()
         mTools.addAction(w.act_show_log)

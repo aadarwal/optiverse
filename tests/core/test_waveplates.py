@@ -122,8 +122,14 @@ def test_qwp_backward_horizontal_to_circular():
     assert np.abs(np.abs(phase_diff) - np.pi / 2) < 1e-6  # Either +90° or -90°
 
 
-def test_qwp_directionality_opposite_handedness():
-    """QWP forward and backward produce opposite circular handedness."""
+def test_qwp_directionality_same_for_forward_backward():
+    """
+    QWP forward and backward produce identical output.
+
+    The waveplate Jones matrix J = R(-θ)·D·R(θ) is symmetric (J = J^T)
+    because R(θ)^T = R(-θ) and D^T = D. Therefore the backward matrix
+    (which is J^T for reciprocal elements) equals the forward matrix.
+    """
     pol_in = Polarization.horizontal()
 
     pol_forward = transform_polarization_waveplate(
@@ -136,36 +142,45 @@ def test_qwp_directionality_opposite_handedness():
     jones_fwd = pol_forward.jones_vector
     jones_bwd = pol_backward.jones_vector
 
-    # The y-component should have opposite phases
-    # Forward: [a, i*b], Backward: [a, -i*b]
-    # So jones_bwd[1] should be the complex conjugate of jones_fwd[1]
-    assert np.allclose(jones_bwd[1], np.conj(jones_fwd[1]), atol=1e-6)
+    # Forward and backward must be identical (J^T = J for waveplates)
+    assert np.allclose(jones_fwd, jones_bwd, atol=1e-6)
 
 
-def test_qwp_round_trip_identity():
-    """QWP forward then backward returns to original polarization."""
-    pol_in = Polarization.linear(30.0)  # Arbitrary linear polarization
+def test_qwp_double_pass_equals_hwp():
+    """
+    Two passes through a QWP (without a mirror) act as a HWP.
 
-    # Forward pass
+    Since J_backward = J_forward (symmetric matrix), applying the QWP
+    twice is simply J^2.  For a QWP at 45° with δ=90°, J^2 equals the
+    HWP Jones matrix, which rotates linear polarization by 90°.
+
+    Note: this is NOT a round-trip identity.  A true QWP+mirror+QWP
+    retroreflector also gives a 90° rotation, but via a different
+    mechanism (the mirror flips handedness between the two passes).
+    """
+    pol_in = Polarization.horizontal()
+
+    # First pass
     pol_mid = transform_polarization_waveplate(
         pol_in, phase_shift_deg=90.0, fast_axis_deg=45.0, is_forward=True
     )
 
-    # Backward pass
+    # Second pass (backward flag makes no difference — J^T = J)
     pol_out = transform_polarization_waveplate(
         pol_mid, phase_shift_deg=90.0, fast_axis_deg=45.0, is_forward=False
     )
 
-    # Should return to original polarization (up to global phase)
-    jones_in = pol_in.jones_vector
     jones_out = pol_out.jones_vector
 
-    # Check if they're the same up to a global phase factor
-    # Two Jones vectors are equivalent if one is a complex scalar multiple of the other
-    ratio = jones_out[0] / jones_in[0] if np.abs(jones_in[0]) > 1e-6 else jones_out[1] / jones_in[1]
-    expected_jones_out = ratio * jones_in
+    # QWP^2 at 45° on horizontal input should produce vertical (up to global phase)
+    expected_vertical = Polarization.vertical().jones_vector
 
-    assert np.allclose(jones_out, expected_jones_out, atol=1e-6)
+    # Check equivalence up to global phase
+    if np.abs(expected_vertical[1]) > 1e-6:
+        ratio = jones_out[1] / expected_vertical[1]
+    else:
+        ratio = jones_out[0] / expected_vertical[0]
+    assert np.allclose(jones_out, ratio * expected_vertical, atol=1e-6)
 
 
 def test_hwp_directionality_symmetric():
@@ -194,8 +209,13 @@ def test_hwp_directionality_symmetric():
     assert np.allclose(jones_fwd, ratio * jones_bwd, atol=1e-6)
 
 
-def test_qwp_vertical_polarization_directionality():
-    """Test QWP directionality with vertical input polarization."""
+def test_qwp_vertical_polarization_forward_equals_backward():
+    """
+    QWP forward and backward give identical results for vertical input.
+
+    The waveplate Jones matrix is symmetric (J = J^T), so the propagation
+    direction does not matter.
+    """
     pol_in = Polarization.vertical()
 
     pol_forward = transform_polarization_waveplate(
@@ -208,28 +228,21 @@ def test_qwp_vertical_polarization_directionality():
     jones_fwd = pol_forward.jones_vector
     jones_bwd = pol_backward.jones_vector
 
-    # Both should produce circular polarization with opposite handedness
+    # Both should produce circular polarization (normalized)
     assert np.abs(np.linalg.norm(jones_fwd) - 1.0) < 1e-6
     assert np.abs(np.linalg.norm(jones_bwd) - 1.0) < 1e-6
 
-    # Forward and backward should produce opposite handedness
-    # The phase relationship should be opposite
-    phase_fwd = np.angle(jones_fwd[1]) - np.angle(jones_fwd[0])
-    phase_bwd = np.angle(jones_bwd[1]) - np.angle(jones_bwd[0])
-
-    # Normalize phases to [-π, π]
-    phase_fwd = np.arctan2(np.sin(phase_fwd), np.cos(phase_fwd))
-    phase_bwd = np.arctan2(np.sin(phase_bwd), np.cos(phase_bwd))
-
-    # They should be opposite
-    assert (
-        np.abs(phase_fwd + phase_bwd) < 1e-5
-        or np.abs(np.abs(phase_fwd + phase_bwd) - 2 * np.pi) < 1e-5
-    )
+    # Forward and backward must be identical
+    assert np.allclose(jones_fwd, jones_bwd, atol=1e-6)
 
 
-def test_arbitrary_waveplate_directionality():
-    """Test that arbitrary phase shifts are correctly reversed by direction."""
+def test_arbitrary_waveplate_forward_equals_backward():
+    """
+    Arbitrary waveplate: forward and backward give identical results.
+
+    This holds for all phase shifts and fast-axis angles because the
+    Jones matrix J = R(-θ)·diag(1, e^{iδ})·R(θ) is always symmetric.
+    """
     pol_in = Polarization.diagonal_plus_45()
     phase_shift = 37.5  # Arbitrary phase shift
 
@@ -243,14 +256,8 @@ def test_arbitrary_waveplate_directionality():
     jones_fwd = pol_forward.jones_vector
     jones_bwd = pol_backward.jones_vector
 
-    # Forward and backward should produce different results (unless phase = 180°)
-    # They should NOT be equivalent up to global phase
-    # We can check that they're different by comparing their relative phases
-    if np.abs(jones_fwd[0]) > 1e-6 and np.abs(jones_bwd[0]) > 1e-6:
-        rel_phase_fwd = np.angle(jones_fwd[1] / jones_fwd[0])
-        rel_phase_bwd = np.angle(jones_bwd[1] / jones_bwd[0])
-        # They should be different (not equal)
-        assert not np.allclose(rel_phase_fwd, rel_phase_bwd, atol=1e-5)
+    # Forward and backward must be identical for any phase shift / axis angle
+    assert np.allclose(jones_fwd, jones_bwd, atol=1e-6)
 
 
 if __name__ == "__main__":

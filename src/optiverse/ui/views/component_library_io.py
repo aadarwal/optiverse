@@ -11,9 +11,9 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-from PyQt6 import QtWidgets
+from PyQt6 import QtCore, QtWidgets
 
-from ...core.models import ComponentRecord, serialize_component
+from ...core.models import ComponentRecord
 from ...core.utils import slugify
 from ...services.error_handler import ErrorContext
 
@@ -21,6 +21,40 @@ if TYPE_CHECKING:
     from ...services.storage_service import StorageService
 
 _logger = logging.getLogger(__name__)
+
+
+def _pick_existing_directory(parent: QtWidgets.QWidget, caption: str, directory: str = "") -> str:
+    """Folder picker; returns path or '' if cancelled.
+
+    Uses an explicit QFileDialog with ``WA_QuitOnClose`` disabled so dismissing the
+    dialog does not cascade-close a secondary parent window (e.g. component editor)
+    when ``QApplication.quitOnLastWindowClosed`` is true — a known Qt quirk with
+    static ``getExistingDirectory``.
+    """
+    dlg = QtWidgets.QFileDialog(parent, caption, directory)
+    dlg.setFileMode(QtWidgets.QFileDialog.FileMode.Directory)
+    dlg.setOption(QtWidgets.QFileDialog.Option.ShowDirsOnly, True)
+    dlg.setAttribute(QtCore.Qt.WidgetAttribute.WA_QuitOnClose, False)
+    if dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+        return ""
+    files = dlg.selectedFiles()
+    return files[0] if files else ""
+
+
+def _pick_open_file(
+    parent: QtWidgets.QWidget, caption: str, directory: str, name_filter: str
+) -> tuple[str, str]:
+    """File open picker; returns (path, selected_filter) or ('', '') if cancelled."""
+    dlg = QtWidgets.QFileDialog(parent, caption, directory)
+    dlg.setFileMode(QtWidgets.QFileDialog.FileMode.ExistingFile)
+    dlg.setNameFilter(name_filter)
+    dlg.setAttribute(QtCore.Qt.WidgetAttribute.WA_QuitOnClose, False)
+    if dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+        return "", ""
+    files = dlg.selectedFiles()
+    if not files:
+        return "", ""
+    return files[0], dlg.selectedNameFilter()
 
 
 class ComponentLibraryIO:
@@ -74,12 +108,6 @@ class ComponentLibraryIO:
                 # Save using the new folder-based storage
                 self.storage.save_component(rec)
 
-                # Copy JSON to clipboard for convenience
-                serialized = serialize_component(rec, self.storage.settings_service)
-                clipboard = QtWidgets.QApplication.clipboard()
-                if clipboard is not None:
-                    clipboard.setText(json.dumps(serialized, indent=2))
-
                 # Show success message
                 library_path = self.storage.get_library_root()
                 QtWidgets.QMessageBox.information(
@@ -87,8 +115,7 @@ class ComponentLibraryIO:
                     "Saved",
                     f"Saved component '{rec.name}'\n\n"
                     f"Interfaces: {len(rec.interfaces) if rec.interfaces else 0}\n"
-                    f"Library location:\n{library_path}\n\n"
-                    f"Component JSON copied to clipboard.",
+                    f"Library location:\n{library_path}",
                 )
 
                 self._refresh_library()
@@ -120,11 +147,8 @@ class ComponentLibraryIO:
                 return False
 
             # Ask user for destination folder
-            dest_dir = QtWidgets.QFileDialog.getExistingDirectory(
-                self.parent,
-                "Select Export Destination",
-                "",
-                QtWidgets.QFileDialog.Option.ShowDirsOnly,
+            dest_dir = _pick_existing_directory(
+                self.parent, "Select Export Destination", ""
             )
 
             if not dest_dir:
@@ -168,11 +192,8 @@ class ComponentLibraryIO:
             True if import was successful, False otherwise
         """
         # Ask user to select component folder
-        source_dir = QtWidgets.QFileDialog.getExistingDirectory(
-            self.parent,
-            "Select Component Folder to Import",
-            "",
-            QtWidgets.QFileDialog.Option.ShowDirsOnly,
+        source_dir = _pick_existing_directory(
+            self.parent, "Select Component Folder to Import", ""
         )
 
         if not source_dir:
@@ -263,8 +284,11 @@ class ComponentLibraryIO:
         Returns:
             True if any new components were loaded, False otherwise
         """
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self.parent, "Load Library File", "", "JSON files (*.json);;All files (*.*)"
+        path, _ = _pick_open_file(
+            self.parent,
+            "Load Library File",
+            "",
+            "JSON files (*.json);;All files (*.*)",
         )
         if not path:
             return False

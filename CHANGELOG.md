@@ -5,6 +5,80 @@ All notable changes to Optiverse will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- **Raytracing engine**: `remaining_length` is now correctly decremented after each optical interaction — previously rays could propagate beyond the source's configured `ray_length_mm` after hitting any element
+- **Waveplate directionality tests**: Corrected 5 tests that had wrong physics expectations — waveplate Jones matrix is symmetric (`J = J^T`), so forward and backward passes are identical; the mirror between passes (not the waveplate direction) is what flips handedness in double-pass setups
+- **TIR test geometry**: Fixed surface normal direction in total-internal-reflection test so the ray is correctly interpreted as traveling from glass (n=1.5) into air (n=1.0)
+
+## [0.3.3] - 2026-03-28
+
+### Added
+
+- **Update Canvas Instances**: Component Editor **Canvas** menu **Update Canvas Instances…** — after confirmation, updates every placed component on the main canvas that matches the current component name (single batch undo; pose and lock preserved)
+- **Gaussian Beams**: Gaussian beam propagation support for sources and optical elements
+- **Component Editor Save To**: **Create New…** (pick a folder and register it as a library) and **Manage Libraries…** (opens Preferences on the Library page)
+- **Preferences expansion**: Four new Preferences pages — **General** (autosave toggle + interval, max recent files), **Appearance** (dark mode, scale bar visibility), **Canvas & Editing** (grid snap size, magnetic snap tolerance, rotation snap angle, scroll-wheel sensitivity, auto-trace, default ray width, max ray events, clone offset), **Export Defaults** (PNG scale, PDF DPI, export margin). All settings are persisted via `QSettings` and take effect immediately or on next startup as appropriate.
+- **Runtime preferences module** (`core/preferences.py`): module-level attributes loaded from `SettingsService` on startup and refreshed when Preferences are saved; consumers read values directly without coupling to `QSettings`.
+
+### Changed
+
+- **Component Editor**: Full **menu bar** (File, Edit, Library, Canvas); on macOS menus render **inside the editor window** (`setNativeMenuBar(False)`) so they clearly belong to the tool; removed the duplicate **toolbar** (text-only menus, no redundant icon strip)
+- **Component Editor** interface list: **incremental** tree updates and suppressed auto-scroll when selection is updated from the canvas, fixing the list **jumping to the top** on mis-clicks
+- **Component Editor** coordinates: **SmartDoubleSpinBox** fields for direct mm editing (replaces double-click coordinate labels)
+- **Component Editor** name field: after loading or renaming, the caret is placed at the **start** so long names show the beginning instead of the truncated tail
+- **Theme stylesheets**: Added `QTableWidget`, `QHeaderView`, and `QListWidget` rules to both dark and light QSS themes for consistent rendering (fixes grid-line color mismatch in dark mode)
+
+### Fixed
+
+- **External Component Storing**: Centralized library management via new `LibraryService` — fixes settings-configured library paths being silently ignored by the dock, scene loading, and collaboration. Components from all configured libraries now appear correctly everywhere.
+  - **Library enable/disable**: Libraries can be toggled on/off in Preferences without removing them (ideal for switching between project contexts)
+  - **Save To selector**: Component Editor lets you choose which library to save into
+  - **Link vs Copy import**: Importing a library folder now offers "Link" (register the path, ideal for git repos) or "Copy" (legacy behavior)
+  - **Missing component report**: Scene loading warns when components cannot be resolved, with guidance to configure library paths
+  - **Preferences overhaul**: Library page uses a table with Name, Path, Components, Status columns and enable/disable checkboxes
+  - **Open Library Folder submenu**: Tools menu lists all known libraries for quick access
+- **Component Editor** file dialogs: cancelling **Export**, **Import**, or **Load library from path** no longer closes the editor (explicit `QFileDialog` with `WA_QuitOnClose` disabled)
+- **Component Editor** interface tree: selection styling uses **palette** roles for correct contrast in dark mode
+- **Component Editor** save: saving no longer copies component JSON to the **clipboard** automatically
+- **Layer model**: Guard against stale C++ objects (`sip.isdeleted`) when resolving cached `QGraphicsItem` references, preventing crashes during rapid undo/delete sequences
+
+### Removed
+
+- **Component Editor**: Obsolete legacy methods from an older UI revision and the redundant main **toolbar**
+
+## [0.3.2] - 2026-03-26
+
+### Added
+
+- **Placed components on canvas**: context menu **Edit in Component Editor…** (save updates library and instance, undoable) and **Apply Properties to All…** (choose scope and fields, single batch undo)
+- **Layer panel context menu**: **Edit…**, **Edit in Component Editor…** for items, and **Z-Order** submenu (bring forward/back, to front/back)
+- **Save guards** when saving from the Component Editor to reduce accidental silent duplication
+- **Undo commands** for operations that were previously missing from the stack: layer rename; visibility and lock toggles; z-order changes; inline text note edits; rectangle property edits from the editor dialog
+
+### Changed
+
+- **Hover and hitboxes**: Clearer hover feedback and more forgiving hit targets for sources, component sprites, rectangle annotations, and shared base item behavior
+- **Developer layout**: Build and icon scripts live under `tools/`; generated `.icns` / `.ico` go to `tools/generated_icons/`; Ruff and Mypy settings consolidated in `pyproject.toml`
+
+### Fixed
+
+- **Undo/redo consistency**: Layer model changes, z-order from multiple UI paths, annotation deletes, path measure wiring on load, component editor save baseline, and related cases no longer leave Ctrl+Z targeting the wrong action
+- **Group rotation undo**: Restores rotations for ruler and angle measure items included in the group
+- **Drag + autosave**: Undo merge during moves emits `commandPushed` so the autosave debounce resets correctly
+- **Collaboration**: Starting the local server from the dialog raises `OSError` on failure so errors surface properly
+- **Rotation tracking**: Missing `AngleMeasureItem` import in rotation startup
+- **Raytracing engine**: Removed dead parallel-detection branch (condition was never true)
+- **Documentation site**: GitHub Pages header shows the home button label again
+
+### Removed
+
+- Tracked `optiverse.iconset/` PNGs (icons are generated locally); root `resources/` placeholder directory
+- Obsolete `tools/` helpers (`compile_ui.py`, `compile_rc.py`, old lint/WebSocket test scripts); duplicate `.ruff.toml` and `mypy.ini` (see `pyproject.toml`)
+- Unused `StorageService.ensure_standard_components` and other dead code paths cleaned up for the release
+
 ## [0.3.1] - 2026-03-25
 
 ### Added

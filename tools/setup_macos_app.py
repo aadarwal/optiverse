@@ -6,7 +6,7 @@ This script creates an editable Optiverse.app bundle that uses symlinks,
 so code changes are immediately reflected without rebuilding.
 
 Features:
-- Proper .icns icon (run scripts/create_icon.py first)
+- Proper .icns icon (run tools/create_icon.py first)
 - Symlinks for editable development
 - Works with conda or venv
 - Shows as "Optiverse" in menu bar
@@ -143,9 +143,9 @@ def create_app_bundle(project_root: Path, editable: bool = True):
             print("✅ Created .icns icon from PNG")
         except Exception as e:
             print(f"⚠️  Could not create icon: {e}")
-            print("   Run: python scripts/create_icon.py")
+            print("   Run: python tools/create_icon.py")
     else:
-        print("⚠️  No icon found. Run: python scripts/create_icon.py")
+        print("⚠️  No icon found. Run: python tools/create_icon.py")
 
     # Create launcher script
     launcher = macos_path / "optiverse"
@@ -210,7 +210,7 @@ exec "{python_path}" -m optiverse.app.main "$@"
     print("\nThe app will show as 'Optiverse' in the menu bar.")
 
     if not icon_icns.exists():
-        print("\n⚠️  For proper icon support, run: python scripts/create_icon.py")
+        print("\n⚠️  For proper icon support, run: python tools/create_icon.py")
 
     print()
 

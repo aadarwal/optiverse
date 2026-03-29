@@ -195,22 +195,23 @@ class InterfacePropertiesWidget(QtWidgets.QWidget):
     def _add_coordinate_fields(
         self, idx: int, interface: InterfaceDefinition, form: QtWidgets.QFormLayout
     ) -> None:
-        """Add coordinate edit fields."""
-        from .interface_widgets import EditableLabel
-
+        """Add coordinate edit fields as spinboxes (always editable)."""
         for coord_name, value in [
             ("X₁", interface.x1_mm),
             ("Y₁", interface.y1_mm),
             ("X₂", interface.x2_mm),
             ("Y₂", interface.y2_mm),
         ]:
-            editable = EditableLabel(f"{value:.3f}")
-            editable.setPlaceholderText("0.000")
-            editable.valueChanged.connect(
+            spinbox = SmartDoubleSpinBox()
+            spinbox.setRange(-1e6, 1e6)
+            spinbox.setDecimals(3)
+            spinbox.setSuffix(" mm")
+            spinbox.setValue(value)
+            spinbox.valueChanged.connect(
                 lambda val, i=idx, c=coord_name: self._on_coordinate_changed(i, c, val)
             )
-            self._property_widgets[idx][coord_name] = editable
-            form.addRow(f"{coord_name} (mm):", editable)
+            self._property_widgets[idx][coord_name] = spinbox
+            form.addRow(f"{coord_name}:", spinbox)
 
     def _add_type_properties(
         self, idx: int, interface: InterfaceDefinition, form: QtWidgets.QFormLayout
@@ -368,56 +369,22 @@ class InterfacePropertiesWidget(QtWidgets.QWidget):
                 self._rebuild_form(idx)
             self.propertiesChanged.emit()
 
-    def _on_coordinate_changed(self, idx: int, coord_name: str, value_str: str) -> None:
-        """Handle coordinate value change."""
+    def _on_coordinate_changed(self, idx: int, coord_name: str, value: float) -> None:
+        """Handle coordinate value change from spinbox."""
         if self._signals_blocked or idx >= len(self._interfaces):
-            return
-
-        from .interface_widgets import EditableLabel
-
-        widget = self._property_widgets.get(idx, {}).get(coord_name)
-        if not widget:
-            return
-
-        try:
-            value = float(value_str)
-            interface = self._interfaces[idx]
-
-            if coord_name == "X₁":
-                interface.x1_mm = value
-            elif coord_name == "X₂":
-                interface.x2_mm = value
-            elif coord_name == "Y₁":
-                interface.y1_mm = value
-            elif coord_name == "Y₂":
-                interface.y2_mm = value
-
-            if isinstance(widget, EditableLabel):
-                widget.setText(f"{value:.3f}")
-            self.propertiesChanged.emit()
-
-        except ValueError:
-            # Revert on invalid input
-            self._revert_coordinate(idx, coord_name, widget)
-
-    def _revert_coordinate(
-        self, idx: int, coord_name: str, widget: QtWidgets.QWidget
-    ) -> None:
-        """Revert coordinate widget to current value."""
-        from .interface_widgets import EditableLabel
-
-        if not isinstance(widget, EditableLabel) or idx >= len(self._interfaces):
             return
 
         interface = self._interfaces[idx]
         if coord_name == "X₁":
-            widget.setText(f"{interface.x1_mm:.3f}")
+            interface.x1_mm = value
         elif coord_name == "X₂":
-            widget.setText(f"{interface.x2_mm:.3f}")
+            interface.x2_mm = value
         elif coord_name == "Y₁":
-            widget.setText(f"{interface.y1_mm:.3f}")
+            interface.y1_mm = value
         elif coord_name == "Y₂":
-            widget.setText(f"{interface.y2_mm:.3f}")
+            interface.y2_mm = value
+
+        self.propertiesChanged.emit()
 
     def _on_type_changed(self, idx: int) -> None:
         """Handle type change - rebuild properties."""
@@ -466,7 +433,7 @@ class InterfacePropertiesWidget(QtWidgets.QWidget):
 
     def update_from_interfaces(self, interfaces: list[InterfaceDefinition]) -> None:
         """Update widget values from interfaces."""
-        from .interface_widgets import EditableLabel
+        _COORD_ATTR = {"X₁": "x1_mm", "Y₁": "y1_mm", "X₂": "x2_mm", "Y₂": "y2_mm"}
 
         self._signals_blocked = True
         try:
@@ -479,17 +446,10 @@ class InterfacePropertiesWidget(QtWidgets.QWidget):
                 for prop_name, widget in self._property_widgets[idx].items():
                     widget.blockSignals(True)
                     try:
-                        # Handle coordinates
-                        if prop_name in ("X₁", "Y₁", "X₂", "Y₂"):
-                            if isinstance(widget, EditableLabel):
-                                attr_map = {
-                                    "X₁": "x1_mm",
-                                    "Y₁": "y1_mm",
-                                    "X₂": "x2_mm",
-                                    "Y₂": "y2_mm",
-                                }
-                                attr = attr_map[prop_name]
-                                widget.setText(f"{getattr(interface, attr):.3f}")
+                        # Handle coordinates (SmartDoubleSpinBox)
+                        if prop_name in _COORD_ATTR:
+                            if isinstance(widget, SmartDoubleSpinBox):
+                                widget.setValue(getattr(interface, _COORD_ATTR[prop_name]))
                             continue
 
                         # Handle type combo

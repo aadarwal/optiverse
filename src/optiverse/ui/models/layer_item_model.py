@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PyQt6 import QtCore, QtWidgets
+from PyQt6 import QtCore, QtWidgets, sip
 
 from ...core.layer_tree_state import LayerNode, LayerTreeState
 from ...core.undo_commands import (
@@ -53,6 +53,23 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         self._index_data: dict[str, tuple[str, int]] = {}
         # Shutdown flag to prevent data access during Qt cleanup
         self._shutdown: bool = False
+
+    def _is_alive(self, item: QtWidgets.QGraphicsItem) -> bool:
+        """Return True if the underlying C++ QGraphicsItem still exists."""
+        try:
+            return not sip.isdeleted(item)
+        except Exception:
+            return False
+
+    def _get_live_item(self, uuid: str) -> QtWidgets.QGraphicsItem | None:
+        """Look up a cached item by UUID, evicting stale (C++-deleted) entries."""
+        item = self._uuid_to_item.get(uuid)
+        if item is None:
+            return None
+        if not self._is_alive(item):
+            self._uuid_to_item.pop(uuid, None)
+            return None
+        return item
 
     def set_context(
         self,
@@ -208,7 +225,7 @@ class LayerItemModel(QtCore.QAbstractItemModel):
                 self.dataChanged.emit(index, index, [int(QtCore.Qt.ItemDataRole.DisplayRole)])
                 return True
             elif node.is_item():
-                item = self._uuid_to_item.get(node.uuid)
+                item = self._get_live_item(node.uuid)
                 if item:
                     if hasattr(item, "display_name"):
                         old_name = item.display_name
@@ -362,7 +379,7 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         if not self._scene:
             return
         for item in self._scene.items():
-            if hasattr(item, "item_uuid") and hasattr(item, "type_name"):
+            if self._is_alive(item) and hasattr(item, "item_uuid") and hasattr(item, "type_name"):
                 self._uuid_to_item[item.item_uuid] = item
 
     def _prune_orphan_items(self) -> None:
@@ -375,16 +392,13 @@ class LayerItemModel(QtCore.QAbstractItemModel):
             self._layer_state.remove_item(uid, emit=False)
 
     def _get_item_name(self, uuid: str) -> str:
-        item = self._uuid_to_item.get(uuid)
+        item = self._get_live_item(uuid)
         if not item:
             return "Item"
-        # Check display_name first (for annotation items)
         if hasattr(item, "display_name") and item.display_name:
             return str(item.display_name)
-        # Check params.name (for optical components)
         if hasattr(item, "params") and hasattr(item.params, "name") and item.params.name:
             return str(item.params.name)
-        # Fallback to type_name
         return item.type_name.replace("_", " ").title() if hasattr(item, "type_name") else "Item"
 
     def _uuids_from_indexes(self, indexes: list[QtCore.QModelIndex]) -> list[str]:
@@ -420,11 +434,10 @@ class LayerItemModel(QtCore.QAbstractItemModel):
 
         def apply_to_node(n: LayerNode) -> None:
             if n.is_item():
-                if item := self._uuid_to_item.get(n.uuid):
+                if item := self._get_live_item(n.uuid):
                     effective = layer_state.is_effectively_visible(n.uuid)
                     item.setVisible(effective)
             else:
-                # Group: apply to all children
                 for child in n.children:
                     apply_to_node(child)
 
@@ -438,12 +451,11 @@ class LayerItemModel(QtCore.QAbstractItemModel):
 
         def apply_to_node(n: LayerNode) -> None:
             if n.is_item():
-                if item := self._uuid_to_item.get(n.uuid):
+                if item := self._get_live_item(n.uuid):
                     if hasattr(item, "set_locked"):
                         effective = layer_state.is_effectively_locked(n.uuid)
                         item.set_locked(effective)
             else:
-                # Group: apply to all children
                 for child in n.children:
                     apply_to_node(child)
 

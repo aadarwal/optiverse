@@ -42,6 +42,11 @@ QLineEdit, QComboBox {
     padding: 3px; border-radius: 3px;
 }
 QLabel { color: white; }
+QTableWidget { background-color: #1a1c21; color: white; border: 1px solid #3d3f46; gridline-color: #3d3f46; }
+QTableWidget::item:selected { background-color: #3d5a80; color: white; }
+QHeaderView::section { background-color: #2d2f36; color: white; border: 1px solid #3d3f46; padding: 4px; }
+QListWidget { background-color: #1a1c21; color: white; border: 1px solid #3d3f46; }
+QListWidget::item:selected { background-color: #3d5a80; color: white; }
 QDialog { background-color: #1a1c21; color: white; }
 """
 
@@ -62,6 +67,11 @@ QLineEdit, QComboBox {
     padding: 3px; border-radius: 3px;
 }
 QLabel { color: black; }
+QTableWidget { background-color: white; color: black; border: 1px solid #c0c0c0; gridline-color: #c0c0c0; }
+QTableWidget::item:selected { background-color: #0A84FF; color: white; }
+QHeaderView::section { background-color: #f0f0f0; color: black; border: 1px solid #c0c0c0; padding: 4px; }
+QListWidget { background-color: white; color: black; border: 1px solid #c0c0c0; }
+QListWidget::item:selected { background-color: #0A84FF; color: white; }
 QDialog { background-color: white; color: black; }
 """
 

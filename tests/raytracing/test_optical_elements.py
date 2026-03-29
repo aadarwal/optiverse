@@ -297,8 +297,8 @@ class TestRefractiveElement:
         interface = RefractiveElement(
             p1=np.array([0.0, -5.0]),
             p2=np.array([0.0, 5.0]),
-            n1=1.5,  # Glass
-            n2=1.0,  # Air
+            n1=1.5,  # Glass (left side)
+            n2=1.0,  # Air (right side)
         )
 
         # Ray at steep angle (beyond critical angle)
@@ -316,16 +316,17 @@ class TestRefractiveElement:
         )
 
         hit_point = np.array([0.0, 0.0])
-        normal = np.array([1.0, 0.0])
+        # Normal must point LEFT (into the glass side) so that
+        # dot(ray_direction, normal) < 0, selecting n_incident = n1 = 1.5.
+        normal = np.array([-1.0, 0.0])
         tangent = np.array([0.0, 1.0])
 
         output_rays = interface.interact(ray, hit_point, normal, tangent)
 
         # Should have only reflected ray (total internal reflection)
-        # No transmitted ray
-        assert len(output_rays) == 1  # Only reflection
+        assert len(output_rays) == 1
         reflected = output_rays[0]
-        assert reflected.intensity > 0.99  # Almost all light reflected
+        assert reflected.intensity > 0.99
 
 
 class TestBeamsplitterElement:

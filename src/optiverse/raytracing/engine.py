@@ -443,8 +443,7 @@ def _trace_single_ray(
             # Propagate engine-specific fields that interact() doesn't know about
             if not hasattr(out_ray, "base_rgb") or out_ray.base_rgb is None:
                 out_ray.base_rgb = base_rgb
-            if not hasattr(out_ray, "remaining_length"):
-                out_ray.remaining_length = current_ray.remaining_length - nearest_distance
+            out_ray.remaining_length = current_ray.remaining_length - nearest_distance
             if not hasattr(out_ray, "path_points") or len(out_ray.path_points) == 0:
                 out_ray.path_points = current_ray.path_points.copy()
             if len(out_ray.path_polarizations) == 0:

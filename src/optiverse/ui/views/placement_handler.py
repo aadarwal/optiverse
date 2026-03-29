@@ -126,13 +126,10 @@ class PlacementHandler:
         self._active = False
         self._component_type = None
 
-        # Restore cursor and mouse tracking
+        # Restore cursor. Do not disable mouse tracking: RubberBandDrag mode on the
+        # graphics view requires it for hover events and rubber-band selection.
         self._send_synthetic_mouse_move()
         self.view.unsetCursor()
-        self.view.setMouseTracking(False)
-        viewport = self.view.viewport()
-        if viewport is not None:
-            viewport.setMouseTracking(False)
 
         return prev_type
 
@@ -314,9 +311,11 @@ class PlacementHandler:
         # Get old rect for proper invalidation (expanded for cosmetic pens)
         old_rect = self._ghost.sceneBoundingRect().adjusted(-20, -20, 20, 20)
 
-        # Apply snap to grid if enabled
         if self._get_snap_to_grid():
-            scene_pos = QtCore.QPointF(round(scene_pos.x()), round(scene_pos.y()))
+            from ...core import preferences
+
+            g = preferences.grid_snap_size_mm
+            scene_pos = QtCore.QPointF(round(scene_pos.x() / g) * g, round(scene_pos.y() / g) * g)
 
         # Update position
         self._ghost.setPos(scene_pos)
@@ -334,9 +333,11 @@ class PlacementHandler:
         from ...objects import RectangleItem, SourceItem, TextNoteItem
         from ...objects.component_factory import ComponentFactory
 
-        # Apply snap to grid if enabled
         if self._get_snap_to_grid():
-            scene_pos = QtCore.QPointF(round(scene_pos.x()), round(scene_pos.y()))
+            from ...core import preferences
+
+            g = preferences.grid_snap_size_mm
+            scene_pos = QtCore.QPointF(round(scene_pos.x() / g) * g, round(scene_pos.y() / g) * g)
 
         component_type = self._component_type
 
