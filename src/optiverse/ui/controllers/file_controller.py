@@ -90,6 +90,14 @@ class FileController(QtCore.QObject):
         # Connect undo stack to modification tracking
         self._undo_stack.commandPushed.connect(self._on_command_pushed)
 
+    def set_autosave_interval(self, interval_ms: int) -> None:
+        """Update the autosave debounce interval and ensure the timer is running."""
+        self._autosave_timer.setInterval(max(100, interval_ms))
+
+    def disable_autosave(self) -> None:
+        """Stop the autosave timer entirely."""
+        self._autosave_timer.stop()
+
     def set_layer_state(self, layer_state: LayerTreeState) -> None:
         """Set the layer state for save/load/import-as-layer functionality."""
         self._layer_state = layer_state
@@ -144,6 +152,10 @@ class FileController(QtCore.QObject):
 
     def _schedule_autosave(self):
         """Schedule autosave with debouncing."""
+        from ...core import preferences
+
+        if not preferences.autosave_enabled:
+            return
         if self._autosave_timer:
             self._autosave_timer.stop()
             self._autosave_timer.start()
@@ -335,11 +347,22 @@ class FileController(QtCore.QObject):
 
     # --- Export Methods ---
 
-    # Export constants
-    _EXPORT_MARGIN_MM = 20  # Margin around exported content in mm
-    _DEFAULT_PNG_SCALE = 4.0  # Default scale factor for PNG (4x = 288 DPI)
-    _DEFAULT_PDF_DPI = 300  # Default DPI for PDF export
     _MM_TO_POINTS = 72.0 / 25.4  # Conversion factor: mm to points (1 pt = 1/72 inch)
+
+    @staticmethod
+    def _export_margin_mm() -> int:
+        from ...core import preferences
+        return preferences.export_margin_mm
+
+    @staticmethod
+    def _default_png_scale() -> float:
+        from ...core import preferences
+        return preferences.default_png_scale
+
+    @staticmethod
+    def _default_pdf_dpi() -> int:
+        from ...core import preferences
+        return preferences.default_pdf_dpi
 
     def _get_export_rect(self) -> QtCore.QRectF | None:
         """
@@ -356,12 +379,8 @@ class FileController(QtCore.QObject):
                 "Nothing to export - the scene is empty.",
             )
             return None
-        rect.adjust(
-            -self._EXPORT_MARGIN_MM,
-            -self._EXPORT_MARGIN_MM,
-            self._EXPORT_MARGIN_MM,
-            self._EXPORT_MARGIN_MM,
-        )
+        margin = self._export_margin_mm()
+        rect.adjust(-margin, -margin, margin, margin)
         return rect
 
     def _show_export_success(self, path: str, format_name: str) -> None:
@@ -426,7 +445,7 @@ class FileController(QtCore.QObject):
                 self._parent,
                 "Export Resolution",
                 "Scale factor (1x = 72 DPI, 4x = 288 DPI):",
-                value=self._DEFAULT_PNG_SCALE,
+                value=self._default_png_scale(),
                 min=1.0,
                 max=10.0,
                 decimals=1,
@@ -534,7 +553,7 @@ class FileController(QtCore.QObject):
                 self._parent,
                 "Export Resolution",
                 "PDF resolution (DPI):",
-                value=self._DEFAULT_PDF_DPI,
+                value=self._default_pdf_dpi(),
                 min=72,
                 max=600,
                 step=50,

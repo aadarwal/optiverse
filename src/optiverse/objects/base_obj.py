@@ -5,11 +5,8 @@ from typing import Any, cast
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
-from ..core.constants import WHEEL_ROTATION_DEGREES_PER_STEP
 from ..core.protocols import HasCollaboration, HasParams, HasShape, HasSnapping, HasUndoStack
 from ..core.ui_constants import (
-    CLONE_OFFSET_X_MM,
-    CLONE_OFFSET_Y_MM,
     QT_WHEEL_ANGLE_DELTA_PER_STEP,
     SPRITE_BOUNDS_PADDING_PX,
     SPRITE_SHAPE_PADDING_PX,
@@ -383,7 +380,9 @@ class BaseObj(QtWidgets.QGraphicsObject):
         if self.isSelected() and (ev.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier):
             dy = ev.angleDelta().y()  # type: ignore[attr-defined]
             steps = dy / QT_WHEEL_ANGLE_DELTA_PER_STEP
-            rotation_delta = WHEEL_ROTATION_DEGREES_PER_STEP * steps
+            from ..core import preferences
+
+            rotation_delta = preferences.wheel_rotation_deg_per_step * steps
 
             # Check if multiple items are selected for group rotation
             scene = self.scene()
@@ -550,7 +549,7 @@ class BaseObj(QtWidgets.QGraphicsObject):
         self.update()
 
     def clone(
-        self, offset_mm: tuple[float, float] = (CLONE_OFFSET_X_MM, CLONE_OFFSET_Y_MM)
+        self, offset_mm: tuple[float, float] | None = None,
     ) -> BaseObj:
         """
         Create a deep copy of this item with optional position offset.
@@ -567,12 +566,14 @@ class BaseObj(QtWidgets.QGraphicsObject):
         """
         import copy
 
-        # Deep copy the params to get all nested structures (interfaces, etc.)
         if not isinstance(self, HasParams):
             raise TypeError("clone() requires HasParams protocol")
         new_params = copy.deepcopy(self.params)
 
-        # Apply position offset
+        if offset_mm is None:
+            from ..core import preferences
+
+            offset_mm = (preferences.clone_offset_x_mm, preferences.clone_offset_y_mm)
         new_params.x_mm += offset_mm[0]
         new_params.y_mm += offset_mm[1]
 

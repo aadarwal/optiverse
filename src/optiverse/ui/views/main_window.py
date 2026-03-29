@@ -172,15 +172,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self._zorder_applier = LayerZOrderApplier(self.layer_state, self.scene, parent=self)
         self._zorder_applier.zValuesApplied.connect(self._schedule_retrace)
 
-        # Load saved preferences
-        self.magnetic_snap = self.settings_service.get_value("magnetic_snap", True, bool)
+        # Load all preferences from QSettings into the runtime preferences module
+        from ...core import preferences
+        from ...core.preferences import load_from_settings
 
-        # Load dark mode preference and apply theme to match
+        load_from_settings(self.settings_service)
+
+        # Apply persisted toggles
+        self.magnetic_snap = self.settings_service.get_value("magnetic_snap", True, bool)
+        self.snap_to_grid = self.settings_service.get_value("canvas/snap_to_grid", False, bool)
+
         dark_mode_saved = self.settings_service.get_value(
             "dark_mode", self.view.is_dark_mode(), bool
         )
         self.view.set_dark_mode(dark_mode_saved)
-        # Apply theme to ensure app-wide styling matches the saved preference
+        self.view.show_scale_bar = preferences.show_scale_bar
         from ..theme_manager import apply_theme
 
         apply_theme(dark_mode_saved)
@@ -213,6 +219,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Initialize handlers that need actions (after action_builder creates them)
         self._init_event_handlers()
+
+        # Apply startup-only preferences (autotrace, ray width, autosave, max events)
+        self.autotrace = self.settings_service.get_value("canvas/autotrace", True, bool)
+        self._ray_width_px = self.settings_service.get_value(
+            "canvas/default_ray_width_px", 2.0, float
+        )
+        self.raytracing_controller.max_events = preferences.max_raytracing_events
+        if preferences.autosave_enabled:
+            self.file_controller.set_autosave_interval(preferences.autosave_interval_ms)
+        else:
+            self.file_controller.disable_autosave()
 
         # Install event filter for snap and ruler placement
         self.scene.installEventFilter(self)
@@ -994,12 +1011,56 @@ class MainWindow(QtWidgets.QMainWindow):
         dialog.exec()
 
     def _on_settings_changed(self):
-        """Handle settings changes."""
-        # Rebuild library list first (populate_library is also connected to libraries_changed)
+        """Handle settings changes from the Preferences dialog."""
+        from ...core import preferences
+        from ...core.preferences import load_from_settings
+
+        load_from_settings(self.settings_service)
+
+        # -- Library --
         self.library_service.refresh()
 
-        # Log the change
-        self.log_service.info("Settings updated - library reloaded", "Settings")
+        # -- Appearance --
+        new_dark = self.settings_service.get_value(
+            "dark_mode", self.view.is_dark_mode(), bool
+        )
+        if new_dark != self.view.is_dark_mode():
+            self._toggle_dark_mode(new_dark)
+            self.act_dark_mode.setChecked(new_dark)
+        self.view.show_scale_bar = preferences.show_scale_bar
+        self.view.viewport().update()
+
+        # -- Canvas & Editing --
+        self.snap_to_grid = self.settings_service.get_value(
+            "canvas/snap_to_grid", False, bool
+        )
+        self.act_snap.setChecked(self.snap_to_grid)
+
+        self.magnetic_snap = self.settings_service.get_value("magnetic_snap", True, bool)
+        self.act_magnetic_snap.setChecked(self.magnetic_snap)
+        self._snap_helper.tolerance_px = preferences.magnetic_snap_tolerance_px
+
+        autotrace_pref = self.settings_service.get_value("canvas/autotrace", True, bool)
+        self.autotrace = autotrace_pref
+        self.act_autotrace.setChecked(autotrace_pref)
+
+        ray_width_pref = self.settings_service.get_value(
+            "canvas/default_ray_width_px", 2.0, float
+        )
+        self._ray_width_px = ray_width_pref
+        for act in self._raywidth_group.actions():
+            act.setChecked(abs(float(act.text().split()[0]) - ray_width_pref) < 1e-9)
+
+        self.raytracing_controller.max_events = preferences.max_raytracing_events
+
+        # -- Autosave --
+        if preferences.autosave_enabled:
+            self.file_controller.set_autosave_interval(preferences.autosave_interval_ms)
+        else:
+            self.file_controller.disable_autosave()
+
+        self._schedule_retrace()
+        self.log_service.info("Settings updated", "Settings")
 
     def import_component_library(self):
         """Import components from another library folder (delegated to library manager)."""

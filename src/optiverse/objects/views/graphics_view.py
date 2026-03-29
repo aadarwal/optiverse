@@ -106,6 +106,7 @@ class GraphicsView(QtWidgets.QGraphicsView):
                 viewport.grabGesture(QtCore.Qt.GestureType.PanGesture)
 
         # scale bar prefs
+        self._show_scale_bar = True
         self._sb_len_px = 120
         self._sb_height_px = 10
         self._sb_margin_px = 10
@@ -158,6 +159,17 @@ class GraphicsView(QtWidgets.QGraphicsView):
     def is_dark_mode(self) -> bool:
         """Check if dark mode is enabled."""
         return self._dark_mode
+
+    @property
+    def show_scale_bar(self) -> bool:
+        return self._show_scale_bar
+
+    @show_scale_bar.setter
+    def show_scale_bar(self, value: bool) -> None:
+        self._show_scale_bar = value
+        viewport = self.viewport()
+        if viewport is not None:
+            viewport.update()
 
     def _restore_drag_state(self):
         """Restore transformation anchor and reset mouse tracking after drag operations."""
@@ -553,6 +565,9 @@ class GraphicsView(QtWidgets.QGraphicsView):
                     )
 
             painter.restore()
+
+        if not self._show_scale_bar:
+            return
 
         # Draw scale bar in viewport coordinates
         painter.save()

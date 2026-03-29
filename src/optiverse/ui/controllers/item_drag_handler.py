@@ -270,8 +270,11 @@ class ItemDragHandler:
         move_commands: list[MoveItemCommand] = []
         for it, old_pos in self._drag.initial_positions.items():
             if isinstance(it, BaseObj) and self._get_snap_to_grid():
+                from ...core import preferences
+
+                g = preferences.grid_snap_size_mm
                 p = it.pos()
-                it.setPos(round(p.x()), round(p.y()))
+                it.setPos(round(p.x() / g) * g, round(p.y() / g) * g)
 
             new_pos = it.pos()
             if old_pos != new_pos:
