@@ -7,9 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-03-28
+
 ### Added
 
-- Component Editor toolbar: **Update Canvas Instances…** — after confirmation, updates every placed component on the main canvas that matches the current component name (single batch undo; pose and lock preserved).
+- **Update Canvas Instances**: Component Editor toolbar action **Update Canvas Instances…** — after confirmation, updates every placed component on the main canvas that matches the current component name (single batch undo; pose and lock preserved)
+- **Gaussian Beams**: Gaussian beam propagation support for sources and optical elements
+
+### Fixed
+
+- **External Component Storing**: Centralized library management via new `LibraryService` — fixes settings-configured library paths being silently ignored by the dock, scene loading, and collaboration. Components from all configured libraries now appear correctly everywhere.
+  - **Library enable/disable**: Libraries can be toggled on/off in Preferences without removing them (ideal for switching between project contexts)
+  - **Save To selector**: Component Editor lets you choose which library to save into
+  - **Link vs Copy import**: Importing a library folder now offers "Link" (register the path, ideal for git repos) or "Copy" (legacy behavior)
+  - **Missing component report**: Scene loading warns when components cannot be resolved, with guidance to configure library paths
+  - **Preferences overhaul**: Library page uses a table with Name, Path, Components, Status columns and enable/disable checkboxes
+  - **Open Library Folder submenu**: Tools menu lists all known libraries for quick access
 
 ## [0.3.2] - 2026-03-26
 
