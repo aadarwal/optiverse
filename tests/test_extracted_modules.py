@@ -37,10 +37,10 @@ class TestExtractedModulesImport:
         )
 
         # Verify these are runtime checkable protocols
-        assert hasattr(HasUndoStack, "__protocol_attrs__")
-        assert hasattr(HasCollaboration, "__protocol_attrs__")
-        assert hasattr(HasSettings, "__protocol_attrs__")
-        assert hasattr(HasSnapping, "__protocol_attrs__")
+        assert getattr(HasUndoStack, "_is_runtime_protocol", False)
+        assert getattr(HasCollaboration, "_is_runtime_protocol", False)
+        assert getattr(HasSettings, "_is_runtime_protocol", False)
+        assert getattr(HasSnapping, "_is_runtime_protocol", False)
 
     def test_import_constants(self):
         """Test that MIME type constants are available."""
