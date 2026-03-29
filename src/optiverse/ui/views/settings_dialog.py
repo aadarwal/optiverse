@@ -265,10 +265,10 @@ class SettingsDialog(QtWidgets.QDialog):
         chk_item = QtWidgets.QTableWidgetItem()
         chk_item.setData(QtCore.Qt.ItemDataRole.UserRole, path)
         chk_item.setData(QtCore.Qt.ItemDataRole.UserRole + 1, source)
-        always_on = source in ("builtin", "user_default")
+        always_on = source == "builtin"
         if always_on:
             chk_item.setFlags(
-                QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled
+                QtCore.Qt.ItemFlag.ItemIsSelectable
             )
             chk_item.setCheckState(QtCore.Qt.CheckState.Checked)
         else:
@@ -335,7 +335,7 @@ class SettingsDialog(QtWidgets.QDialog):
         if not chk_item:
             return
         source = chk_item.data(QtCore.Qt.ItemDataRole.UserRole + 1)
-        if source in ("builtin", "user_default"):
+        if source == "builtin":
             return
         path = chk_item.data(QtCore.Qt.ItemDataRole.UserRole)
         enabled = chk_item.checkState() == QtCore.Qt.CheckState.Checked
