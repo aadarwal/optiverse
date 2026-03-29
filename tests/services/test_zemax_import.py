@@ -193,12 +193,11 @@ def test_integration_example():
 
     # Verify
     assert component.name == "Test Doublet"
-    assert component.kind == "multi_element"
     assert component.object_height_mm == 12.7
-    assert len(component.interfaces_v2) == 3
+    assert len(component.interfaces) == 3
 
     # Check first interface
-    iface1 = component.interfaces_v2[0]
+    iface1 = component.interfaces[0]
     assert iface1.n1 == 1.0  # Air
     assert 1.51 < iface1.n2 < 1.52  # BK7
     assert iface1.is_curved

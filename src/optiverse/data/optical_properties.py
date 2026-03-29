@@ -6,7 +6,6 @@ compile-time type checking.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Union
 
 
 @dataclass
@@ -19,7 +18,7 @@ class RefractiveProperties:
 
     n1: float  # Refractive index on "left" side
     n2: float  # Refractive index on "right" side
-    curvature_radius_mm: Optional[float] = None  # Radius of curvature (None or 0 = flat)
+    curvature_radius_mm: float | None = None  # Radius of curvature (None or 0 = flat)
 
 
 @dataclass
@@ -31,6 +30,8 @@ class LensProperties:
     """
 
     efl_mm: float  # Effective focal length in millimeters
+    # Clear aperture diameter (mm). 0 = use interface segment length; else min(segment, this)/2.
+    clear_aperture_mm: float = 0.0
 
 
 @dataclass
@@ -129,14 +130,14 @@ class BeamBlockProperties:
 
 
 # Union type for type-safe property handling
-OpticalProperties = Union[
-    RefractiveProperties,
-    LensProperties,
-    MirrorProperties,
-    BeamsplitterProperties,
-    WaveplateProperties,
-    FaradayRotatorProperties,
-    LinearPolarizerProperties,
-    DichroicProperties,
-    BeamBlockProperties,
-]
+OpticalProperties = (
+    RefractiveProperties
+    | LensProperties
+    | MirrorProperties
+    | BeamsplitterProperties
+    | WaveplateProperties
+    | FaradayRotatorProperties
+    | LinearPolarizerProperties
+    | DichroicProperties
+    | BeamBlockProperties
+)

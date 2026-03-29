@@ -168,7 +168,10 @@ async def handler(websocket):
         # Remove from session connections
         if user_id in conns:
             del conns[user_id]
-        logger.info(f"User {user_id} disconnected from session {session_id} ({len(conns)} remaining)")
+        logger.info(
+            f"User {user_id} disconnected from session {session_id}"
+            f" ({len(conns)} remaining)"
+        )
 
         # Clean up empty sessions
         if not conns:

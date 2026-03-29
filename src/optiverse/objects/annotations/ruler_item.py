@@ -604,7 +604,7 @@ class RulerItem(QtWidgets.QGraphicsObject):
         if len(self._points) != len(self._initial_points):
             return True
 
-        for old_pt, new_pt in zip(self._initial_points, self._points):
+        for old_pt, new_pt in zip(self._initial_points, self._points, strict=True):
             if QtCore.QLineF(old_pt, new_pt).length() > RULER_POINT_CHANGE_THRESHOLD:
                 return True
         return False

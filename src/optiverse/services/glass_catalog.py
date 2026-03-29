@@ -7,7 +7,6 @@ for common optical glasses (Schott, Ohara, etc.).
 
 import logging
 import math
-from typing import Optional
 
 _logger = logging.getLogger(__name__)
 
@@ -33,7 +32,7 @@ class GlassCatalog:
 
     def get_refractive_index(
         self, glass_name: str, wavelength_um: float = 0.5876
-    ) -> Optional[float]:
+    ) -> float | None:
         """
         Get refractive index for glass at specified wavelength.
 
@@ -200,7 +199,7 @@ class GlassCatalog:
         """Return list of available glass names."""
         return sorted(self._catalog.keys())
 
-    def get_glass_info(self, glass_name: str) -> Optional[dict]:
+    def get_glass_info(self, glass_name: str) -> dict | None:
         """Get full information about a glass."""
         glass_name = glass_name.upper().strip()
         return self._catalog.get(glass_name)

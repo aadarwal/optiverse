@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+import math
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
@@ -15,6 +17,8 @@ from ...core.ui_constants import (
     PARALLEL_BUNDLE_THRESHOLD_MM,
     PATH_MEASURE_TOLERANCE_PX,
 )
+
+_GAUSSIAN_DRAW_EXTENT = 2.35
 
 if TYPE_CHECKING:
     from ...core.undo_stack import UndoStack
@@ -110,17 +114,25 @@ class InspectToolHandler:
         best_segment_idx: int | None = None
 
         for _i, ray_data in enumerate(ray_data_list):
-            # Check each line segment in the ray path
             points = ray_data.points
+            is_gaussian = (
+                hasattr(ray_data, "beam_radii")
+                and len(ray_data.beam_radii) >= len(points)
+            )
             for j in range(len(points) - 1):
-                # Calculate distance to the line segment between consecutive points
                 dist = point_to_segment_distance(click_pt, points[j], points[j + 1])
 
-                if dist < best_distance and dist < tolerance:
+                # For Gaussian beams, accept clicks within the visible envelope
+                if is_gaussian:
+                    w_local = max(ray_data.beam_radii[j], ray_data.beam_radii[j + 1])
+                    seg_tolerance = max(tolerance, _GAUSSIAN_DRAW_EXTENT * w_local)
+                else:
+                    seg_tolerance = tolerance
+
+                if dist < best_distance and dist < seg_tolerance:
                     best_distance = dist
                     best_ray = ray_data
                     best_segment_idx = j
-                    # Use the closest endpoint of the segment
                     dist_to_start = np.linalg.norm(click_pt - points[j])
                     dist_to_end = np.linalg.norm(click_pt - points[j + 1])
                     best_point_idx = j if dist_to_start < dist_to_end else j + 1
@@ -213,6 +225,28 @@ Linear Polarization Angle: {pol_angle_deg:.2f}°"""
         # Wavelength info
         wl_label = QtWidgets.QLabel(f"<b>Wavelength:</b> {wavelength_text}")
         layout.addWidget(wl_label)
+
+        # Gaussian beam parameters
+        if (
+            hasattr(ray_data, "beam_radii")
+            and ray_data.beam_radii
+            and point_idx < len(ray_data.beam_radii)
+        ):
+            w_mm = ray_data.beam_radii[point_idx]
+            layout.addSpacing(10)
+            beam_title = QtWidgets.QLabel("<b>Gaussian Beam:</b>")
+            layout.addWidget(beam_title)
+            layout.addWidget(
+                QtWidgets.QLabel(f"Beam radius w(z): {w_mm:.4f} mm")
+            )
+            layout.addWidget(
+                QtWidgets.QLabel(f"Beam diameter 2w: {2 * w_mm:.4f} mm")
+            )
+            layout.addWidget(
+                QtWidgets.QLabel(
+                    f"1/e\u00b2 area: {math.pi * w_mm ** 2:.4f} mm\u00b2"
+                )
+            )
 
         layout.addSpacing(10)
 

@@ -191,10 +191,9 @@ class TestUserReplaceOrCopy:
 
         # Simulate clicking "Replace" button
         def fake_exec(self_msg):
-            # Find the Replace button and set it as clicked
             for btn in self_msg.buttons():
                 if btn.text() == "Replace":
-                    self_msg.clickedButton = lambda: btn
+                    self_msg.clickedButton = lambda _btn=btn: _btn
                     return
             raise AssertionError("Replace button not found")
 
@@ -218,7 +217,7 @@ class TestUserReplaceOrCopy:
         def fake_exec(self_msg):
             for btn in self_msg.buttons():
                 if btn.text() == "Save as Copy":
-                    self_msg.clickedButton = lambda: btn
+                    self_msg.clickedButton = lambda _btn=btn: _btn
                     return
             raise AssertionError("Save as Copy button not found")
 
@@ -247,7 +246,7 @@ class TestUserReplaceOrCopy:
         def fake_exec(self_msg):
             for btn in self_msg.buttons():
                 if self_msg.buttonRole(btn) == QtWidgets.QMessageBox.ButtonRole.RejectRole:
-                    self_msg.clickedButton = lambda: btn
+                    self_msg.clickedButton = lambda _btn=btn: _btn
                     return
             raise AssertionError("Cancel button not found")
 

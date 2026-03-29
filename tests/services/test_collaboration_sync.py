@@ -11,8 +11,6 @@ import unittest
 import uuid
 from unittest.mock import Mock
 
-from PyQt6.QtWidgets import QGraphicsScene
-
 
 class TestCollaborationBroadcast(unittest.TestCase):
     """Test that local changes are broadcast to other users."""
@@ -23,7 +21,8 @@ class TestCollaborationBroadcast(unittest.TestCase):
 
         # Create mock main window
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
 
         # Create collaboration manager
         collab = CollaborationManager(main_window)
@@ -52,7 +51,8 @@ class TestCollaborationBroadcast(unittest.TestCase):
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
 
         collab = CollaborationManager(main_window)
         collab.enabled = True
@@ -79,7 +79,8 @@ class TestCollaborationBroadcast(unittest.TestCase):
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
 
         collab = CollaborationManager(main_window)
         collab.enabled = True
@@ -131,7 +132,8 @@ class TestCollaborationReceive(unittest.TestCase):
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
 
         collab = CollaborationManager(main_window)
         collab.enabled = True
@@ -166,7 +168,8 @@ class TestCollaborationReceive(unittest.TestCase):
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
 
         collab = CollaborationManager(main_window)
         collab.enabled = True
@@ -198,7 +201,8 @@ class TestCollaborationReceive(unittest.TestCase):
 
         # Verify item was moved
         item.setPos.assert_called_once_with(300.0, 200.0)
-        item.setRotation.assert_called_once_with(90.0)
+        # angle_deg is converted from user convention (CW) to Qt convention (CCW) via negation
+        item.setRotation.assert_called_once_with(-90.0)
 
     def test_remote_remove_item_deletes_item(self):
         """Test that receiving remove_item deletes the item."""
@@ -241,7 +245,8 @@ class TestCollaborationReceive(unittest.TestCase):
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
 
         collab = CollaborationManager(main_window)
         collab.enabled = True

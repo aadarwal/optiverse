@@ -93,6 +93,48 @@ class LensElement(IOpticalElement):
 
         return [refracted_ray]
 
+    def transform_q(
+        self,
+        q: complex,
+        ray: RayState,
+        normal: np.ndarray,
+        *,
+        hit_point: np.ndarray | None = None,
+        tangent: np.ndarray | None = None,
+    ) -> complex:
+        """Tangential-plane ABCD thin lens; oblique incidence and height y on lens."""
+        from ...core.gaussian_beam import apply_abcd
+
+        n = np.asarray(normal, dtype=float)
+        v = ray.direction
+        if float(np.dot(v, n)) < 0:
+            n = -n
+        a_n = float(np.dot(v, n))
+        cos_theta_in = max(a_n, 1e-12)
+        f = self.efl_mm
+        if abs(f) < 1e-12:
+            return apply_abcd(q, 1.0, 0.0, 0.0, 1.0)
+
+        if hit_point is not None and tangent is not None:
+            tvec = np.asarray(tangent, dtype=float)
+            center = 0.5 * (self.p1 + self.p2)
+            y = float(np.dot(hit_point - center, tvec))
+            a_t = float(np.dot(v, tvec))
+            theta_in = math.atan2(a_t, a_n)
+            theta_out = theta_in - math.atan2(y, f)
+            f_local = f * (1.0 + (y / f) ** 2)
+            direction_out = math.cos(theta_out) * n + math.sin(theta_out) * tvec
+            norm_out = float(np.linalg.norm(direction_out))
+            if norm_out > 1e-12:
+                direction_out = direction_out / norm_out
+            cos_theta_out = max(abs(float(np.dot(direction_out, n))), 1e-12)
+            A = cos_theta_out / cos_theta_in
+            C = -1.0 / (f_local * cos_theta_in)
+            return apply_abcd(q, A, 0.0, C, 1.0)
+
+        C = -1.0 / (f * cos_theta_in)
+        return apply_abcd(q, 1.0, 0.0, C, 1.0)
+
     def get_bounding_box(self) -> tuple[np.ndarray, np.ndarray]:
         """Get axis-aligned bounding box"""
         min_corner = np.minimum(self.p1, self.p2)

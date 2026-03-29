@@ -20,17 +20,18 @@ def test_thin_lens_deflection_matches_v2_formula():
     lens = create_polymorphic_element(iface)
 
     # Source at (10, -100) shooting straight up (along +Y)
+    # User-angle convention: 270° = up (+Y direction)
     src = SourceParams(
         x_mm=10.0,
         y_mm=-100.0,
-        angle_deg=90.0,
+        angle_deg=270.0,
         size_mm=0.0,
         n_rays=1,
         ray_length_mm=400.0,
         spread_deg=0.0,
     )
 
-    paths = trace_rays_polymorphic([lens], [src], max_events=1)
+    paths = trace_rays_polymorphic([lens], [src], max_events=2)
     assert len(paths) >= 1
     pts = paths[0].points
     # after hit we should have at least 3 points (start, hit, post-advance)

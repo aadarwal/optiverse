@@ -6,7 +6,8 @@ Extracts ruler placement logic from MainWindow.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 

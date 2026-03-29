@@ -74,12 +74,14 @@ def test_ruler_multi_segment(qtbot):
     r.finalize_segment(QtCore.QPointF(200, 100))
     assert r.point_count() == 4
 
-    # Verify points
+    # finalize_segment replaces the last (preview) point with pos, then
+    # appends a new preview copy at pos.  So after two calls the points are:
+    #   [origin, first_finalize_pos, second_finalize_pos, second_finalize_pos]
     points = r.get_points()
     assert len(points) == 4
     assert points[0] == QtCore.QPointF(0, 0)
-    assert points[1] == QtCore.QPointF(100, 0)
-    assert points[2] == QtCore.QPointF(100, 100)
+    assert points[1] == QtCore.QPointF(100, 100)
+    assert points[2] == QtCore.QPointF(200, 100)
     assert points[3] == QtCore.QPointF(200, 100)
 
 

@@ -40,6 +40,7 @@ class InterfaceDefinition:
 
     # Lens properties
     efl_mm: float = 100.0  # Effective focal length
+    clear_aperture_mm: float = 0.0  # Lens clear diameter (mm); 0 = use interface segment
 
     # Mirror properties
     reflectivity: float = 100.0  # Percentage

@@ -173,10 +173,13 @@ class TestToolModeControllerImport:
         mock_path_handler = MagicMock()
         mock_placement_handler = MagicMock()
 
+        mock_angle_handler = MagicMock()
+
         controller = ToolModeController(
             editor_state=editor_state,
             view=mock_view,
             path_measure_handler=mock_path_handler,
+            angle_measure_handler=mock_angle_handler,
             placement_handler=mock_placement_handler,
             parent=None,
         )

@@ -173,6 +173,52 @@ class SourceItem(BaseObj):
         # Connect to item's edited signal to sync spinboxes
         self.edited.connect(sync_from_item)
 
+        # Source type selector
+        source_type_combo = QtWidgets.QComboBox()
+        source_type_combo.addItems(["Geometric Rays", "Gaussian Beam"])
+        is_gaussian = self.params.source_type == "gaussian"
+        source_type_combo.setCurrentIndex(1 if is_gaussian else 0)
+
+        # Beam waist (only for Gaussian mode)
+        beam_waist = SmartDoubleSpinBox()
+        beam_waist.setRange(0.001, 1e4)
+        beam_waist.setDecimals(4)
+        beam_waist.setSuffix(" mm")
+        beam_waist.setValue(self.params.beam_waist_mm)
+        beam_waist.setToolTip("1/e² beam waist radius w₀ at the source position")
+
+        # Label for beam waist (so we can show/hide it)
+        beam_waist_label = QtWidgets.QLabel("Beam waist (w₀)")
+
+        # Labels for ray-specific fields (so we can show/hide per mode)
+        size_label = QtWidgets.QLabel("Aperture size")
+        nr_label = QtWidgets.QLabel("# Rays")
+        spr_label = QtWidgets.QLabel("Angular spread (±)")
+
+        def _set_mode_visibility(is_gauss: bool):
+            """Toggle field visibility based on source type."""
+            beam_waist.setVisible(is_gauss)
+            beam_waist_label.setVisible(is_gauss)
+            size.setVisible(not is_gauss)
+            size_label.setVisible(not is_gauss)
+            nr.setVisible(not is_gauss)
+            nr_label.setVisible(not is_gauss)
+            spr.setVisible(not is_gauss)
+            spr_label.setVisible(not is_gauss)
+
+        def update_source_type():
+            is_gauss = source_type_combo.currentIndex() == 1
+            self.params.source_type = "gaussian" if is_gauss else "ray"
+            _set_mode_visibility(is_gauss)
+            self.edited.emit()
+
+        def update_beam_waist():
+            self.params.beam_waist_mm = beam_waist.value()
+            self.edited.emit()
+
+        source_type_combo.currentIndexChanged.connect(lambda: update_source_type())
+        beam_waist.valueChanged.connect(update_beam_waist)
+
         # Source parameters
         size = SmartDoubleSpinBox()
         size.setRange(0, 1e6)
@@ -370,14 +416,19 @@ class SourceItem(BaseObj):
         pol_type.currentTextChanged.connect(update_polarization)
         pol_angle.valueChanged.connect(update_polarization)
 
+        # Set initial field visibility based on source type
+        _set_mode_visibility(is_gaussian)
+
         # Add all fields to form
         f.addRow("X Position", x)
         f.addRow("Y Position", y)
         f.addRow("Optical Axis Angle", ang)
-        f.addRow("Aperture size", size)
-        f.addRow("# Rays", nr)
+        f.addRow("Source Type", source_type_combo)
+        f.addRow(beam_waist_label, beam_waist)
+        f.addRow(size_label, size)
+        f.addRow(nr_label, nr)
         f.addRow("Ray length", rlen)
-        f.addRow("Angular spread (±)", spr)
+        f.addRow(spr_label, spr)
         f.addRow("Color Mode", wl_mode)
         f.addRow("Wavelength Preset", wl_preset)
         f.addRow("Wavelength", wl_spin)

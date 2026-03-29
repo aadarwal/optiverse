@@ -37,6 +37,27 @@ class RayState:
     path_points: list[np.ndarray] = field(default_factory=list)  # List of points for visualization
     path_polarizations: list = field(default_factory=list)  # Polarization at each path point
     path_intensities: list[float] = field(default_factory=list)  # Intensity at each path point
+    q_parameter: complex | None = None  # Gaussian beam parameter (None = geometric)
+    path_beam_radii: list[float] = field(default_factory=list)  # Beam radius per point (mm)
+
+    def _copy_with(self, **overrides) -> RayState:
+        """Create a copy of this RayState with specified field overrides."""
+        return RayState(
+            position=overrides.get("position", self.position),
+            direction=overrides.get("direction", self.direction),
+            intensity=overrides.get("intensity", self.intensity),
+            polarization=overrides.get("polarization", self.polarization),
+            wavelength_nm=overrides.get("wavelength_nm", self.wavelength_nm),
+            path=overrides.get("path", self.path),
+            events=overrides.get("events", self.events),
+            remaining_length=overrides.get("remaining_length", self.remaining_length),
+            base_rgb=overrides.get("base_rgb", self.base_rgb),
+            path_points=overrides.get("path_points", self.path_points),
+            path_polarizations=overrides.get("path_polarizations", self.path_polarizations),
+            path_intensities=overrides.get("path_intensities", self.path_intensities),
+            q_parameter=overrides.get("q_parameter", self.q_parameter),
+            path_beam_radii=overrides.get("path_beam_radii", self.path_beam_radii),
+        )
 
     def advance(self, distance: float) -> RayState:
         """
@@ -49,64 +70,26 @@ class RayState:
             New RayState at advanced position
         """
         new_position = self.position + self.direction * distance
-
-        return RayState(
+        return self._copy_with(
             position=new_position,
-            direction=self.direction,
-            intensity=self.intensity,
-            polarization=self.polarization,
-            wavelength_nm=self.wavelength_nm,
             path=self.path + [new_position],
-            events=self.events,
         )
 
     def with_direction(self, new_direction: np.ndarray) -> RayState:
         """Create new RayState with different direction"""
-        return RayState(
-            position=self.position,
-            direction=new_direction,
-            intensity=self.intensity,
-            polarization=self.polarization,
-            wavelength_nm=self.wavelength_nm,
-            path=self.path,
-            events=self.events,
-        )
+        return self._copy_with(direction=new_direction)
 
     def with_intensity(self, new_intensity: float) -> RayState:
         """Create new RayState with different intensity"""
-        return RayState(
-            position=self.position,
-            direction=self.direction,
-            intensity=new_intensity,
-            polarization=self.polarization,
-            wavelength_nm=self.wavelength_nm,
-            path=self.path,
-            events=self.events,
-        )
+        return self._copy_with(intensity=new_intensity)
 
     def with_polarization(self, new_polarization: Polarization) -> RayState:
         """Create new RayState with different polarization"""
-        return RayState(
-            position=self.position,
-            direction=self.direction,
-            intensity=self.intensity,
-            polarization=new_polarization,
-            wavelength_nm=self.wavelength_nm,
-            path=self.path,
-            events=self.events,
-        )
+        return self._copy_with(polarization=new_polarization)
 
     def increment_events(self) -> RayState:
         """Create new RayState with events incremented"""
-        return RayState(
-            position=self.position,
-            direction=self.direction,
-            intensity=self.intensity,
-            polarization=self.polarization,
-            wavelength_nm=self.wavelength_nm,
-            path=self.path,
-            events=self.events + 1,
-        )
+        return self._copy_with(events=self.events + 1)
 
 
 @dataclass
@@ -124,6 +107,7 @@ class RayPath:
     source_index: int = 0  # Index of the source that emitted this ray
     polarizations: list = field(default_factory=list)  # Per-point polarization states
     intensities: list[float] = field(default_factory=list)  # Per-point intensities (0.0 to 1.0)
+    beam_radii: list[float] = field(default_factory=list)  # 1/e^2 beam radius in mm per point
 
 
 # Alias for backward compatibility and simpler imports
