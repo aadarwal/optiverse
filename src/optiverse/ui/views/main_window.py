@@ -155,6 +155,11 @@ class MainWindow(QtWidgets.QMainWindow):
         # Services
         self.settings_service = SettingsService()
         self.storage_service = StorageService(settings_service=self.settings_service)
+
+        from ...services.library_service import LibraryService
+
+        self.library_service = LibraryService(self.settings_service, parent=self)
+
         self.undo_stack = UndoStack()
         self.collaboration_manager = CollaborationManager(self)
         self.log_service = get_log_service()
@@ -185,6 +190,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Build library dock first (needed before menus reference libDock)
         self._build_library_dock()
+
+        # Auto-refresh library dock when library paths change
+        self.library_service.libraries_changed.connect(self.populate_library)
 
         # Build layer panel dock (for z-order and grouping)
         self._build_layer_dock()
@@ -235,6 +243,7 @@ class MainWindow(QtWidgets.QMainWindow):
             connect_item_signals=self._connect_item_signals,
             layer_state=self.layer_state,
             settings_service=self.settings_service,
+            library_service=self.library_service,
         )
         # Connect file controller signals
         self.file_controller.traceRequested.connect(self._schedule_retrace)
@@ -344,6 +353,7 @@ class MainWindow(QtWidgets.QMainWindow):
             get_dark_mode=self.view.is_dark_mode,
             get_style=self.style,
             parent_widget=self,
+            library_service=self.library_service,
         )
         self._component_templates = self.library_manager.populate()
 
@@ -747,7 +757,9 @@ class MainWindow(QtWidgets.QMainWindow):
         except ImportError as e:
             QtWidgets.QMessageBox.critical(self, "Import error", str(e))
             return
-        self._comp_editor = ComponentEditorDialog(self.storage_service, self)
+        self._comp_editor = ComponentEditorDialog(
+            self.storage_service, self, library_service=self.library_service,
+        )
         self._comp_editor.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
         # Connect saved signal to reload library (saved is always a signal on ComponentEditorDialog)
         self._comp_editor.saved.connect(self.populate_library)
@@ -934,40 +946,57 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def open_user_library_folder(self):
         """Open the user library folder in the system file explorer."""
+        from ...platform.paths import get_user_library_root
+
+        self._open_folder(str(get_user_library_root()))
+
+    def _open_folder(self, path: str):
+        """Open *path* in the platform's file manager."""
         import subprocess
         import sys
 
-        from ...platform.paths import get_user_library_root
-
-        library_path = get_user_library_root()
-
         try:
             if sys.platform == "win32":
-                os.startfile(str(library_path))
+                os.startfile(path)
             elif sys.platform == "darwin":
-                subprocess.run(["open", str(library_path)])
-            else:  # linux
-                subprocess.run(["xdg-open", str(library_path)])
+                subprocess.run(["open", path])
+            else:
+                subprocess.run(["xdg-open", path])
         except (OSError, subprocess.SubprocessError) as e:
             QtWidgets.QMessageBox.information(
                 self,
-                "User Library Location",
-                f"User library location:\n{library_path}\n\n"
-                f"(Could not open folder automatically: {str(e)})",
+                "Library Location",
+                f"Location:\n{path}\n\n"
+                f"(Could not open folder automatically: {e})",
             )
+
+    def _populate_open_library_menu(self):
+        """Rebuild the 'Open Library Folder' submenu with all known libraries."""
+        menu = self.open_library_menu  # type: ignore[attr-defined]
+        menu.clear()
+        for lib in self.library_service.get_all():
+            if not lib.exists:
+                continue
+            label = f"{lib.name}  ({lib.source_type})"
+            if not lib.enabled:
+                label += "  [disabled]"
+            action = menu.addAction(label)
+            action.setEnabled(lib.enabled)
+            path_str = str(lib.path)
+            action.triggered.connect(lambda checked, p=path_str: self._open_folder(p))
 
     def open_preferences(self):
         """Open preferences/settings dialog."""
         from .settings_dialog import SettingsDialog
 
-        dialog = SettingsDialog(self.settings_service, self)
+        dialog = SettingsDialog(self.settings_service, self, library_service=self.library_service)
         dialog.settings_changed.connect(self._on_settings_changed)
         dialog.exec()
 
     def _on_settings_changed(self):
         """Handle settings changes."""
-        # Reload library to pick up new library paths
-        self.populate_library()
+        # Rebuild library list first (populate_library is also connected to libraries_changed)
+        self.library_service.refresh()
 
         # Log the change
         self.log_service.info("Settings updated - library reloaded", "Settings")

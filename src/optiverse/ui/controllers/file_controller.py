@@ -21,6 +21,7 @@ from ...services.scene_file_manager import SceneFileManager
 if TYPE_CHECKING:
     from ...core.layer_tree_state import LayerTreeState
     from ...core.undo_stack import UndoStack
+    from ...services.library_service import LibraryService
     from ...services.log_service import LogService
     from ...services.settings_service import SettingsService
 
@@ -49,6 +50,7 @@ class FileController(QtCore.QObject):
         connect_item_signals: Callable | None = None,
         layer_state: LayerTreeState | None = None,
         settings_service: SettingsService | None = None,
+        library_service: LibraryService | None = None,
     ):
         super().__init__(parent_widget)
 
@@ -60,6 +62,7 @@ class FileController(QtCore.QObject):
         self._scene = scene
         self._connect_item_signals = connect_item_signals
         self._settings_service = settings_service
+        self._library_service = library_service
 
         # Create file manager
         self.file_manager = SceneFileManager(
@@ -69,6 +72,9 @@ class FileController(QtCore.QObject):
             on_modified=self._on_modified_changed,
             parent_widget=parent_widget,
             connect_item_signals=connect_item_signals,
+            get_library_roots=(
+                library_service.get_all_roots if library_service else None
+            ),
         )
 
         # Forward layer_state to file manager for saving/loading layer_state
@@ -734,11 +740,17 @@ class FileController(QtCore.QObject):
         from ...objects.type_registry import deserialize_item
 
         imported_items: list[QtWidgets.QGraphicsItem] = []
+        roots = self._library_service.get_all_roots() if self._library_service else None
 
         # Create optical items
         for item_data in data.get("items", []):
             try:
-                item = deserialize_item(item_data)
+                item = deserialize_item(item_data, library_roots=roots)
+                if item is None:
+                    self._log_service.warning(
+                        f"Skipped unknown item type: {item_data.get('_type')}", "Import",
+                    )
+                    continue
                 imported_items.append(item)
             except (KeyError, ValueError, TypeError) as e:
                 self._log_service.error(f"Error importing item: {e}", "Import")
@@ -796,11 +808,17 @@ class FileController(QtCore.QObject):
         from ...objects.type_registry import deserialize_item
 
         imported_uuids: list[str] = []
+        roots = self._library_service.get_all_roots() if self._library_service else None
 
         # Import optical items
         for item_data in data.get("items", []):
             try:
-                item = deserialize_item(item_data)
+                item = deserialize_item(item_data, library_roots=roots)
+                if item is None:
+                    self._log_service.warning(
+                        f"Skipped unknown item type: {item_data.get('_type')}", "Import",
+                    )
+                    continue
                 self._scene.addItem(item)
                 if self._connect_item_signals:
                     self._connect_item_signals(item)

@@ -30,9 +30,15 @@ class SettingsDialog(QtWidgets.QDialog):
 
     settings_changed = QtCore.pyqtSignal()
 
-    def __init__(self, settings_service: SettingsService, parent: QtWidgets.QWidget | None = None):
+    def __init__(
+        self,
+        settings_service: SettingsService,
+        parent: QtWidgets.QWidget | None = None,
+        library_service=None,
+    ):
         super().__init__(parent)
         self.settings_service = settings_service
+        self._library_service = library_service
 
         self.setWindowTitle("Preferences")
         self.resize(800, 500)
@@ -118,60 +124,83 @@ class SettingsDialog(QtWidgets.QDialog):
                 self.page_title.setText(f"{item.text()}")
 
     def _build_library_page(self):
-        """Build the Library settings page."""
+        """Build the Library settings page with a QTableWidget."""
         self.library_page = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(self.library_page)
         layout.setContentsMargins(10, 10, 10, 10)
 
-        # Description
         desc = QtWidgets.QLabel(
-            "Configure component library locations. Optiverse will search all configured "
-            "directories for components. When saving assemblies, component image paths will "
-            "be stored relative to these library locations, making your assemblies portable "
-            "across different computers."
+            "Configure component library locations. Optiverse searches all configured "
+            "directories for components. Image paths are stored relative to library "
+            "roots, keeping assemblies portable across machines."
         )
         desc.setWordWrap(True)
         desc.setStyleSheet("color: palette(dark); padding: 5px;")
         layout.addWidget(desc)
 
-        # Library paths list
-        list_label = QtWidgets.QLabel("Library Directories:")
-        list_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
-        layout.addWidget(list_label)
-
-        # List widget with buttons
-        list_layout = QtWidgets.QHBoxLayout()
-
-        self.library_list = QtWidgets.QListWidget()
-        self.library_list.setSelectionMode(
+        # Table widget  ─  Enabled | Name | Path | Components | Status
+        self.library_table = QtWidgets.QTableWidget(0, 5)
+        self.library_table.setHorizontalHeaderLabels(
+            ["", "Name", "Path", "Components", "Status"]
+        )
+        self.library_table.horizontalHeader().setStretchLastSection(True)
+        self.library_table.horizontalHeader().setSectionResizeMode(
+            0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.library_table.horizontalHeader().setSectionResizeMode(
+            1, QtWidgets.QHeaderView.ResizeMode.Interactive
+        )
+        self.library_table.horizontalHeader().setSectionResizeMode(
+            2, QtWidgets.QHeaderView.ResizeMode.Stretch
+        )
+        self.library_table.horizontalHeader().setSectionResizeMode(
+            3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.library_table.horizontalHeader().setSectionResizeMode(
+            4, QtWidgets.QHeaderView.ResizeMode.ResizeToContents
+        )
+        self.library_table.setSelectionBehavior(
+            QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.library_table.setSelectionMode(
             QtWidgets.QAbstractItemView.SelectionMode.SingleSelection
         )
-        list_layout.addWidget(self.library_list)
+        self.library_table.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.library_table.verticalHeader().setVisible(False)
+        self.library_table.cellChanged.connect(self._on_cell_changed)
+        layout.addWidget(self.library_table)
 
-        # Buttons
-        button_layout = QtWidgets.QVBoxLayout()
+        # Buttons row
+        btn_layout = QtWidgets.QHBoxLayout()
 
-        self.add_library_btn = QtWidgets.QPushButton("Add...")
+        self.add_library_btn = QtWidgets.QPushButton("Add Existing...")
+        self.add_library_btn.setToolTip("Add an existing folder as a component library")
         self.add_library_btn.clicked.connect(self._add_library_path)
-        button_layout.addWidget(self.add_library_btn)
+        btn_layout.addWidget(self.add_library_btn)
+
+        self.create_library_btn = QtWidgets.QPushButton("Create New...")
+        self.create_library_btn.setToolTip("Create a new empty library folder and register it")
+        self.create_library_btn.clicked.connect(self._create_library)
+        btn_layout.addWidget(self.create_library_btn)
 
         self.remove_library_btn = QtWidgets.QPushButton("Remove")
+        self.remove_library_btn.setToolTip("Remove selected library from the list (files are kept)")
         self.remove_library_btn.clicked.connect(self._remove_library_path)
-        button_layout.addWidget(self.remove_library_btn)
+        btn_layout.addWidget(self.remove_library_btn)
 
-        button_layout.addStretch()
+        btn_layout.addStretch()
 
         self.open_library_btn = QtWidgets.QPushButton("Open in Finder")
         self.open_library_btn.clicked.connect(self._open_selected_library)
-        button_layout.addWidget(self.open_library_btn)
+        btn_layout.addWidget(self.open_library_btn)
 
-        list_layout.addLayout(button_layout)
-        layout.addLayout(list_layout)
+        layout.addLayout(btn_layout)
 
-        # Info label
         info = QtWidgets.QLabel(
-            "💡 Tip: The default user library is always included. "
-            "Add additional directories to organize components by project, vendor, or category."
+            "Tip: The default user library and auto-scanned libraries are always included. "
+            "Add external directories (e.g. git repos) to share components across projects."
         )
         info.setWordWrap(True)
         info.setStyleSheet("color: palette(dark); padding: 5px; margin-top: 5px;")
@@ -180,141 +209,269 @@ class SettingsDialog(QtWidgets.QDialog):
         layout.addStretch()
 
     def _load_settings(self):
-        """Load current settings from SettingsService."""
-        # Load library paths
-        library_paths = self.settings_service.get_value("library_paths", [], list)
+        """Load current settings and populate the library table."""
+        self._populate_library_table()
 
-        # Always show default user library first (read-only)
-        default_path = str(get_user_library_root())
-        default_item = QtWidgets.QListWidgetItem(f"📁 {default_path}")
-        default_item.setData(QtCore.Qt.ItemDataRole.UserRole, default_path)
-        default_item.setForeground(QtGui.QBrush(QtGui.QColor(100, 100, 100)))
-        default_item.setFlags(default_item.flags() & ~QtCore.Qt.ItemFlag.ItemIsSelectable)
-        default_item.setToolTip("Default user library (always included)")
-        self.library_list.addItem(default_item)
+    def _populate_library_table(self):
+        """Rebuild the library table from LibraryService (or fallback)."""
+        self.library_table.blockSignals(True)
+        self.library_table.setRowCount(0)
 
-        # Add custom library paths
-        for path in library_paths:
-            if path and path != default_path:  # Don't duplicate default
-                self._add_library_item(path)
-
-    def _add_library_item(self, path: str):
-        """Add a library path to the list."""
-        # Check if path exists
-        path_obj = Path(path)
-        if path_obj.exists():
-            # Count components in this library
-            component_count = self._count_components(path_obj)
-            display_text = f"📚 {path}"
-            if component_count > 0:
-                display_text += f"  ({component_count} components)"
+        if self._library_service is not None:
+            for lib in self._library_service.get_all():
+                self._add_table_row(
+                    name=lib.name,
+                    path=str(lib.path),
+                    count=lib.component_count,
+                    source=lib.source_type,
+                    exists=lib.exists,
+                    enabled=lib.enabled,
+                )
         else:
-            display_text = f"❌ {path} (not found)"
+            default_path = str(get_user_library_root())
+            self._add_table_row(
+                name=Path(default_path).name,
+                path=default_path,
+                count=self._count_components(Path(default_path)),
+                source="user_default",
+                exists=True,
+            )
+            for p in self.settings_service.get_value("library_paths", [], list):
+                if p:
+                    pp = Path(p)
+                    self._add_table_row(
+                        name=pp.name,
+                        path=p,
+                        count=self._count_components(pp),
+                        source="settings",
+                        exists=pp.is_dir(),
+                    )
 
-        item = QtWidgets.QListWidgetItem(display_text)
-        item.setData(QtCore.Qt.ItemDataRole.UserRole, path)
-        item.setToolTip(path)
-        self.library_list.addItem(item)
+        self.library_table.blockSignals(False)
 
-    def _count_components(self, library_path: Path) -> int:
-        """Count components in a library directory."""
+    def _add_table_row(
+        self,
+        name: str,
+        path: str,
+        count: int,
+        source: str,
+        exists: bool,
+        enabled: bool = True,
+    ):
+        row = self.library_table.rowCount()
+        self.library_table.insertRow(row)
+
+        # Col 0 — Enabled checkbox
+        chk_item = QtWidgets.QTableWidgetItem()
+        chk_item.setData(QtCore.Qt.ItemDataRole.UserRole, path)
+        chk_item.setData(QtCore.Qt.ItemDataRole.UserRole + 1, source)
+        always_on = source == "builtin"
+        if always_on:
+            chk_item.setFlags(
+                QtCore.Qt.ItemFlag.ItemIsSelectable
+            )
+            chk_item.setCheckState(QtCore.Qt.CheckState.Checked)
+        else:
+            chk_item.setFlags(
+                QtCore.Qt.ItemFlag.ItemIsSelectable
+                | QtCore.Qt.ItemFlag.ItemIsEnabled
+                | QtCore.Qt.ItemFlag.ItemIsUserCheckable
+            )
+            chk_item.setCheckState(
+                QtCore.Qt.CheckState.Checked if enabled else QtCore.Qt.CheckState.Unchecked
+            )
+        self.library_table.setItem(row, 0, chk_item)
+
+        # Col 1 — Name
+        name_item = QtWidgets.QTableWidgetItem(name)
+        if always_on:
+            name_item.setForeground(QtGui.QBrush(QtGui.QColor(120, 120, 120)))
+        self.library_table.setItem(row, 1, name_item)
+
+        # Col 2 — Path
+        path_item = QtWidgets.QTableWidgetItem(path)
+        path_item.setToolTip(path)
+        self.library_table.setItem(row, 2, path_item)
+
+        # Col 3 — Component count
+        count_item = QtWidgets.QTableWidgetItem(str(count))
+        count_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.library_table.setItem(row, 3, count_item)
+
+        # Col 4 — Status
+        if not exists:
+            status = "Missing"
+        elif source == "builtin":
+            status = "Built-in"
+        elif source == "user_default":
+            status = "Default"
+        elif source == "scanned":
+            status = "Auto"
+        else:
+            status = "OK"
+        status_item = QtWidgets.QTableWidgetItem(status)
+        status_item.setTextAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        if not exists:
+            status_item.setForeground(QtGui.QBrush(QtGui.QColor(200, 60, 60)))
+        self.library_table.setItem(row, 4, status_item)
+
+    @staticmethod
+    def _count_components(library_path: Path) -> int:
         if not library_path.exists() or not library_path.is_dir():
             return 0
-
-        count = 0
         try:
-            for item in library_path.iterdir():
-                if item.is_dir() and (item / "component.json").exists():
-                    count += 1
+            return sum(
+                1 for item in library_path.iterdir()
+                if item.is_dir() and (item / "component.json").exists()
+            )
         except OSError:
-            pass  # Library path may not exist or be inaccessible
+            return 0
 
-        return count
+    def _on_cell_changed(self, row: int, col: int):
+        """Checkbox toggles are purely local — applied on OK / Apply."""
+        pass
 
     def _add_library_path(self):
-        """Add a new library path."""
+        """Add an existing directory as a library."""
         path = QtWidgets.QFileDialog.getExistingDirectory(
             self,
             "Select Component Library Directory",
             "",
             QtWidgets.QFileDialog.Option.ShowDirsOnly,
         )
-
         if not path:
             return
 
-        # Check if already in list
-        for i in range(self.library_list.count()):
-            item = self.library_list.item(i)
-            existing_path = item.data(QtCore.Qt.ItemDataRole.UserRole)
-            if existing_path == path:
+        # Duplicate check
+        for row in range(self.library_table.rowCount()):
+            item = self.library_table.item(row, 0)
+            if item and item.data(QtCore.Qt.ItemDataRole.UserRole) == path:
                 QtWidgets.QMessageBox.information(
                     self, "Already Added", f"This library path is already in the list:\n{path}"
                 )
                 return
 
-        # Add to list
-        self._add_library_item(path)
+        if self._library_service is not None:
+            self._library_service.add_path(Path(path))
+            self._populate_library_table()
+        else:
+            pp = Path(path)
+            self._add_table_row(
+                name=pp.name,
+                path=path,
+                count=self._count_components(pp),
+                source="settings",
+                exists=pp.is_dir(),
+            )
 
-    def _remove_library_path(self):
-        """Remove selected library path."""
-        current_item = self.library_list.currentItem()
-        if not current_item:
+    def _create_library(self):
+        """Create a brand-new library directory and add it."""
+        path = QtWidgets.QFileDialog.getExistingDirectory(
+            self,
+            "Select or Create Library Directory",
+            "",
+            QtWidgets.QFileDialog.Option.ShowDirsOnly,
+        )
+        if not path:
             return
 
-        # Don't allow removing the default library (first item)
-        if self.library_list.row(current_item) == 0:
+        target = Path(path)
+        target.mkdir(parents=True, exist_ok=True)
+
+        if self._library_service is not None:
+            self._library_service.create_library(target)
+            self._populate_library_table()
+        else:
+            self._add_table_row(
+                name=target.name,
+                path=str(target),
+                count=0,
+                source="settings",
+                exists=True,
+            )
+
+    def _remove_library_path(self):
+        """Remove selected library path (only settings-added paths)."""
+        row = self.library_table.currentRow()
+        if row < 0:
+            return
+
+        name_item = self.library_table.item(row, 0)
+        if not name_item:
+            return
+
+        source = name_item.data(QtCore.Qt.ItemDataRole.UserRole + 1)
+        if source in ("builtin", "user_default", "scanned"):
             QtWidgets.QMessageBox.information(
-                self, "Cannot Remove", "The default user library cannot be removed."
+                self,
+                "Cannot Remove",
+                "This library is auto-discovered and cannot be removed from preferences.\n"
+                "To stop it from appearing, move or rename the folder on disk.",
             )
             return
 
-        # Confirm removal
-        path = current_item.data(QtCore.Qt.ItemDataRole.UserRole)
+        path = name_item.data(QtCore.Qt.ItemDataRole.UserRole)
         reply = QtWidgets.QMessageBox.question(
             self,
             "Remove Library Path",
             f"Remove this library path from the list?\n\n{path}\n\n"
-            "Note: This only removes it from the list. The files will not be deleted.",
+            "The folder and its files will not be deleted.",
             QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
         )
 
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-            self.library_list.takeItem(self.library_list.row(current_item))
+            if self._library_service is not None:
+                self._library_service.remove_path(Path(path))
+                self._populate_library_table()
+            else:
+                self.library_table.removeRow(row)
 
     def _open_selected_library(self):
-        """Open selected library in file manager."""
-        current_item = self.library_list.currentItem()
-        if not current_item:
+        """Open selected library in the system file manager."""
+        row = self.library_table.currentRow()
+        if row < 0:
             return
-
-        path = current_item.data(QtCore.Qt.ItemDataRole.UserRole)
-        if path:
-            QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(path))
+        name_item = self.library_table.item(row, 0)
+        if name_item:
+            path = name_item.data(QtCore.Qt.ItemDataRole.UserRole)
+            if path:
+                QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(path))
 
     def _apply_settings(self):
         """Apply settings without closing dialog."""
         self._save_settings()
         self.settings_changed.emit()
 
-        QtWidgets.QMessageBox.information(
-            self,
-            "Settings Applied",
-            "Settings have been applied successfully.\n\n"
-            "Note: You may need to restart the application for all changes to take effect.",
-        )
-
     def _save_settings(self):
-        """Save settings to SettingsService."""
-        # Collect library paths (skip first item which is default)
-        library_paths = []
-        for i in range(1, self.library_list.count()):  # Start at 1 to skip default
-            item = self.library_list.item(i)
-            path = item.data(QtCore.Qt.ItemDataRole.UserRole)
-            if path:
-                library_paths.append(path)
+        """Save settings to SettingsService (called on OK / Apply)."""
+        if self._library_service is not None:
+            # Batch-apply enabled/disabled states from checkboxes
+            disabled: set[str] = set()
+            for i in range(self.library_table.rowCount()):
+                chk = self.library_table.item(i, 0)
+                if not chk:
+                    continue
+                source = chk.data(QtCore.Qt.ItemDataRole.UserRole + 1)
+                if source == "builtin":
+                    continue
+                path = chk.data(QtCore.Qt.ItemDataRole.UserRole)
+                if chk.checkState() != QtCore.Qt.CheckState.Checked:
+                    disabled.add(str(Path(path).resolve()))
+            self._library_service._write_disabled_paths(disabled)
+            self._library_service.refresh()
+            return
 
-        # Save to settings
+        # Fallback: collect paths from table (skip builtin/user_default/scanned)
+        library_paths = []
+        for i in range(self.library_table.rowCount()):
+            name_item = self.library_table.item(i, 0)
+            if not name_item:
+                continue
+            source = name_item.data(QtCore.Qt.ItemDataRole.UserRole + 1)
+            if source == "settings":
+                path = name_item.data(QtCore.Qt.ItemDataRole.UserRole)
+                if path:
+                    library_paths.append(path)
         self.settings_service.set_value("library_paths", library_paths)
 
     def accept(self):
