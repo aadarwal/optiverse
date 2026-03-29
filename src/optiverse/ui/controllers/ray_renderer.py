@@ -618,6 +618,10 @@ class RayRenderer:
         """
         Gaussian envelope: GLSL triangle strip when OpenGL viewport is active,
         else contour rasterisation fallback.
+
+        The path is split at sharp direction changes (mirrors) so each
+        straight section gets its own triangle strip — prevents degenerate
+        bowtie triangles at reflection corners.
         """
         points = p.points
         radii = p.beam_radii
@@ -641,6 +645,47 @@ class RayRenderer:
         pts = [np.asarray(points[i], dtype=float) for i in range(n)]
         ws = [float(radii[i]) for i in range(n)]
 
+        # Detect sharp direction changes and split into segments.
+        # The shared point at each split belongs to BOTH segments so the
+        # Gaussian envelope is continuous at the interface.
+        _ANGLE_THRESHOLD = 0.25  # ~14 degrees
+        splits: list[int] = [0]
+        for i in range(1, n - 1):
+            d_prev = pts[i] - pts[i - 1]
+            d_next = pts[i + 1] - pts[i]
+            lp = float(np.linalg.norm(d_prev))
+            ln = float(np.linalg.norm(d_next))
+            if lp > 1e-12 and ln > 1e-12:
+                cos_a = float(np.dot(d_prev, d_next)) / (lp * ln)
+                if cos_a < math.cos(_ANGLE_THRESHOLD):
+                    splits.append(i)
+        splits.append(n)
+
+        for seg_idx in range(len(splits) - 1):
+            s0 = splits[seg_idx]
+            s1 = splits[seg_idx + 1]
+            if seg_idx < len(splits) - 2:
+                s1 += 1  # include the shared corner point
+            seg_n = s1 - s0
+            if seg_n < 2:
+                continue
+            self._render_gaussian_segment(
+                pts[s0:s1], ws[s0:s1], seg_n, extent, P, r, g, b, z_value,
+            )
+
+    def _render_gaussian_segment(
+        self,
+        pts: list[np.ndarray],
+        ws: list[float],
+        n: int,
+        extent: float,
+        P: float,
+        r: int,
+        g: int,
+        b: int,
+        z_value: float,
+    ) -> None:
+        """Render one straight section of a Gaussian beam as a triangle strip."""
         perps_np: list[np.ndarray] = []
         for i in range(n):
             if i == 0:
