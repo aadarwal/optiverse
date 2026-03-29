@@ -35,7 +35,6 @@ class InterfaceTreePanel(QtWidgets.QWidget):
         self._interfaces: list[InterfaceDefinition] = []
         self._tree_items: list[QtWidgets.QTreeWidgetItem] = []
         self._property_widgets: list[InterfacePropertiesWidget] = []
-        self._child_items: list[QtWidgets.QTreeWidgetItem | None] = []
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -63,16 +62,12 @@ class InterfaceTreePanel(QtWidgets.QWidget):
         self._tree.setHorizontalScrollMode(QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel)
         self._tree.setUniformRowHeights(False)
 
-        # Disable expand on double-click to prevent interference with embedded widgets
-        # Users can still expand/collapse via the arrow or keyboard
-        self._tree.setExpandsOnDoubleClick(False)
-
-        # Custom styling to keep text readable when selected
+        # Use palette colors so selection works in both light and dark mode
         self._tree.setStyleSheet(
             """
             QTreeWidget::item:selected {
-                background-color: #d0d0d0;
-                color: black;
+                background-color: palette(highlight);
+                color: palette(highlighted-text);
             }
         """
         )
@@ -203,7 +198,12 @@ class InterfaceTreePanel(QtWidgets.QWidget):
 
     def _create_tree_item(
         self, interface: InterfaceDefinition, index: int
-    ) -> QtWidgets.QTreeWidgetItem:
+    ) -> tuple[QtWidgets.QTreeWidgetItem, InterfacePropertiesWidget]:
+        """Create a tree item with its property widget for the given interface.
+
+        Returns:
+            Tuple of (top-level tree item, property widget).
+        """
         if self._tree is None:
             raise RuntimeError("Tree not initialized")
 
@@ -211,12 +211,7 @@ class InterfaceTreePanel(QtWidgets.QWidget):
         display_name = interface.name if interface.name else f"Interface {index + 1}"
         item.setText(0, display_name)
 
-        # Make item selectable but NOT editable via double-click
-        # (double-click is reserved for EditableLabel widgets in the property panel)
-        # Use F2 key or context menu to rename interfaces instead
         item.setFlags(item.flags() | QtCore.Qt.ItemFlag.ItemIsSelectable)
-
-        # Store interface index in item data for later retrieval
         item.setData(0, QtCore.Qt.ItemDataRole.UserRole, index)
 
         prop_widget = InterfacePropertiesWidget(interface, show_coordinates=True)
@@ -227,35 +222,33 @@ class InterfaceTreePanel(QtWidgets.QWidget):
         child_item = QtWidgets.QTreeWidgetItem(item)
         self._tree.setItemWidget(child_item, 0, prop_widget)
 
-        if index >= len(self._child_items):
-            self._child_items.extend([None] * (index + 1 - len(self._child_items)))
-        self._child_items[index] = child_item
-
         child_item.setSizeHint(0, prop_widget.sizeHint())
         item.setExpanded(True)
 
-        return item
+        return item, prop_widget
+
+    def _reindex_items(self, start: int = 0) -> None:
+        """Update UserRole index data for tree items from *start* onward."""
+        for i in range(start, len(self._tree_items)):
+            self._tree_items[i].setData(0, QtCore.Qt.ItemDataRole.UserRole, i)
 
     def _rebuild_tree(self) -> None:
-        """Clear and rebuild the tree from the current interfaces list."""
+        """Clear and rebuild the tree from the current interfaces list.
+
+        Used for bulk operations (clear, set_interfaces, initial load).
+        Prefer the incremental helpers for single-item changes.
+        """
         if self._tree is None:
             return
 
         self._tree.clear()
         self._tree_items.clear()
         self._property_widgets.clear()
-        self._child_items.clear()
 
         for i, interface in enumerate(self._interfaces):
-            item = self._create_tree_item(interface, i)
+            item, prop_widget = self._create_tree_item(interface, i)
             self._tree_items.append(item)
-
-            if item.childCount() > 0:
-                child = item.child(0)
-                if child:
-                    widget = self._tree.itemWidget(child, 0)
-                    if isinstance(widget, InterfacePropertiesWidget):
-                        self._property_widgets.append(widget)
+            self._property_widgets.append(prop_widget)
 
     # --- Event Handlers ---
 
@@ -379,15 +372,26 @@ class InterfaceTreePanel(QtWidgets.QWidget):
     # --- Public API ---
 
     def add_interface(self, interface: InterfaceDefinition) -> None:
+        new_index = len(self._interfaces)
         self._interfaces.append(interface)
-        self._rebuild_tree()
+        item, prop_widget = self._create_tree_item(interface, new_index)
+        self._tree_items.append(item)
+        self._property_widgets.append(prop_widget)
         self.interfacesChanged.emit()
 
     def remove_interface(self, index: int) -> None:
-        if 0 <= index < len(self._interfaces):
-            self._interfaces.pop(index)
-            self._rebuild_tree()
-            self.interfacesChanged.emit()
+        if self._tree is None or not (0 <= index < len(self._interfaces)):
+            return
+        self._interfaces.pop(index)
+
+        # Remove the tree item (also removes its child/widget)
+        self._tree.takeTopLevelItem(index)
+        self._tree_items.pop(index)
+        self._property_widgets.pop(index)
+
+        # Reindex remaining items so UserRole data stays correct
+        self._reindex_items(index)
+        self.interfacesChanged.emit()
 
     def get_interfaces(self) -> list[InterfaceDefinition]:
         return self._interfaces.copy()
@@ -415,10 +419,14 @@ class InterfaceTreePanel(QtWidgets.QWidget):
     def select_interface(self, index: int) -> None:
         if self._tree is None:
             return
-        if 0 <= index < len(self._tree_items):
-            self._tree.setCurrentItem(self._tree_items[index])
-        else:
-            self._tree.setCurrentItem(None)
+        self._tree._suppress_scroll = True
+        try:
+            if 0 <= index < len(self._tree_items):
+                self._tree.setCurrentItem(self._tree_items[index])
+            else:
+                self._tree.setCurrentItem(None)
+        finally:
+            self._tree._suppress_scroll = False
 
     def select_interfaces(self, indices: list[int]) -> None:
         if self._tree is None:
@@ -427,10 +435,14 @@ class InterfaceTreePanel(QtWidgets.QWidget):
         def do_select() -> None:
             if self._tree is None:
                 return
-            self._tree.clearSelection()
-            for index in indices:
-                if 0 <= index < len(self._tree_items):
-                    self._tree_items[index].setSelected(True)
+            self._tree._suppress_scroll = True
+            try:
+                self._tree.clearSelection()
+                for index in indices:
+                    if 0 <= index < len(self._tree_items):
+                        self._tree_items[index].setSelected(True)
+            finally:
+                self._tree._suppress_scroll = False
 
         self._with_signals_blocked(do_select)
 
@@ -451,12 +463,42 @@ class InterfaceTreePanel(QtWidgets.QWidget):
         return len(self._interfaces)
 
     def move_interface(self, from_index: int, to_index: int) -> None:
-        if (
+        if self._tree is None:
+            return
+        if not (
             0 <= from_index < len(self._interfaces)
             and 0 <= to_index < len(self._interfaces)
             and from_index != to_index
         ):
-            interface = self._interfaces.pop(from_index)
-            self._interfaces.insert(to_index, interface)
-            self._rebuild_tree()
-            self.interfacesChanged.emit()
+            return
+
+        # Update data lists
+        interface = self._interfaces.pop(from_index)
+        self._interfaces.insert(to_index, interface)
+
+        tree_item = self._tree_items.pop(from_index)
+        self._tree_items.insert(to_index, tree_item)
+
+        prop_widget = self._property_widgets.pop(from_index)
+        self._property_widgets.insert(to_index, prop_widget)
+
+        # Move the tree item in the widget (preserves expansion & child widgets)
+        self._tree.blockSignals(True)
+        try:
+            self._tree.takeTopLevelItem(from_index)
+            self._tree.insertTopLevelItem(to_index, tree_item)
+
+            # Re-attach the property widget to the child item after reinsertion
+            # (Qt detaches item widgets when the item is taken from the tree)
+            if tree_item.childCount() > 0:
+                child = tree_item.child(0)
+                if child is not None:
+                    self._tree.setItemWidget(child, 0, prop_widget)
+                    child.setSizeHint(0, prop_widget.sizeHint())
+
+            tree_item.setExpanded(True)
+            self._reindex_items(min(from_index, to_index))
+        finally:
+            self._tree.blockSignals(False)
+
+        self.interfacesChanged.emit()

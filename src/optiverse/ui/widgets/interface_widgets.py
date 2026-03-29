@@ -18,6 +18,10 @@ class InterfaceTreeWidget(QtWidgets.QTreeWidget):
     deleteKeyPressed = QtCore.pyqtSignal()
     renameKeyPressed = QtCore.pyqtSignal()
 
+    def __init__(self, parent: QtWidgets.QWidget | None = None):
+        super().__init__(parent)
+        self._suppress_scroll = False
+
     def keyPressEvent(self, event: QtGui.QKeyEvent | None):
         """Override to handle Delete/Backspace and F2 keys."""
         if event is None:
@@ -45,15 +49,16 @@ class InterfaceTreeWidget(QtWidgets.QTreeWidget):
             QtWidgets.QAbstractItemView.ScrollHint.EnsureVisible
         ),
     ):
-        """Override to prevent scrolling when embedded widgets have focus.
+        """Override to prevent unwanted scrolling.
 
-        This prevents the tree from scrolling when the user is interacting
-        with property widgets (EditableLabel, checkboxes, etc.) embedded in tree items.
+        Blocks scroll when:
+        - An embedded widget (spinbox, checkbox, etc.) has focus
+        - A programmatic selection change is in progress (_suppress_scroll)
         """
-        # Check if focus is on an embedded widget inside this tree
+        if self._suppress_scroll:
+            return
         focused = QtWidgets.QApplication.focusWidget()
         if focused is not None and focused is not self and self.isAncestorOf(focused):
-            # Don't scroll - user is interacting with an embedded widget
             return
         super().scrollTo(index, hint)
 

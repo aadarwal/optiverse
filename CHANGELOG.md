@@ -11,8 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Update Canvas Instances**: Component Editor toolbar action **Update Canvas Instances…** — after confirmation, updates every placed component on the main canvas that matches the current component name (single batch undo; pose and lock preserved)
+- **Update Canvas Instances**: Component Editor **Canvas** menu **Update Canvas Instances…** — after confirmation, updates every placed component on the main canvas that matches the current component name (single batch undo; pose and lock preserved)
 - **Gaussian Beams**: Gaussian beam propagation support for sources and optical elements
+- **Component Editor Save To**: **Create New…** (pick a folder and register it as a library) and **Manage Libraries…** (opens Preferences on the Library page)
+
+### Changed
+
+- **Component Editor**: Full **menu bar** (File, Edit, Library, Canvas); on macOS menus render **inside the editor window** (`setNativeMenuBar(False)`) so they clearly belong to the tool; removed the duplicate **toolbar** (text-only menus, no redundant icon strip)
+- **Component Editor** interface list: **incremental** tree updates and suppressed auto-scroll when selection is updated from the canvas, fixing the list **jumping to the top** on mis-clicks
+- **Component Editor** coordinates: **SmartDoubleSpinBox** fields for direct mm editing (replaces double-click coordinate labels)
+- **Component Editor** name field: after loading or renaming, the caret is placed at the **start** so long names show the beginning instead of the truncated tail
 
 ### Fixed
 
@@ -23,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Missing component report**: Scene loading warns when components cannot be resolved, with guidance to configure library paths
   - **Preferences overhaul**: Library page uses a table with Name, Path, Components, Status columns and enable/disable checkboxes
   - **Open Library Folder submenu**: Tools menu lists all known libraries for quick access
+- **Component Editor** file dialogs: cancelling **Export**, **Import**, or **Load library from path** no longer closes the editor (explicit `QFileDialog` with `WA_QuitOnClose` disabled)
+- **Component Editor** interface tree: selection styling uses **palette** roles for correct contrast in dark mode
+- **Component Editor** save: saving no longer copies component JSON to the **clipboard** automatically
+
+### Removed
+
+- **Component Editor**: Obsolete legacy methods from an older UI revision and the redundant main **toolbar**
 
 ## [0.3.2] - 2026-03-26
 

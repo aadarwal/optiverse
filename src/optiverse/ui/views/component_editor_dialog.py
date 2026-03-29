@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from pathlib import Path
 
 from PyQt6 import QtCore, QtGui, QtWidgets
 
@@ -15,10 +16,15 @@ from ..widgets.interface_tree_panel import InterfaceTreePanel
 from ..widgets.ruler_widget import CanvasWithRulers
 from ..widgets.smart_spinbox import SmartDoubleSpinBox
 from .component_image_handler import ComponentImageHandler
-from .component_library_io import ComponentLibraryIO
+from .component_library_io import ComponentLibraryIO, _pick_existing_directory
 from .zemax_importer import ZemaxImporter
 
 _logger = logging.getLogger(__name__)
+
+# Save To combo: extra rows (userData) — not real library paths
+_SAVE_TO_CREATE_NEW_DATA = "__create_new__"
+_SAVE_TO_MANAGE_LIBRARIES_DATA = "__manage_libraries__"
+_SAVE_TO_SENTINEL_DATA = frozenset({_SAVE_TO_CREATE_NEW_DATA, _SAVE_TO_MANAGE_LIBRARIES_DATA})
 
 
 class MoveInterfaceCommand(Command):
@@ -73,7 +79,7 @@ class MoveInterfaceCommand(Command):
 class ComponentEditor(QtWidgets.QMainWindow):
     """
     Full-featured component editor with library management.
-    Upgraded from Dialog to MainWindow with toolbar, library dock, and clipboard operations.
+    Upgraded from Dialog to MainWindow with menu bar, library dock, and clipboard operations.
     """
 
     saved = QtCore.pyqtSignal()
@@ -96,6 +102,9 @@ class ComponentEditor(QtWidgets.QMainWindow):
 
         # Track unsaved changes
         self._modified = False
+
+        # Last real library path for Save To (restored after sentinel actions / repopulate)
+        self._save_to_last_path: str | None = None
 
         # Track editing context for save guards
         self._original_name: str | None = None
@@ -131,8 +140,7 @@ class ComponentEditor(QtWidgets.QMainWindow):
 
         self._build_side_dock()
         self._build_library_dock()
-        self._build_toolbar()
-        self._build_shortcuts()
+        self._build_menu_bar()
 
         status_bar = self.statusBar()
         if status_bar is not None:
@@ -142,106 +150,126 @@ class ComponentEditor(QtWidgets.QMainWindow):
             )
 
     # ---------- UI Building ----------
-    def _build_toolbar(self):
-        """Build main toolbar with actions."""
-        tb = self.addToolBar("Main")
-        tb.setMovable(False)
 
-        # Ensure toolbar text is visible in light mode on Mac
-        tb.setStyleSheet(
-            """
-            QToolBar QToolButton {
-                color: palette(window-text);
-            }
-        """
-        )
+    def _build_menu_bar(self):
+        """Build the menu bar with File, Edit, Library, and Canvas menus."""
+        mb = self.menuBar()
+        if mb is None:
+            return
 
-        act_new = QtGui.QAction("New", self)
-        act_new.triggered.connect(self._new_component)
-        tb.addAction(act_new)
+        # Draw menus inside this window (not the macOS screen-top bar) so the
+        # editor reads as a self-contained tool window.
+        mb.setNativeMenuBar(False)
 
-        act_open = QtGui.QAction("Open Image…", self)
-        act_open.triggered.connect(self.open_image)
-        tb.addAction(act_open)
+        # --- File menu ---
+        file_menu = mb.addMenu("&File")
+        if file_menu is None:
+            return
 
-        act_paste = QtGui.QAction("Paste (Img/JSON)", self)
-        act_paste.setShortcut(QtGui.QKeySequence.StandardKey.Paste)
-        act_paste.triggered.connect(self._smart_paste)
-        tb.addAction(act_paste)
+        act = file_menu.addAction("&New")
+        if act:
+            act.setShortcut(QtGui.QKeySequence.StandardKey.New)
+            act.triggered.connect(self._new_component)
 
-        act_clear = QtGui.QAction("Clear Points", self)
-        act_clear.triggered.connect(self.canvas.clear_points)
-        tb.addAction(act_clear)
+        act = file_menu.addAction("&Open Image\u2026")
+        if act:
+            act.triggered.connect(self.open_image)
 
-        act_import_zemax = QtGui.QAction("Import Zemax…", self)
-        act_import_zemax.triggered.connect(self._import_zemax)
-        tb.addAction(act_import_zemax)
+        file_menu.addSeparator()
 
-        tb.addSeparator()
+        act = file_menu.addAction("Import &Zemax\u2026")
+        if act:
+            act.triggered.connect(self._import_zemax)
 
-        act_copy_json = QtGui.QAction("Copy Component JSON", self)
-        act_copy_json.triggered.connect(self.copy_component_json)
-        tb.addAction(act_copy_json)
+        act = file_menu.addAction("&Import Component\u2026")
+        if act:
+            act.triggered.connect(self.import_component)
 
-        act_paste_json = QtGui.QAction("Paste Component JSON", self)
-        act_paste_json.triggered.connect(self.paste_component_json)
-        tb.addAction(act_paste_json)
+        act = file_menu.addAction("&Export Component\u2026")
+        if act:
+            act.triggered.connect(self.export_component)
 
-        tb.addSeparator()
+        file_menu.addSeparator()
 
-        act_save = QtGui.QAction("Save Component", self)
-        act_save.triggered.connect(self.save_component)
-        tb.addAction(act_save)
+        act = file_menu.addAction("&Save")
+        if act:
+            act.setShortcut(QtGui.QKeySequence.StandardKey.Save)
+            act.setIcon(QtGui.QIcon())
+            act.triggered.connect(self.save_component)
 
-        act_update_canvas = QtGui.QAction("Update Canvas Instances…", self)
-        act_update_canvas.triggered.connect(self._on_update_canvas_instances)
-        tb.addAction(act_update_canvas)
+        # --- Edit menu ---
+        edit_menu = mb.addMenu("&Edit")
+        if edit_menu is None:
+            return
 
-        act_export = QtGui.QAction("Export Component…", self)
-        act_export.triggered.connect(self.export_component)
-        tb.addAction(act_export)
+        self._act_undo = edit_menu.addAction("&Undo")
+        if self._act_undo:
+            self._act_undo.setShortcut(QtGui.QKeySequence.StandardKey.Undo)
+            self._act_undo.setIcon(QtGui.QIcon())
+            self._act_undo.triggered.connect(self.undo_stack.undo)
 
-        act_import = QtGui.QAction("Import Component…", self)
-        act_import.triggered.connect(self.import_component)
-        tb.addAction(act_import)
+        self._act_redo = edit_menu.addAction("&Redo")
+        if self._act_redo:
+            self._act_redo.setShortcut(QtGui.QKeySequence.StandardKey.Redo)
+            self._act_redo.setIcon(QtGui.QIcon())
+            self._act_redo.triggered.connect(self.undo_stack.redo)
 
-        tb.addSeparator()
+        edit_menu.addSeparator()
 
-        act_reload = QtGui.QAction("Reload Library", self)
-        act_reload.triggered.connect(self.reload_library)
-        tb.addAction(act_reload)
+        act = edit_menu.addAction("Copy Component &JSON")
+        if act:
+            act.setShortcut(QtGui.QKeySequence.StandardKey.Copy)
+            act.triggered.connect(self.copy_component_json)
 
-        act_load_lib = QtGui.QAction("Load Library from Path…", self)
-        act_load_lib.triggered.connect(self.load_library_from_path)
-        tb.addAction(act_load_lib)
+        act = edit_menu.addAction("&Paste")
+        if act:
+            act.setShortcut(QtGui.QKeySequence.StandardKey.Paste)
+            act.triggered.connect(self._smart_paste)
 
-    def _build_shortcuts(self):
-        """Setup keyboard shortcuts."""
-        sc_copy = QtGui.QShortcut(QtGui.QKeySequence.StandardKey.Copy, self)
-        sc_copy.setContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
-        sc_copy.activated.connect(self.copy_component_json)
+        act = edit_menu.addAction("Paste Component JSON")
+        if act:
+            act.triggered.connect(self.paste_component_json)
 
-        sc_paste = QtGui.QShortcut(QtGui.QKeySequence.StandardKey.Paste, self)
-        sc_paste.setContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
-        sc_paste.activated.connect(self._smart_paste)
+        edit_menu.addSeparator()
 
-        # Undo/Redo shortcuts
-        sc_undo = QtGui.QShortcut(QtGui.QKeySequence.StandardKey.Undo, self)
-        sc_undo.setContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
-        sc_undo.activated.connect(self.undo_stack.undo)
+        act = edit_menu.addAction("Clear &Points")
+        if act:
+            act.triggered.connect(self.canvas.clear_points)
 
-        sc_redo = QtGui.QShortcut(QtGui.QKeySequence.StandardKey.Redo, self)
-        sc_redo.setContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
-        sc_redo.activated.connect(self.undo_stack.redo)
+        # --- Library menu ---
+        lib_menu = mb.addMenu("&Library")
+        if lib_menu is None:
+            return
 
-        # Save shortcut
-        sc_save = QtGui.QShortcut(QtGui.QKeySequence.StandardKey.Save, self)
-        sc_save.setContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
-        sc_save.activated.connect(self.save_component)
+        act = lib_menu.addAction("&Reload Library")
+        if act:
+            act.triggered.connect(self.reload_library)
+
+        act = lib_menu.addAction("Load Library from &Path\u2026")
+        if act:
+            act.triggered.connect(self.load_library_from_path)
+
+        # --- Canvas menu ---
+        canvas_menu = mb.addMenu("&Canvas")
+        if canvas_menu is None:
+            return
+
+        act = canvas_menu.addAction("&Update Canvas Instances\u2026")
+        if act:
+            act.triggered.connect(self._on_update_canvas_instances)
 
     def _mark_modified(self):
         """Mark the component as having unsaved changes."""
         self._modified = True
+
+    def _set_name_edit_text(self, text: str) -> None:
+        """Set the Name field and show the start of the text.
+
+        QLineEdit leaves the cursor at the end after setText(), so long names
+        appear truncated on the left; users expect to see the beginning first.
+        """
+        self.name_edit.setText(text)
+        self.name_edit.setCursorPosition(0)
 
     def _populate_save_to_combo(self):
         """Populate the 'Save To' dropdown with writable library directories."""
@@ -254,6 +282,88 @@ class ComponentEditor(QtWidgets.QMainWindow):
 
             root = get_user_library_root()
             self.save_to_combo.addItem(root.name, str(root))
+
+        self.save_to_combo.insertSeparator(self.save_to_combo.count())
+        self.save_to_combo.addItem("Create New...", _SAVE_TO_CREATE_NEW_DATA)
+        self.save_to_combo.addItem("Manage Libraries...", _SAVE_TO_MANAGE_LIBRARIES_DATA)
+
+        self._restore_save_to_combo_after_repopulate()
+
+    def _first_real_save_to_index(self) -> int:
+        """Index of first library row (skip separator / sentinel items)."""
+        for i in range(self.save_to_combo.count()):
+            data = self.save_to_combo.itemData(i)
+            if isinstance(data, str) and data and data not in _SAVE_TO_SENTINEL_DATA:
+                return i
+        return -1
+
+    def _restore_save_to_combo_selection(self) -> None:
+        """Select last known library path, or the first real library row."""
+        if self._save_to_last_path:
+            idx = self.save_to_combo.findData(self._save_to_last_path)
+            if idx >= 0:
+                self.save_to_combo.setCurrentIndex(idx)
+                return
+        first = self._first_real_save_to_index()
+        if first >= 0:
+            self.save_to_combo.setCurrentIndex(first)
+            d = self.save_to_combo.itemData(first)
+            if isinstance(d, str) and d and d not in _SAVE_TO_SENTINEL_DATA:
+                self._save_to_last_path = d
+
+    def _restore_save_to_combo_after_repopulate(self) -> None:
+        """After rebuilding the combo, re-select the last library if still present."""
+        self._restore_save_to_combo_selection()
+
+    def _on_save_to_activated(self, index: int) -> None:
+        """Handle user picking a Save To row (sentinel rows open flows, not a save target)."""
+        data = self.save_to_combo.itemData(index)
+        if data == _SAVE_TO_CREATE_NEW_DATA:
+            self._create_new_library()
+        elif data == _SAVE_TO_MANAGE_LIBRARIES_DATA:
+            self._open_library_preferences()
+        elif isinstance(data, str) and data and data not in _SAVE_TO_SENTINEL_DATA:
+            self._save_to_last_path = data
+
+    def _create_new_library(self) -> None:
+        """Pick/create a folder and register it as a library via LibraryService."""
+        if self._library_service is None:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Create New Library",
+                "Creating a library from here requires the application library service. "
+                "Use Manage Libraries... to open Preferences and add library paths.",
+            )
+            self._restore_save_to_combo_selection()
+            return
+
+        start_dir = str(Path.home())
+        if self._save_to_last_path:
+            parent = Path(self._save_to_last_path).parent
+            if parent.is_dir():
+                start_dir = str(parent)
+
+        path = _pick_existing_directory(self, "Create New Library", start_dir)
+        if not path:
+            self._restore_save_to_combo_selection()
+            return
+
+        lib = self._library_service.create_library(Path(path))
+        if lib is not None:
+            self._save_to_last_path = str(lib.path)
+        self._populate_save_to_combo()
+        if lib is None:
+            self._restore_save_to_combo_selection()
+
+    def _open_library_preferences(self) -> None:
+        """Open Preferences (Library page) to add or manage component libraries."""
+        from .settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(
+            self.storage.settings_service, self, library_service=self._library_service
+        )
+        dialog.exec()
+        self._populate_save_to_combo()
 
     def _build_side_dock(self):
         """Build side dock with component settings (v2 interface-based)."""
@@ -297,6 +407,7 @@ class ComponentEditor(QtWidgets.QMainWindow):
         self.save_to_combo = QtWidgets.QComboBox()
         self.save_to_combo.setToolTip("Library directory where the component will be saved")
         self._populate_save_to_combo()
+        self.save_to_combo.activated.connect(self._on_save_to_activated)
         info_form.addRow("Save To", self.save_to_combo)
 
         # OBJECT HEIGHT (mm) -> physical size reference for calibration
@@ -409,97 +520,6 @@ class ComponentEditor(QtWidgets.QMainWindow):
             command = MoveInterfaceCommand(self, indices, old_positions, new_positions)
             self.undo_stack.push(command)
 
-    # ---------- Legacy Helpers (deprecated but kept for compatibility) ----------
-
-    def _update_derived_labels(self, *args):
-        """Update computed values from object height and picked line."""
-        float(self.object_height_mm.value())
-
-        # For simple components, get first line if it exists
-        lines = self.canvas.get_all_lines()
-        p1, p2 = None, None
-        if lines:
-            line = lines[0]
-            p1 = (line.x1, line.y1)
-            p2 = (line.x2, line.y2)
-
-        # Normalize canvas points to 1000px space for display
-        _, h_px = self.canvas.image_pixel_size()
-        scale = 1000.0 / float(h_px) if h_px > 0 else 1.0
-
-        # Update spinboxes with normalized coordinates (without triggering change events)
-        if p1:
-            self.p1_x.blockSignals(True)
-            self.p1_y.blockSignals(True)
-            self.p1_x.setValue(p1[0] * scale)
-            self.p1_y.setValue(p1[1] * scale)
-            self.p1_x.blockSignals(False)
-            self.p1_y.blockSignals(False)
-
-        if p2:
-            self.p2_x.blockSignals(True)
-            self.p2_y.blockSignals(True)
-            self.p2_x.setValue(p2[0] * scale)
-            self.p2_y.setValue(p2[1] * scale)
-            self.p2_x.blockSignals(False)
-            self.p2_y.blockSignals(False)
-
-        # Compute values based on normalized coordinates (spinbox values)
-        self._update_computed_values()
-
-    def _update_computed_values(self):
-        """Update computed value labels from normalized coordinates."""
-        object_height = float(self.object_height_mm.value())
-
-        # Get normalized coordinates from spinboxes
-        p1_norm = (float(self.p1_x.value()), float(self.p1_y.value()))
-        p2_norm = (float(self.p2_x.value()), float(self.p2_y.value()))
-
-        if self.canvas.has_image() and p1_norm and p2_norm and object_height > 0:
-            dx = p2_norm[0] - p1_norm[0]
-            dy = p2_norm[1] - p1_norm[1]
-            px_len = (dx * dx + dy * dy) ** 0.5
-
-            if px_len > 0:
-                # Compute mm_per_pixel from object height and line length (in normalized space)
-                mm_per_px = object_height / px_len
-                # Compute full image height (normalized to 1000px)
-                image_height = mm_per_px * 1000.0
-
-                self.line_len_lbl.setText(f"{px_len:.2f} px")
-                self.mm_per_px_lbl.setText(f"{mm_per_px:.6g} mm/px")
-                self.image_height_lbl.setText(f"{image_height:.2f} mm (normalized to 1000px)")
-            else:
-                self.line_len_lbl.setText("— px")
-                self.mm_per_px_lbl.setText("— mm/px")
-                self.image_height_lbl.setText("— mm")
-        else:
-            self.line_len_lbl.setText("— px")
-            self.mm_per_px_lbl.setText("— mm/px")
-            self.image_height_lbl.setText("— mm")
-
-    def _on_manual_point_changed(self):
-        """Handle manual changes to point coordinates (normalized 1000px space)."""
-        # Get normalized coordinates from spinboxes
-        p1_norm = (float(self.p1_x.value()), float(self.p1_y.value()))
-        p2_norm = (float(self.p2_x.value()), float(self.p2_y.value()))
-
-        # Denormalize to actual image space for canvas
-        _, h_px = self.canvas.image_pixel_size()
-        scale = float(h_px) / 1000.0 if h_px > 0 else 1.0
-
-        p1 = (p1_norm[0] * scale, p1_norm[1] * scale)
-        p2 = (p2_norm[0] * scale, p2_norm[1] * scale)
-
-        # Only update if both points have non-zero values
-        canvas_p1, canvas_p2 = self.canvas.get_points()
-        if canvas_p1 is not None or p1 != (0.0, 0.0):
-            if canvas_p2 is not None or p2 != (0.0, 0.0):
-                self.canvas.set_points(p1, p2)
-                # Don't call _update_derived_labels here to avoid recursion
-                # Just update the computed values
-                self._update_computed_values()
-
     def _get_object_height(self) -> float:
         """Get the object height entered by user."""
         return float(self.object_height_mm.value())
@@ -544,35 +564,6 @@ class ComponentEditor(QtWidgets.QMainWindow):
             status_bar.showMessage("Ready. Load an image and add interfaces to begin.")
 
     # ---------- Canvas/Interface Synchronization ----------
-
-    def _get_interface_color(self, iface: dict) -> QtGui.QColor:
-        """Get color for interface based on its properties."""
-        if iface.get("is_beam_splitter", False):
-            if iface.get("is_polarizing", False):
-                return QtGui.QColor(150, 0, 150)  # Purple for PBS
-            else:
-                return QtGui.QColor(0, 150, 120)  # Green for BS
-        else:
-            # Regular refractive interface
-            n1 = iface.get("n1", 1.0)
-            n2 = iface.get("n2", 1.0)
-            if abs(n1 - n2) > 0.01:
-                return QtGui.QColor(100, 100, 255)  # Blue for refraction
-            else:
-                return QtGui.QColor(150, 150, 150)  # Gray for same index
-
-    def _get_simple_component_color(self) -> QtGui.QColor:
-        """Get color for simple component types."""
-        if not hasattr(self, "kind_combo") or self.kind_combo is None:
-            return QtGui.QColor(150, 150, 150)  # Default gray
-        kind = self.kind_combo.currentText()
-        colors = {
-            "lens": QtGui.QColor(0, 180, 180),  # Cyan
-            "mirror": QtGui.QColor(255, 140, 0),  # Orange
-            "beamsplitter": QtGui.QColor(0, 150, 120),  # Green
-            "dichroic": QtGui.QColor(255, 0, 255),  # Magenta
-        }
-        return colors.get(kind, QtGui.QColor(100, 100, 255))
 
     def _sync_interfaces_to_canvas(self):
         """Sync interface panel to canvas visual display (v2 system)."""
@@ -731,7 +722,7 @@ class ComponentEditor(QtWidgets.QMainWindow):
         self.canvas.clear_points()
 
         # Set component properties
-        self.name_edit.setText(component.name)
+        self._set_name_edit_text(component.name)
         self.object_height_mm.setValue(component.object_height_mm)
 
         # Load interfaces into panel
@@ -942,7 +933,7 @@ class ComponentEditor(QtWidgets.QMainWindow):
                     self._set_image(pix, rec.image_path)
 
         # Populate UI
-        self.name_edit.setText(rec.name)
+        self._set_name_edit_text(rec.name)
 
         # Set object height
         if rec.object_height_mm > 0:
@@ -1080,7 +1071,7 @@ class ComponentEditor(QtWidgets.QMainWindow):
             new_name = self._prompt_for_unique_name(f"{current_name} (Custom)", all_names)
             if not new_name:
                 return False
-            self.name_edit.setText(new_name)
+            self._set_name_edit_text(new_name)
 
         # --- Guard 2: existing user component with same name ---
         elif (
@@ -1105,7 +1096,7 @@ class ComponentEditor(QtWidgets.QMainWindow):
                 new_name = self._prompt_for_unique_name(f"{current_name} (Copy)", all_names)
                 if not new_name:
                     return False
-                self.name_edit.setText(new_name)
+                self._set_name_edit_text(new_name)
             elif clicked != replace_btn:
                 return False
             # Replace: fall through to save with same name
@@ -1121,12 +1112,12 @@ class ComponentEditor(QtWidgets.QMainWindow):
             new_name = self._prompt_for_unique_name(current_name, all_names)
             if not new_name:
                 return False
-            self.name_edit.setText(new_name)
+            self._set_name_edit_text(new_name)
 
         # --- Perform the actual save (builds record from UI, writes to disk) ---
         # Point StorageService at the library selected in "Save To" dropdown
         selected_path = self.save_to_combo.currentData()
-        if selected_path:
+        if isinstance(selected_path, str) and selected_path not in _SAVE_TO_SENTINEL_DATA:
             target_storage = StorageService(
                 library_path=selected_path,
                 settings_service=self.storage.settings_service,
