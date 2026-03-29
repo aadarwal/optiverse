@@ -6,7 +6,6 @@ Defines the contract that all optical elements must implement.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 
@@ -25,7 +24,7 @@ class RayIntersection:
     normal: np.ndarray  # Surface normal at hit point (normalized)
     center: np.ndarray  # Center point of the surface segment
     length: float  # Length of the surface segment
-    interface: Optional[object] = None  # Optional: Reference to optical interface
+    interface: object | None = None  # Optional: Reference to optical interface
 
 
 class IOpticalElement(ABC):

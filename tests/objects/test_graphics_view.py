@@ -58,7 +58,7 @@ def test_graphics_view_wheel_event_handles_pixel_delta(qtbot):
 
     event = QtGui.QWheelEvent(
         pos,  # position
-        v.mapToGlobal(pos.toPoint()),  # globalPosition
+        QtCore.QPointF(v.mapToGlobal(pos.toPoint())),  # globalPosition
         pixel_delta,  # pixelDelta
         angle_delta,  # angleDelta
         QtCore.Qt.MouseButton.NoButton,  # buttons

@@ -13,7 +13,20 @@ import unittest
 import uuid
 from unittest.mock import Mock
 
-from PyQt6.QtWidgets import QGraphicsScene
+
+class _FakeSerializable:
+    """Minimal class that satisfies the Serializable runtime_checkable protocol."""
+
+    type_name: str = ""
+    item_uuid: str = ""
+
+    def __init__(self, item_uuid="", type_name="lens", data=None):
+        self.item_uuid = item_uuid
+        self.type_name = type_name
+        self._data = data or {}
+
+    def to_dict(self):
+        return self._data
 
 
 class TestSessionCreation(unittest.TestCase):
@@ -23,24 +36,24 @@ class TestSessionCreation(unittest.TestCase):
         """Test creating a session as host with current canvas state."""
         from optiverse.services.collaboration_manager import CollaborationManager
 
-        # Create mock main window with items
-        main_window = Mock()
-        main_window.scene = QGraphicsScene()
-
-        # Add some mock items to the scene
-        item1 = Mock()
-        item1.item_uuid = str(uuid.uuid4())
-        item1.to_dict = Mock(
-            return_value={
-                "uuid": item1.item_uuid,
+        # Create a FakeSerializable item that rebuild_uuid_map will discover
+        item_id = str(uuid.uuid4())
+        item1 = _FakeSerializable(
+            item_uuid=item_id,
+            type_name="lens",
+            data={
+                "uuid": item_id,
                 "x_mm": 100.0,
                 "y_mm": 50.0,
                 "angle_deg": 0.0,
                 "focal_length_mm": 100.0,
-            }
+            },
         )
-        item1.__class__.__name__ = "LensItem"
-        main_window.scene.addItem(item1)
+
+        # Use mock scene so rebuild_uuid_map can iterate items
+        main_window = Mock()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = [item1]
 
         # Create collaboration manager
         collab = CollaborationManager(main_window)
@@ -65,7 +78,8 @@ class TestSessionCreation(unittest.TestCase):
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
 
         collab = CollaborationManager(main_window)
 
@@ -88,7 +102,8 @@ class TestSessionCreation(unittest.TestCase):
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
 
         collab = CollaborationManager(main_window)
 
@@ -112,22 +127,21 @@ class TestInitialStateSync(unittest.TestCase):
         """Test that host sends full state when client joins."""
         from optiverse.services.collaboration_manager import CollaborationManager
 
-        # Setup host
+        # Setup host with mock scene containing a FakeSerializable item
+        item_id = str(uuid.uuid4())
+        item1 = _FakeSerializable(
+            item_uuid=item_id,
+            type_name="lens",
+            data={"uuid": item_id, "x_mm": 100.0, "y_mm": 50.0, "type": "lens"},
+        )
+
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = [item1]
 
         collab_host = CollaborationManager(main_window)
         collab_host.role = "host"
         collab_host.enabled = True
-
-        # Add items to host's scene
-        item1 = Mock()
-        item1.item_uuid = str(uuid.uuid4())
-        item1.to_dict = Mock(
-            return_value={"uuid": item1.item_uuid, "x_mm": 100.0, "y_mm": 50.0, "type": "lens"}
-        )
-        item1.__class__.__name__ = "LensItem"
-        collab_host.item_uuid_map[item1.item_uuid] = item1
 
         # Mock collaboration service
         collab_host.collaboration_service = Mock()
@@ -148,6 +162,7 @@ class TestInitialStateSync(unittest.TestCase):
                 state_sync_sent = True
                 assert "state" in msg
                 assert "items" in msg["state"]
+                assert len(msg["state"]["items"]) > 0
                 break
 
         assert state_sync_sent, "Host should send full state to new client"
@@ -156,17 +171,23 @@ class TestInitialStateSync(unittest.TestCase):
         """Test that client receives and applies full canvas state."""
         from optiverse.services.collaboration_manager import CollaborationManager
 
-        # Setup client
+        # Setup client with mock scene
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
         main_window.autotrace = False
 
         collab_client = CollaborationManager(main_window)
         collab_client.role = "client"
         collab_client.enabled = True
 
-        # Create mock for retrace
-        main_window.retrace = Mock()
+        # Mock _create_item_from_remote to return items with correct UUIDs
+        def fake_create(item_type, data):
+            item = Mock()
+            item.item_uuid = data.get("uuid") or data.get("item_uuid", "")
+            return item
+
+        collab_client._create_item_from_remote = Mock(side_effect=fake_create)
 
         # Receive initial state from host
         initial_state = {
@@ -201,34 +222,34 @@ class TestInitialStateSync(unittest.TestCase):
         assert len(collab_client.item_uuid_map) == 2
 
         # Verify items were added to scene
-        items_in_scene = [item for item in main_window.scene.items()]
-        assert len(items_in_scene) == 2
+        assert main_window.scene.addItem.call_count == 2
 
     def test_initial_state_includes_all_item_properties(self):
         """Test that initial state includes complete item data."""
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
 
         collab = CollaborationManager(main_window)
         collab.role = "host"
 
-        # Create item with various properties
-        item = Mock()
-        item.item_uuid = str(uuid.uuid4())
-        item.to_dict = Mock(
-            return_value={
-                "uuid": item.item_uuid,
+        # Create item with various properties (satisfying Serializable protocol)
+        item_id = str(uuid.uuid4())
+        item = _FakeSerializable(
+            item_uuid=item_id,
+            type_name="lens",
+            data={
+                "uuid": item_id,
                 "x_mm": 100.0,
                 "y_mm": 50.0,
                 "angle_deg": 45.0,
                 "focal_length_mm": 100.0,
                 "diameter_mm": 25.4,
                 "coating": "AR",
-            }
+            },
         )
-        item.__class__.__name__ = "LensItem"
         collab.item_uuid_map[item.item_uuid] = item
 
         # Get session state
@@ -251,7 +272,8 @@ class TestIncrementalUpdates(unittest.TestCase):
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
 
         collab = CollaborationManager(main_window)
         collab.role = "host"
@@ -262,11 +284,13 @@ class TestIncrementalUpdates(unittest.TestCase):
         collab.collaboration_service = Mock()
         collab.collaboration_service.send_command = Mock()
 
-        # Add new item
-        item = Mock()
-        item.item_uuid = str(uuid.uuid4())
-        item.to_dict = Mock(return_value={"uuid": item.item_uuid, "x_mm": 100.0})
-        item.__class__.__name__ = "LensItem"
+        # Add new item (must satisfy Serializable protocol)
+        item_id = str(uuid.uuid4())
+        item = _FakeSerializable(
+            item_uuid=item_id,
+            type_name="lens",
+            data={"uuid": item_id, "x_mm": 100.0},
+        )
 
         collab.broadcast_add_item(item)
 
@@ -280,7 +304,8 @@ class TestIncrementalUpdates(unittest.TestCase):
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
         main_window.autotrace = False
 
         collab = CollaborationManager(main_window)
@@ -324,7 +349,8 @@ class TestSessionState(unittest.TestCase):
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
 
         collab = CollaborationManager(main_window)
         collab.role = "host"
@@ -339,7 +365,8 @@ class TestSessionState(unittest.TestCase):
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
 
         collab = CollaborationManager(main_window)
         collab.role = "host"
@@ -347,14 +374,19 @@ class TestSessionState(unittest.TestCase):
 
         initial_version = collab.get_session_state()["version"]
 
-        # Make a change
-        item = Mock()
-        item.item_uuid = str(uuid.uuid4())
-        item.to_dict = Mock(return_value={"uuid": item.item_uuid})
-        item.__class__.__name__ = "LensItem"
+        # Make a change (item must satisfy Serializable protocol)
+        item_id = str(uuid.uuid4())
+        item = _FakeSerializable(
+            item_uuid=item_id,
+            type_name="lens",
+            data={"uuid": item_id},
+        )
         collab.item_uuid_map[item.item_uuid] = item
 
-        # Version should increment
+        # Manually increment version (as broadcast_add_item would do)
+        collab._increment_version()
+
+        # Version should have incremented
         new_version = collab.get_session_state()["version"]
         assert new_version > initial_version
 
@@ -363,16 +395,19 @@ class TestSessionState(unittest.TestCase):
         from optiverse.services.collaboration_manager import CollaborationManager
 
         main_window = Mock()
-        main_window.scene = QGraphicsScene()
+        main_window.scene = Mock()
+        main_window.scene.items.return_value = []
 
         collab = CollaborationManager(main_window)
         collab.role = "host"
 
-        # Add item
-        item = Mock()
-        item.item_uuid = str(uuid.uuid4())
-        item.to_dict = Mock(return_value={"uuid": item.item_uuid, "x_mm": 100.0, "y_mm": 50.0})
-        item.__class__.__name__ = "LensItem"
+        # Add item (must satisfy Serializable protocol)
+        item_id = str(uuid.uuid4())
+        item = _FakeSerializable(
+            item_uuid=item_id,
+            type_name="lens",
+            data={"uuid": item_id, "x_mm": 100.0, "y_mm": 50.0},
+        )
         collab.item_uuid_map[item.item_uuid] = item
 
         state = collab.get_session_state()

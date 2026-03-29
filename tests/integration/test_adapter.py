@@ -290,6 +290,7 @@ class TestEndToEndIntegration:
         Ray(
             position=np.array([0.0, 5.0]),
             direction=np.array([1.0, 0.0]),
+            intensity=1.0,
             remaining_length=100.0,
             polarization=Polarization.horizontal(),
             wavelength_nm=633.0,

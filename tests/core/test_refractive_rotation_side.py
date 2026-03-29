@@ -26,9 +26,9 @@ def _path_last_direction(points: list[np.ndarray]) -> np.ndarray:
 
 
 def _directions_after_first_event(elements: list, source: SourceParams) -> list[np.ndarray]:
-    # Limit to one interaction so the last segment reflects/transmits
-    # immediately after the interface
-    paths = trace_rays_polymorphic(elements, [source], max_events=1)
+    # Allow at least 2 events so rays propagate after the first interaction,
+    # giving us visible post-interaction direction in the path points
+    paths = trace_rays_polymorphic(elements, [source], max_events=2)
     dirs: list[np.ndarray] = []
     for p in paths:
         if len(p.points) >= 2:
@@ -59,9 +59,11 @@ def test_refractive_interface_rotation_side_consistency():
     p1 = np.array([-10.0, -10.0], dtype=float)
     p2 = np.array([+10.0, +10.0], dtype=float)
 
-    # Same physical interface, two orientations (swap endpoints simulates 180° rotation of tangent)
+    # Same physical interface, two orientations (swap endpoints simulates 180° rotation of tangent).
+    # Swapping endpoints flips the surface normal, so n1/n2 must also be swapped to keep
+    # the same refractive indices on each physical side of the interface.
     e1 = _create_refractive_element(p1, p2, n1=1.0, n2=1.5)
-    e2 = _create_refractive_element(p2, p1, n1=1.0, n2=1.5)
+    e2 = _create_refractive_element(p2, p1, n1=1.5, n2=1.0)
 
     # Source from the left going right, slightly off-axis to avoid degenerate cases
     src = SourceParams(
@@ -82,5 +84,5 @@ def test_refractive_interface_rotation_side_consistency():
 
     assert len(a1) == len(a2) and len(a1) >= 1
 
-    for ang1, ang2 in zip(a1, a2):
+    for ang1, ang2 in zip(a1, a2, strict=True):
         assert abs(ang1 - ang2) < 1e-6

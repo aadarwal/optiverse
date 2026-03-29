@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import os
 import sys
-from collections.abc import Generator
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable, Generator
+from typing import TYPE_CHECKING
 
 import pytest
 

@@ -7,7 +7,8 @@ Encapsulates rotation logic to keep BaseObj focused on core functionality.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING, Callable
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from PyQt6 import QtCore
 

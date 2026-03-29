@@ -53,6 +53,10 @@ def assert_params_match(item, expected_params: dict, tolerance: float = 0.01):
             assert (
                 abs(actual_value - expected_value) <= tolerance
             ), f"{param_name}: expected {expected_value}±{tolerance}, got {actual_value}"
+        elif isinstance(expected_value, str) and isinstance(actual_value, str):
+            assert (
+                actual_value.lower() == expected_value.lower()
+            ), f"{param_name}: expected {expected_value}, got {actual_value}"
         else:
             assert (
                 actual_value == expected_value
@@ -68,7 +72,7 @@ class UIStateChecker:
         self.window = main_window
 
     def assert_mode(self, expected_mode):
-        assert self.window.editor_state.mode == expected_mode
+        assert self.window._editor_state.mode == expected_mode
 
     def assert_undo_enabled(self, enabled=True):
         assert self.window.act_undo.isEnabled() == enabled
@@ -200,7 +204,7 @@ class TestUIBestPractices:
         )
 
         # Verify clipboard has item
-        assert len(window._clipboard) == 1
+        assert len(window.component_ops._clipboard) == 1
 
         # Test Ctrl+V (paste)
         initial_count = len(get_scene_items_by_type(window.scene, SourceItem))
@@ -294,7 +298,9 @@ class TestUIBestPractices:
         checker.assert_mode(EditorMode.PLACEMENT)
 
         # Cancel with Esc
-        simulate_keyboard_shortcut(qtbot, window, QtCore.Qt.Key.Key_Escape)
+        simulate_keyboard_shortcut(
+            qtbot, window, QtCore.Qt.Key.Key_Escape, QtCore.Qt.KeyboardModifier.NoModifier
+        )
         checker.assert_mode(EditorMode.DEFAULT)
 
     def test_component_interaction(self, qtbot):

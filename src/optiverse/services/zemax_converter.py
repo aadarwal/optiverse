@@ -6,7 +6,6 @@ Maps Zemax sequential surfaces to the interface-based component model.
 
 import logging
 import math
-from typing import Optional
 
 from ..core.interface_definition import InterfaceDefinition
 from ..core.models import ComponentRecord
@@ -34,7 +33,7 @@ class ZemaxToInterfaceConverter:
         # component.interfaces now contains all optical interfaces
     """
 
-    def __init__(self, glass_catalog: Optional[GlassCatalog] = None):
+    def __init__(self, glass_catalog: GlassCatalog | None = None):
         """
         Initialize converter.
 

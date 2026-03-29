@@ -950,7 +950,9 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         iface_keys = [k for k in active_keys if ":" in k]
-        for src_iface, tgt_iface in zip(source.params.interfaces, target.params.interfaces):
+        for src_iface, tgt_iface in zip(
+            source.params.interfaces, target.params.interfaces, strict=True
+        ):
             for key in iface_keys:
                 et, prop = key.split(":", 1)
                 if src_iface.element_type == et and tgt_iface.element_type == et:

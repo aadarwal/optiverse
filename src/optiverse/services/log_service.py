@@ -8,9 +8,9 @@ All debug messages are timestamped and stored in memory.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
 from enum import Enum
-from typing import Callable
 
 _logger = logging.getLogger(__name__)
 

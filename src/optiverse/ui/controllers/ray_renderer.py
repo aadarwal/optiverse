@@ -275,6 +275,7 @@ class _GaussianBeamItem(QtWidgets.QGraphicsItem):
         self._vbo = vbo
         self._vao = vao
         self._vbo_uploaded = True
+        self._strip_vertices = np.empty(0, dtype=np.float32)
         return True
 
     def _mvp_item_to_ndc(
@@ -524,12 +525,12 @@ class RayRenderer:
         Args:
             paths: List of RayPath objects to render
         """
-        # Try OpenGL rendering first (100x+ faster). Gaussian envelopes need software paths.
+        # Use the dedicated OpenGL line overlay for non-Gaussian rays.
+        # Gaussian beams use per-item GLSL rendering via _GaussianBeamItem.
         use_gl = self.view.has_ray_overlay() and not any(
             len(p.beam_radii) >= len(p.points) for p in paths
         )
         if use_gl:
-            # Note: OpenGL overlay doesn't support per-source z-ordering
             self.view.update_ray_overlay(paths, self._ray_width_px)
             self._update_path_measures(paths)
             return
@@ -556,12 +557,11 @@ class RayRenderer:
         return RAY_Z_OFFSET
 
     def _render_software(self, paths: list[RayPath]) -> None:
-        """
-        Software fallback rendering using QGraphicsPathItem.
+        """Render rays as QGraphicsItems (line segments and Gaussian envelopes).
 
-        Each source's rays are rendered at source.zValue() + 0.1.
-        Gaussian beams are drawn as filled envelope polygons with the
-        central ray on top.
+        Gaussian beams are rendered via _GaussianBeamItem which uses GLSL
+        shaders when an OpenGL context is active, otherwise falls back to
+        contour-polygon rasterisation.
 
         Args:
             paths: List of RayPath objects
