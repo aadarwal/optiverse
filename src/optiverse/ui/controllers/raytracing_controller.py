@@ -67,6 +67,7 @@ class RaytracingController(QtCore.QObject):
         self._ray_data: list = []
         self._ray_width_px: float = 2.0
         self._autotrace: bool = True
+        self._max_events: int = MAX_RAYTRACING_EVENTS
 
         # Debouncing for autotrace
         self._retrace_pending = False
@@ -100,6 +101,16 @@ class RaytracingController(QtCore.QObject):
         """Set ray width in pixels and trigger retrace."""
         self._ray_width_px = float(value)
         self.schedule_retrace()
+
+    @property
+    def max_events(self) -> int:
+        """Get max raytracing events per ray."""
+        return self._max_events
+
+    @max_events.setter
+    def max_events(self, value: int) -> None:
+        """Set max raytracing events per ray."""
+        self._max_events = int(value)
 
     def clear_rays(self) -> None:
         """Remove all ray graphics from scene."""
@@ -171,7 +182,7 @@ class RaytracingController(QtCore.QObject):
             try:
                 from ...raytracing import trace_rays_polymorphic
 
-                paths = trace_rays_polymorphic(elements, srcs, max_events=MAX_RAYTRACING_EVENTS)
+                paths = trace_rays_polymorphic(elements, srcs, max_events=self._max_events)
             except Exception as e:
                 self._log_service.error(f"Error in raytracing: {e}", LogCategory.RAYTRACING)
                 return

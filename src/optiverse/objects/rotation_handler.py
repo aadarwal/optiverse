@@ -91,9 +91,11 @@ class SingleItemRotationHandler:
         angle_delta = current_angle - self._rotation_start_angle
         new_rotation = self._rotation_initial + angle_delta
 
-        # Apply 45-degree snap if requested
         if snap_to_45:
-            new_rotation = round(new_rotation / 45.0) * 45.0
+            from ..core import preferences
+
+            a = preferences.rotation_snap_angle_deg
+            new_rotation = round(new_rotation / a) * a
 
         return new_rotation
 
@@ -200,9 +202,11 @@ class GroupRotationHandler:
         # Calculate rotation delta
         angle_delta = current_angle - self._rotation_start_angle
 
-        # Apply 45-degree snap if requested
         if snap_to_45:
-            angle_delta = round(angle_delta / 45.0) * 45.0
+            from ..core import preferences
+
+            a = preferences.rotation_snap_angle_deg
+            angle_delta = round(angle_delta / a) * a
 
         # Apply rotation to all items
         angle_rad = math.radians(angle_delta)

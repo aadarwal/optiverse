@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Update Canvas Instances**: Component Editor **Canvas** menu **Update Canvas Instances…** — after confirmation, updates every placed component on the main canvas that matches the current component name (single batch undo; pose and lock preserved)
 - **Gaussian Beams**: Gaussian beam propagation support for sources and optical elements
 - **Component Editor Save To**: **Create New…** (pick a folder and register it as a library) and **Manage Libraries…** (opens Preferences on the Library page)
+- **Preferences expansion**: Four new Preferences pages — **General** (autosave toggle + interval, max recent files), **Appearance** (dark mode, scale bar visibility), **Canvas & Editing** (grid snap size, magnetic snap tolerance, rotation snap angle, scroll-wheel sensitivity, auto-trace, default ray width, max ray events, clone offset), **Export Defaults** (PNG scale, PDF DPI, export margin). All settings are persisted via `QSettings` and take effect immediately or on next startup as appropriate.
+- **Runtime preferences module** (`core/preferences.py`): module-level attributes loaded from `SettingsService` on startup and refreshed when Preferences are saved; consumers read values directly without coupling to `QSettings`.
 
 ### Changed
 
@@ -21,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Component Editor** interface list: **incremental** tree updates and suppressed auto-scroll when selection is updated from the canvas, fixing the list **jumping to the top** on mis-clicks
 - **Component Editor** coordinates: **SmartDoubleSpinBox** fields for direct mm editing (replaces double-click coordinate labels)
 - **Component Editor** name field: after loading or renaming, the caret is placed at the **start** so long names show the beginning instead of the truncated tail
+- **Theme stylesheets**: Added `QTableWidget`, `QHeaderView`, and `QListWidget` rules to both dark and light QSS themes for consistent rendering (fixes grid-line color mismatch in dark mode)
 
 ### Fixed
 
@@ -34,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Component Editor** file dialogs: cancelling **Export**, **Import**, or **Load library from path** no longer closes the editor (explicit `QFileDialog` with `WA_QuitOnClose` disabled)
 - **Component Editor** interface tree: selection styling uses **palette** roles for correct contrast in dark mode
 - **Component Editor** save: saving no longer copies component JSON to the **clipboard** automatically
+- **Layer model**: Guard against stale C++ objects (`sip.isdeleted`) when resolving cached `QGraphicsItem` references, preventing crashes during rapid undo/delete sequences
 
 ### Removed
 

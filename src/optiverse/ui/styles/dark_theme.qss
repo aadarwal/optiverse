@@ -236,6 +236,47 @@ QTabBar::tab:hover {
     background-color: #3d3f46;
 }
 
+/* Table Widget */
+QTableWidget {
+    background-color: #1a1c21;
+    color: white;
+    border: 1px solid #3d3f46;
+    gridline-color: #3d3f46;
+}
+
+QTableWidget::item {
+    color: white;
+}
+
+QTableWidget::item:selected {
+    background-color: #3d5a80;
+    color: white;
+}
+
+/* Header View (shared by QTableWidget / QTreeView) */
+QHeaderView::section {
+    background-color: #2d2f36;
+    color: white;
+    border: 1px solid #3d3f46;
+    padding: 4px;
+}
+
+/* List Widget */
+QListWidget {
+    background-color: #1a1c21;
+    color: white;
+    border: 1px solid #3d3f46;
+}
+
+QListWidget::item:selected {
+    background-color: #3d5a80;
+    color: white;
+}
+
+QListWidget::item:hover {
+    background-color: #26282e;
+}
+
 /* Dialog */
 QDialog {
     background-color: #1a1c21;
