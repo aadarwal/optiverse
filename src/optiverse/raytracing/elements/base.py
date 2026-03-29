@@ -74,7 +74,15 @@ class IOpticalElement(ABC):
         """
         pass
 
-    def transform_q(self, q: complex, ray: RayState, normal: np.ndarray) -> complex:
+    def transform_q(
+        self,
+        q: complex,
+        ray: RayState,
+        normal: np.ndarray,
+        *,
+        hit_point: np.ndarray | None = None,
+        tangent: np.ndarray | None = None,
+    ) -> complex:
         """
         Transform the Gaussian beam q-parameter at this element.
 
@@ -83,9 +91,11 @@ class IOpticalElement(ABC):
         refractive surfaces).
 
         Args:
-            q: Complex beam parameter before interaction
+            q: Complex beam parameter before interaction (after drift to the surface)
             ray: Incoming ray state (for direction, wavelength, etc.)
             normal: Surface normal at hit point
+            hit_point: Intersection point (optional; used for lens height on aperture)
+            tangent: Surface tangent at hit (optional; used with hit_point for lenses)
 
         Returns:
             Transformed q-parameter after interaction

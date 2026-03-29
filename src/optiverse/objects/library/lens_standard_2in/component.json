@@ -11,7 +11,8 @@
       "x2_mm": 0.0,
       "y2_mm": -27.95,
       "element_type": "lens",
-      "efl_mm": 100.0
+      "efl_mm": 100.0,
+      "clear_aperture_mm": 50.8
     }
   ]
 }

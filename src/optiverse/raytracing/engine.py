@@ -20,8 +20,11 @@ import numpy as np
 from ..core.color_utils import qcolor_from_hex
 from ..core.gaussian_beam import (
     beam_radius_from_q,
+    clip_gaussian_circular_aperture,
     propagate_free_space,
     q_from_waist,
+    q_rescale_radius_preserve_curvature,
+    rayleigh_range_from_q,
 )
 from ..core.models import SourceParams
 from ..core.raytracing_math import NUMBA_AVAILABLE, deg2rad, ray_hit_element
@@ -29,6 +32,79 @@ from .elements.base import IOpticalElement, RayIntersection
 from .ray import Ray, RayPath
 
 _logger = logging.getLogger(__name__)
+
+_GAUSSIAN_SUBSAMPLE_MAX = 200
+_GAUSSIAN_ADAPT_REL_DW = 0.06  # extra subdivisions when |Δw|/max(w) exceeds this per segment
+
+
+def _effective_half_aperture_mm(element: IOpticalElement, segment_length_mm: float) -> float:
+    """Half-width for Gaussian clipping: segment half-length, optionally capped by clear aperture.
+
+    The painted interface line spans the full segment; when the mount is larger than the
+    clear optic, set ``clear_aperture_mm`` on the lens so trace clipping matches the glass.
+    """
+    half = 0.5 * float(segment_length_mm)
+    iface = getattr(element, "interface", None)
+    if iface is None:
+        return half
+    props = getattr(iface, "properties", None)
+    if props is None:
+        return half
+    ca = float(getattr(props, "clear_aperture_mm", 0.0) or 0.0)
+    if ca > 1e-12:
+        return min(half, 0.5 * ca)
+    return half
+
+
+def _insert_gaussian_free_space_samples(
+    ray: Ray,
+    q_start: complex,
+    distance_mm: float,
+    end_point: np.ndarray,
+    wavelength_nm: float,
+) -> complex:
+    """
+    Append intermediate path vertices so the beam envelope follows hyperbolic w(z).
+
+    Geometry follows the chord from the last path vertex to end_point; q advances
+    along the optical path length ``distance_mm`` (chief-ray drift).
+    """
+    if distance_mm <= 1e-12:
+        return q_start
+
+    p0 = np.asarray(ray.path_points[-1], dtype=float)
+    p_end = np.asarray(end_point, dtype=float)
+    seg = p_end - p0
+
+    wl = wavelength_nm
+    q_final = propagate_free_space(q_start, distance_mm)
+    w0 = beam_radius_from_q(q_start, wl)
+    w1 = beam_radius_from_q(q_final, wl)
+
+    z_R = rayleigh_range_from_q(q_start, wl)
+    step = min(distance_mm, max(5.0, z_R / 4.0))
+    n = max(1, int(math.ceil(distance_mm / step)))
+
+    dw = abs(w1 - w0)
+    w_ref = max(w0, w1, 1e-9)
+    rel_dw = dw / w_ref
+    if rel_dw > _GAUSSIAN_ADAPT_REL_DW:
+        n = max(n, int(math.ceil(6.0 * rel_dw * max(8.0, distance_mm / max(step, 1e-6)))))
+    if dw > 1e-12:
+        n = max(n, int(math.ceil((dw / max(distance_mm, 1e-9)) * 80.0)))
+
+    n = min(max(n, 1), _GAUSSIAN_SUBSAMPLE_MAX)
+
+    for k in range(1, n):
+        frac = k / n
+        pt = p0 + seg * frac
+        qk = propagate_free_space(q_start, frac * distance_mm)
+        ray.path_points.append(pt.copy())
+        ray.path_polarizations.append(ray.polarization)
+        ray.path_intensities.append(ray.intensity)
+        ray.path_beam_radii.append(beam_radius_from_q(qk, wl))
+
+    return q_final
 
 
 def trace_rays_polymorphic(
@@ -361,15 +437,21 @@ def _trace_single_ray(
             final_point = (
                 current_ray.position + current_ray.direction * current_ray.remaining_length
             )
+            if current_ray.q_parameter is not None:
+                q_start = current_ray.q_parameter
+                q_final = _insert_gaussian_free_space_samples(
+                    current_ray,
+                    q_start,
+                    current_ray.remaining_length,
+                    final_point,
+                    current_ray.wavelength_nm,
+                )
+                current_ray.q_parameter = q_final
             current_ray.path_points.append(final_point)
             current_ray.path_polarizations.append(current_ray.polarization)
             current_ray.path_intensities.append(current_ray.intensity)
 
-            # Propagate q-parameter through free space to end of ray
             if current_ray.q_parameter is not None:
-                current_ray.q_parameter = propagate_free_space(
-                    current_ray.q_parameter, current_ray.remaining_length
-                )
                 current_ray.path_beam_radii.append(
                     beam_radius_from_q(current_ray.q_parameter, current_ray.wavelength_nm)
                 )
@@ -392,23 +474,52 @@ def _trace_single_ray(
         # Add intersection point to path before interaction
         if nearest_intersection is None:
             continue
-        current_ray.path_points.append(nearest_intersection.point)
-        # Record pre-interaction polarization and intensity at hit point
-        current_ray.path_polarizations.append(current_ray.polarization)
-        current_ray.path_intensities.append(current_ray.intensity)
+        hit_pt = nearest_intersection.point
+        half_aperture = _effective_half_aperture_mm(
+            nearest_element, float(nearest_intersection.length)
+        )
 
-        # Propagate q through free space to the hit point, then transform at element
+        # Propagate q along drift, subsample envelope, then record hit vertex
         if current_ray.q_parameter is not None:
-            current_ray.q_parameter = propagate_free_space(
-                current_ray.q_parameter, nearest_distance
+            q_start = current_ray.q_parameter
+            q_at_surface = _insert_gaussian_free_space_samples(
+                current_ray,
+                q_start,
+                nearest_distance,
+                hit_pt,
+                current_ray.wavelength_nm,
             )
-            current_ray.path_beam_radii.append(
-                beam_radius_from_q(current_ray.q_parameter, current_ray.wavelength_nm)
-            )
-            # Transform q at the optical element
+            current_ray.path_points.append(hit_pt.copy())
+            current_ray.path_polarizations.append(current_ray.polarization)
+
+            w = beam_radius_from_q(q_at_surface, current_ray.wavelength_nm)
+            trans_frac = clip_gaussian_circular_aperture(w, half_aperture)
+            current_ray.intensity *= trans_frac
+            current_ray.path_intensities.append(current_ray.intensity)
+
+            w_vis = min(w, half_aperture) if half_aperture > 1e-12 else w
+            current_ray.path_beam_radii.append(w_vis)
+
+            q_for_transform = q_at_surface
+            if half_aperture > 1e-12 and w > half_aperture + 1e-9:
+                q_for_transform = q_rescale_radius_preserve_curvature(
+                    q_at_surface, half_aperture, current_ray.wavelength_nm
+                )
+
             current_ray.q_parameter = nearest_element.transform_q(
-                current_ray.q_parameter, current_ray, nearest_intersection.normal
+                q_for_transform,
+                current_ray,
+                nearest_intersection.normal,
+                hit_point=hit_pt,
+                tangent=nearest_intersection.tangent,
             )
+            w_out = beam_radius_from_q(current_ray.q_parameter, current_ray.wavelength_nm)
+            w_draw = min(w_out, half_aperture) if half_aperture > 1e-12 else w_out
+            current_ray.path_beam_radii[-1] = w_draw
+        else:
+            current_ray.path_points.append(hit_pt.copy())
+            current_ray.path_polarizations.append(current_ray.polarization)
+            current_ray.path_intensities.append(current_ray.intensity)
 
         # Interact with element - POLYMORPHIC DISPATCH!
         output_rays = nearest_element.interact(

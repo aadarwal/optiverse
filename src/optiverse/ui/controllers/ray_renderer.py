@@ -23,6 +23,149 @@ if TYPE_CHECKING:
 # Offset for rays above their source (keeps source icon visible)
 RAY_Z_OFFSET = 0.1
 
+# Draw envelope to this multiple of w so alpha is near zero at polygon edge.
+_GAUSSIAN_DRAW_EXTENT = 2.35
+
+# Contour layers for transverse Gaussian profile.
+_GAUSSIAN_N_CONTOURS = 48
+
+# Pre-render resolution: pixels per scene-mm.
+_GAUSSIAN_RENDER_DPI = 4.0
+
+# Hard cap so huge beams don't allocate enormous bitmaps.
+_GAUSSIAN_IMAGE_PX_CAP = 4096
+
+
+def _gaussian_beam_polygon(
+    local_pts: list[tuple[float, float]],
+    ws: list[float],
+    perps: list[tuple[float, float]],
+    frac: float,
+    n: int,
+) -> QtGui.QPolygonF:
+    """Closed contour at ±frac*w from axis (item-local mm)."""
+    poly = QtGui.QPolygonF()
+    for i in range(n):
+        xi, yi = local_pts[i]
+        pxi, pyi = perps[i]
+        poly.append(QtCore.QPointF(xi + frac * ws[i] * pxi, yi + frac * ws[i] * pyi))
+    for i in range(n - 1, -1, -1):
+        xi, yi = local_pts[i]
+        pxi, pyi = perps[i]
+        poly.append(QtCore.QPointF(xi - frac * ws[i] * pxi, yi - frac * ws[i] * pyi))
+    return poly
+
+
+class _GaussianBeamItem(QtWidgets.QGraphicsItem):
+    """
+    Gaussian envelope rendered to a cached QImage.
+
+    The bitmap is rasterised at the current device resolution and re-rendered
+    when the zoom changes significantly (>1.5x or <0.5x ratio).  Overlapping
+    beams use Screen compositing so they brighten without clamping.
+    """
+
+    # Re-render when zoom ratio exceeds these bounds.
+    _ZOOM_UPPER = 1.5
+    _ZOOM_LOWER = 0.5
+
+    def __init__(
+        self,
+        item_rect: QtCore.QRectF,
+        local_pts: list[tuple[float, float]],
+        ws: list[float],
+        perps: list[tuple[float, float]],
+        extent: float,
+        r: int,
+        g: int,
+        b: int,
+        peak_alpha: float,
+        parent: QtWidgets.QGraphicsItem | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._item_rect = item_rect
+        self._local_pts = local_pts
+        self._ws = ws
+        self._perps = perps
+        self._extent = extent
+        self._r, self._g, self._b = r, g, b
+        self._P = peak_alpha
+
+        self._cached_dpi = _GAUSSIAN_RENDER_DPI
+        self._cached_img = self._render_to_image(self._cached_dpi)
+        self.setCacheMode(QtWidgets.QGraphicsItem.CacheMode.NoCache)
+
+    def _render_to_image(self, dpi: float) -> QtGui.QImage:
+        rect = self._item_rect
+        bw = max(rect.width(), 1e-6)
+        bh = max(rect.height(), 1e-6)
+        w_px = max(1, min(int(math.ceil(bw * dpi)), _GAUSSIAN_IMAGE_PX_CAP))
+        h_px = max(1, min(int(math.ceil(bh * dpi)), _GAUSSIAN_IMAGE_PX_CAP))
+
+        img = QtGui.QImage(w_px, h_px, QtGui.QImage.Format.Format_ARGB32_Premultiplied)
+        img.fill(0)
+
+        ip = QtGui.QPainter(img)
+        ip.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        ip.scale(w_px / bw, h_px / bh)
+        ip.translate(-rect.left(), -rect.top())
+        ip.setCompositionMode(QtGui.QPainter.CompositionMode.CompositionMode_Source)
+
+        n = len(self._local_pts)
+        L = _GAUSSIAN_N_CONTOURS
+        extent = self._extent
+        r, g, b, P = self._r, self._g, self._b, self._P
+
+        for k in range(L):
+            frac = extent * (L - k) / L
+            a = max(0, min(255, int(round(255.0 * math.exp(-2.0 * frac * frac) * P))))
+            if a < 1:
+                continue
+            poly = _gaussian_beam_polygon(self._local_pts, self._ws, self._perps, frac, n)
+            ip.setPen(QtCore.Qt.PenStyle.NoPen)
+            ip.setBrush(QtGui.QColor(r, g, b, a))
+            ip.drawPolygon(poly)
+
+        ip.end()
+        return img
+
+    def boundingRect(self) -> QtCore.QRectF:
+        return self._item_rect
+
+    def paint(
+        self,
+        painter: QtGui.QPainter,
+        option: QtWidgets.QStyleOptionGraphicsItem,
+        widget: QtWidgets.QWidget | None = None,
+    ) -> None:
+        # Adapt resolution to current zoom level
+        current_dpi = abs(painter.deviceTransform().m11())
+        if current_dpi > 0.1:
+            ratio = current_dpi / max(self._cached_dpi, 0.01)
+            if ratio > self._ZOOM_UPPER or ratio < self._ZOOM_LOWER:
+                self._cached_dpi = current_dpi
+                self._cached_img = self._render_to_image(current_dpi)
+
+        prev_mode = painter.compositionMode()
+        painter.setCompositionMode(
+            QtGui.QPainter.CompositionMode.CompositionMode_Screen
+        )
+        painter.drawImage(
+            self._item_rect,
+            self._cached_img,
+            QtCore.QRectF(
+                0.0, 0.0,
+                float(self._cached_img.width()),
+                float(self._cached_img.height()),
+            ),
+        )
+        painter.setCompositionMode(prev_mode)
+
+    def shape(self) -> QtGui.QPainterPath:
+        path = QtGui.QPainterPath()
+        path.addRect(self._item_rect)
+        return path
+
 
 class RayRenderer:
     """
@@ -50,8 +193,8 @@ class RayRenderer:
         self.scene = scene
         self.view = view
 
-        # Track rendered ray items for software rendering
-        self.ray_items: list[QtWidgets.QGraphicsPathItem] = []
+        # Track rendered ray items for software rendering (paths + Gaussian items)
+        self.ray_items: list[QtWidgets.QGraphicsItem] = []
 
         # Ray width in pixels
         self._ray_width_px: float = 2.0
@@ -107,17 +250,19 @@ class RayRenderer:
         Args:
             paths: List of RayPath objects to render
         """
-        # Try OpenGL rendering first (100x+ faster)
-        if self.view.has_ray_overlay():
-            # Use hardware-accelerated OpenGL rendering
+        # Try OpenGL rendering first (100x+ faster). Gaussian envelopes need software paths.
+        use_gl = self.view.has_ray_overlay() and not any(
+            len(p.beam_radii) >= len(p.points) for p in paths
+        )
+        if use_gl:
             # Note: OpenGL overlay doesn't support per-source z-ordering
-            # It renders all rays in a single layer above the scene
             self.view.update_ray_overlay(paths, self._ray_width_px)
-            # No need to create QGraphicsPathItem objects
             self._update_path_measures(paths)
             return
 
-        # Fallback to software rendering if OpenGL not available
+        if self.view.has_ray_overlay():
+            self.view.clear_ray_overlay()
+
         self._render_software(paths)
         self._update_path_measures(paths)
 
@@ -197,86 +342,88 @@ class RayRenderer:
         has_per_seg: bool,
     ) -> None:
         """
-        Render a Gaussian beam as a smooth intensity profile.
-
-        Each segment is drawn as a gradient-filled trapezoid with a
-        QLinearGradient perpendicular to the beam direction. The gradient
-        color stops follow exp(-2 r^2 / w^2) to produce a physically
-        accurate Gaussian transverse intensity profile. No ray lines are
-        drawn — the beam appears as a continuous glow.
+        Render a Gaussian beam as one cached item: 128 contours rasterised
+        offscreen with CompositionMode_Source (exact alpha per ring, no Y banding).
         """
         points = p.points
         radii = p.beam_radii
         n = len(points)
+        if n < 2:
+            return
 
-        # Gaussian color stops: positions from 0 (one edge) to 1 (other edge)
-        # with intensity = exp(-2 * ((pos - 0.5)*2)^2) = exp(-8*(pos-0.5)^2)
-        # We sample symmetrically around 0.5 for a smooth profile.
-        N_STOPS = 13
-        peak_alpha = 0.75
-        gaussian_stops: list[tuple[float, float]] = []
-        for j in range(N_STOPS):
-            t = j / (N_STOPS - 1)  # 0..1 across the beam width
-            u = (t - 0.5) * 2.0    # -1..+1 normalized radius
-            intensity = math.exp(-2.0 * u * u) * peak_alpha
-            gaussian_stops.append((t, intensity))
+        extent = _GAUSSIAN_DRAW_EXTENT
+        peak_alpha = 0.85
 
-        for i in range(n - 1):
-            p0 = np.asarray(points[i], dtype=float)
-            p1 = np.asarray(points[i + 1], dtype=float)
-            w0 = float(radii[i])
-            w1 = float(radii[i + 1])
+        if has_per_seg and len(p.intensities) > 0:
+            cnt = min(len(p.intensities), n)
+            avg_intensity = sum(
+                max(0.0, min(1.0, p.intensities[j])) for j in range(cnt)
+            ) / cnt
+        else:
+            avg_intensity = base_alpha / 255.0
 
-            seg = p1 - p0
-            seg_len = np.linalg.norm(seg)
-            if seg_len < 1e-12:
-                continue
-            tangent = seg / seg_len
-            perp = np.array([-tangent[1], tangent[0]])
+        P = peak_alpha * avg_intensity
 
-            # Intensity scaling from ray intensity
-            if has_per_seg:
-                seg_intensity = max(0.0, min(1.0, p.intensities[i]))
+        pts = [np.asarray(points[i], dtype=float) for i in range(n)]
+        ws = [float(radii[i]) for i in range(n)]
+
+        perps_np: list[np.ndarray] = []
+        for i in range(n):
+            if i == 0:
+                seg = pts[1] - pts[0]
+            elif i == n - 1:
+                seg = pts[-1] - pts[-2]
             else:
-                seg_intensity = base_alpha / 255.0
+                seg = pts[i + 1] - pts[i - 1]
+            slen = float(np.linalg.norm(seg))
+            if slen < 1e-12:
+                perps_np.append(np.array([0.0, 1.0]))
+            else:
+                t = seg / slen
+                perps_np.append(np.array([-t[1], t[0]]))
 
-            # Four corners of the trapezoid (scene coordinates)
-            c_ul = p0 + w0 * perp   # upper-left
-            c_ur = p1 + w1 * perp   # upper-right
-            c_lr = p1 - w1 * perp   # lower-right
-            c_ll = p0 - w0 * perp   # lower-left
+        min_x = min_y = math.inf
+        max_x = max_y = -math.inf
+        pad = 2.0
+        for i in range(n):
+            x, y = float(pts[i][0]), float(pts[i][1])
+            px, py = float(perps_np[i][0]), float(perps_np[i][1])
+            half = extent * ws[i]
+            for sgn in (-1.0, 1.0):
+                xx = x + sgn * half * px
+                yy = y + sgn * half * py
+                min_x = min(min_x, xx)
+                min_y = min(min_y, yy)
+                max_x = max(max_x, xx)
+                max_y = max(max_y, yy)
 
-            # Build trapezoid path
-            trap = QtGui.QPainterPath()
-            trap.moveTo(QtCore.QPointF(float(c_ul[0]), float(c_ul[1])))
-            trap.lineTo(QtCore.QPointF(float(c_ur[0]), float(c_ur[1])))
-            trap.lineTo(QtCore.QPointF(float(c_lr[0]), float(c_lr[1])))
-            trap.lineTo(QtCore.QPointF(float(c_ll[0]), float(c_ll[1])))
-            trap.closeSubpath()
+        min_x -= pad
+        min_y -= pad
+        max_x += pad
+        max_y += pad
+        bw = max(max_x - min_x, 1e-6)
+        bh = max(max_y - min_y, 1e-6)
 
-            # Gradient perpendicular to beam at the segment midpoint
-            mid = 0.5 * (p0 + p1)
-            w_mid = 0.5 * (w0 + w1)
-            grad_start = mid + w_mid * perp   # "upper" edge (t=0)
-            grad_end = mid - w_mid * perp     # "lower" edge (t=1)
+        local_pts = [
+            (float(pts[i][0] - min_x), float(pts[i][1] - min_y)) for i in range(n)
+        ]
+        perps_t = [(float(perps_np[i][0]), float(perps_np[i][1])) for i in range(n)]
 
-            gradient = QtGui.QLinearGradient(
-                QtCore.QPointF(float(grad_start[0]), float(grad_start[1])),
-                QtCore.QPointF(float(grad_end[0]), float(grad_end[1])),
-            )
-            gradient.setSpread(QtGui.QGradient.Spread.PadSpread)
-
-            for t, intensity in gaussian_stops:
-                a = int(255 * intensity * seg_intensity)
-                gradient.setColorAt(t, QtGui.QColor(r, g, b, a))
-
-            item = QtWidgets.QGraphicsPathItem(trap)
-            item.setBrush(QtGui.QBrush(gradient))
-            item.setPen(QtGui.QPen(QtCore.Qt.PenStyle.NoPen))
-            item.setZValue(z_value)
-
-            self.scene.addItem(item)
-            self.ray_items.append(item)
+        item = _GaussianBeamItem(
+            QtCore.QRectF(0.0, 0.0, bw, bh),
+            local_pts,
+            ws,
+            perps_t,
+            extent,
+            r,
+            g,
+            b,
+            P,
+        )
+        item.setPos(QtCore.QPointF(min_x, min_y))
+        item.setZValue(z_value)
+        self.scene.addItem(item)
+        self.ray_items.append(item)
 
     def _update_path_measures(self, paths: list[RayPath]) -> None:
         """

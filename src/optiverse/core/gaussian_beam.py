@@ -88,6 +88,19 @@ def rayleigh_range(w0_mm: float, wavelength_nm: float) -> float:
     return math.pi * w0_mm**2 / wavelength_mm
 
 
+def rayleigh_range_from_q(q: complex, wavelength_nm: float) -> float:
+    """
+    Local Rayleigh range from current q: z_R = pi * w^2 / lambda = -1 / Im(1/q).
+
+    Used to choose free-space subsampling step size.
+    """
+    inv_q = 1.0 / q
+    im = inv_q.imag
+    if im >= -1e-30:
+        return rayleigh_range(0.1, wavelength_nm)
+    return -1.0 / im
+
+
 def propagate_free_space(q: complex, distance_mm: float) -> complex:
     """
     Propagate q through free space by distance d.
@@ -97,73 +110,83 @@ def propagate_free_space(q: complex, distance_mm: float) -> complex:
     return q + distance_mm
 
 
-def transform_thin_lens(q: complex, focal_length_mm: float) -> complex:
+def apply_abcd(q: complex, A: float, B: float, C: float, D: float) -> complex:
     """
-    Transform q through an ideal thin lens.
+    Apply a 2x2 ABCD ray transfer matrix to the complex beam parameter.
 
-    ABCD matrix: [[1, 0], [-1/f, 1]]  =>  1/q' = 1/q - 1/f
+        q' = (A*q + B) / (C*q + D)
+
+    All distances are in mm; A, B, C, D must be dimensionally consistent with q in mm.
     """
-    if abs(focal_length_mm) < 1e-12:
+    denom = C * q + D
+    if abs(denom) < 1e-30:
         return q
-    inv_q_new = 1.0 / q - 1.0 / focal_length_mm
-    return 1.0 / inv_q_new
+    return (A * q + B) / denom
 
 
-def transform_flat_refraction(q: complex, n1: float, n2: float) -> complex:
+def clip_gaussian_at_aperture(beam_radius_mm: float, half_aperture_mm: float) -> float:
     """
-    Transform q through a flat refractive interface.
+    Fraction of power in a 1D Gaussian (intensity ~ exp(-2 y^2 / w^2)) passing a hard slit.
 
-    The beam spot size w is continuous across a flat interface. We adjust
-    the wavefront curvature (Re(1/q)) by n1/n2 while preserving the beam
-    radius (Im(1/q) unchanged). This ensures beam_radius_from_q returns
-    the correct physical beam size using the vacuum wavelength throughout.
+    For a symmetric aperture (-a, +a) with half-width a, the transmitted power fraction is
+    erf(sqrt(2) * a / w).
+
+    Args:
+        beam_radius_mm: 1/e^2 half-width w of the beam (mm)
+        half_aperture_mm: Half-width of the clear aperture (mm)
+
+    Returns:
+        Fraction in (0, 1], or 1.0 if clipping does not apply.
     """
-    if abs(n1) < 1e-12 or abs(n2) < 1e-12:
-        return q
-    inv_q = 1.0 / q
-    inv_q_new = complex(inv_q.real * n1 / n2, inv_q.imag)
-    return 1.0 / inv_q_new
+    if beam_radius_mm <= 1e-15 or half_aperture_mm <= 0.0:
+        return 1.0
+    w = beam_radius_mm
+    a = half_aperture_mm
+    arg = math.sqrt(2.0) * a / w
+    # Clamp erf argument for numerical stability
+    if arg > 8.0:
+        return 1.0
+    if arg < -8.0:
+        return 0.0
+    return max(0.0, min(1.0, math.erf(arg)))
 
 
-def transform_curved_refraction(
-    q: complex, n1: float, n2: float, radius_mm: float
+def clip_gaussian_circular_aperture(beam_radius_mm: float, aperture_radius_mm: float) -> float:
+    """
+    Fraction of power for a rotationally symmetric Gaussian beam through a hard circular aperture.
+
+    Intensity I(r) ∝ exp(-2 r² / w²) with w the 1/e² radius. Transmitted power fraction inside
+    radius a is 1 - exp(-2 a² / w²).
+
+    Args:
+        beam_radius_mm: 1/e² half-width w of the beam (mm)
+        aperture_radius_mm: Clear aperture radius (mm), not diameter
+
+    Returns:
+        Fraction in (0, 1], or 1.0 if clipping does not apply.
+    """
+    if beam_radius_mm <= 1e-15 or aperture_radius_mm <= 0.0:
+        return 1.0
+    w = beam_radius_mm
+    a = aperture_radius_mm
+    arg = 2.0 * (a / w) ** 2
+    if arg > 80.0:
+        return 1.0
+    return max(0.0, min(1.0, 1.0 - math.exp(-arg)))
+
+
+def q_rescale_radius_preserve_curvature(
+    q: complex, w_new_mm: float, wavelength_nm: float
 ) -> complex:
     """
-    Transform q through a curved refractive interface.
+    Adjust q so the 1/e^2 radius becomes w_new while keeping Re(1/q) (curvature) fixed.
 
-    Uses the focusing power of the curved surface (equivalent to a thin
-    lens with f = R*n2/(n2-n1)) applied to the vacuum-equivalent q,
-    preserving the beam radius convention used by beam_radius_from_q.
+    With 1/q = 1/R - i*lambda/(pi*w^2), replace Im(1/q) for the new waist w_new.
     """
-    if abs(radius_mm) < 1e-12:
-        return transform_flat_refraction(q, n1, n2)
-    # Equivalent focal length of the curved refractive surface
-    dn = n2 - n1
-    if abs(dn) < 1e-12:
+    if w_new_mm <= 1e-15:
         return q
-    f_eq = radius_mm * n2 / dn
-    # Apply thin-lens-like transform for the focusing, then flat refraction
-    # for the medium change
-    q = transform_thin_lens(q, f_eq)
-    return transform_flat_refraction(q, n1, n2)
+    wavelength_mm = wavelength_nm * 1e-6
+    inv_q = 1.0 / q
+    im_new = -wavelength_mm / (math.pi * w_new_mm * w_new_mm)
+    return 1.0 / complex(inv_q.real, im_new)
 
-
-def transform_flat_mirror(q: complex) -> complex:
-    """
-    Transform q at a flat mirror (identity for beam parameters).
-
-    ABCD matrix: [[1, 0], [0, 1]]  =>  q' = q
-    """
-    return q
-
-
-def transform_curved_mirror(q: complex, radius_mm: float) -> complex:
-    """
-    Transform q at a curved mirror with radius of curvature R.
-
-    ABCD matrix: [[1, 0], [-2/R, 1]]
-    Equivalent to a thin lens with f = R/2.
-    """
-    if abs(radius_mm) < 1e-12:
-        return q
-    return transform_thin_lens(q, radius_mm / 2.0)

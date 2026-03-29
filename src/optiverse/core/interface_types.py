@@ -9,18 +9,22 @@ INTERFACE_TYPES: dict[str, dict[str, Any]] = {
         "description": "Thin lens with specified focal length",
         "color": (0, 180, 180),
         "emoji": "🔵",
-        "properties": ["efl_mm"],
+        "properties": ["efl_mm", "clear_aperture_mm"],
         "property_labels": {
             "efl_mm": "Effective Focal Length",
+            "clear_aperture_mm": "Clear Aperture Diameter",
         },
         "property_units": {
             "efl_mm": "mm",
+            "clear_aperture_mm": "mm",
         },
         "property_ranges": {
             "efl_mm": (-10000.0, 10000.0),
+            "clear_aperture_mm": (0.0, 500.0),
         },
         "property_defaults": {
             "efl_mm": 100.0,
+            "clear_aperture_mm": 0.0,
         },
     },
     "mirror": {

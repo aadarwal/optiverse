@@ -31,6 +31,8 @@ class LensProperties:
     """
 
     efl_mm: float  # Effective focal length in millimeters
+    # Clear aperture diameter (mm). 0 = use interface segment length; else min(segment, this)/2.
+    clear_aperture_mm: float = 0.0
 
 
 @dataclass
