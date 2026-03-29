@@ -9,16 +9,34 @@ appear just above their source and move together in the layer tree.
 
 from __future__ import annotations
 
+import ctypes
+import logging
 import math
 from typing import TYPE_CHECKING
 
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6.QtOpenGL import (
+    QOpenGLBuffer,
+    QOpenGLShader,
+    QOpenGLShaderProgram,
+    QOpenGLVertexArrayObject,
+)
 
 if TYPE_CHECKING:
     from ...objects import SourceItem
     from ..objects import GraphicsView  # type: ignore[misc]
     from ..raytracing import RayPath  # type: ignore[misc]
+
+_logger = logging.getLogger(__name__)
+
+try:
+    from OpenGL import GL
+
+    _OPENGL_AVAILABLE = True
+except ImportError:
+    GL = None  # type: ignore[misc, assignment]
+    _OPENGL_AVAILABLE = False
 
 # Offset for rays above their source (keeps source icon visible)
 RAY_Z_OFFSET = 0.1
@@ -26,14 +44,47 @@ RAY_Z_OFFSET = 0.1
 # Draw envelope to this multiple of w so alpha is near zero at polygon edge.
 _GAUSSIAN_DRAW_EXTENT = 2.35
 
-# Contour layers for transverse Gaussian profile.
-_GAUSSIAN_N_CONTOURS = 48
+# Contour layers for software fallback only (no GPU).
+_GAUSSIAN_FALLBACK_CONTOURS = 48
 
-# Pre-render resolution: pixels per scene-mm.
-_GAUSSIAN_RENDER_DPI = 4.0
+# Fallback QImage resolution (px per scene-mm) and cap when GL unavailable.
+_GAUSSIAN_FALLBACK_DPI = 4.0
+_GAUSSIAN_FALLBACK_IMAGE_PX_CAP = 4096
 
-# Hard cap so huge beams don't allocate enormous bitmaps.
-_GAUSSIAN_IMAGE_PX_CAP = 4096
+_GAUSSIAN_VERTEX_SHADER = """
+#version 120
+attribute vec2 a_pos;
+attribute vec2 a_axis;
+attribute float a_w;
+uniform mat3 u_mvp;
+varying vec2 v_frag;
+varying vec2 v_axis;
+varying float v_w;
+
+void main() {
+    vec3 ndc = u_mvp * vec3(a_pos, 1.0);
+    gl_Position = vec4(ndc.xy, 0.0, 1.0);
+    v_frag = a_pos;
+    v_axis = a_axis;
+    v_w = a_w;
+}
+"""
+
+_GAUSSIAN_FRAGMENT_SHADER = """
+#version 120
+varying vec2 v_frag;
+varying vec2 v_axis;
+varying float v_w;
+uniform vec3 u_color;
+uniform float u_peak;
+
+void main() {
+    float d = length(v_frag - v_axis) / max(v_w, 0.0001);
+    float g = exp(-2.0 * d * d);
+    float a = g * u_peak;
+    gl_FragColor = vec4(u_color * a, a);
+}
+"""
 
 
 def _gaussian_beam_polygon(
@@ -56,18 +107,49 @@ def _gaussian_beam_polygon(
     return poly
 
 
+def _build_gaussian_triangle_strip(
+    local_pts: list[tuple[float, float]],
+    ws: list[float],
+    perps: list[tuple[float, float]],
+    extent: float,
+) -> np.ndarray:
+    """Triangle strip with per-pixel distance data.
+
+    Vertex format: [pos_x, pos_y, axis_x, axis_y, w] -- 5 floats, 20 bytes stride.
+    The fragment shader computes ``length(frag - axis) / w`` per pixel.
+    """
+    n = len(local_pts)
+    out = np.empty((2 * n, 5), dtype=np.float32)
+    for i in range(n):
+        xi, yi = local_pts[i]
+        pxi, pyi = perps[i]
+        w = float(ws[i])
+        ox = extent * w * pxi
+        oy = extent * w * pyi
+        # Top vertex
+        out[2 * i, 0] = xi + ox
+        out[2 * i, 1] = yi + oy
+        out[2 * i, 2] = xi
+        out[2 * i, 3] = yi
+        out[2 * i, 4] = w
+        # Bottom vertex
+        out[2 * i + 1, 0] = xi - ox
+        out[2 * i + 1, 1] = yi - oy
+        out[2 * i + 1, 2] = xi
+        out[2 * i + 1, 3] = yi
+        out[2 * i + 1, 4] = w
+    return out
+
+
 class _GaussianBeamItem(QtWidgets.QGraphicsItem):
     """
-    Gaussian envelope rendered to a cached QImage.
-
-    The bitmap is rasterised at the current device resolution and re-rendered
-    when the zoom changes significantly (>1.5x or <0.5x ratio).  Overlapping
-    beams use Screen compositing so they brighten without clamping.
+    Gaussian envelope: GPU triangle strip + fragment shader exp(-2*d^2), or
+    software contour fallback when OpenGL / shaders are unavailable.
     """
 
-    # Re-render when zoom ratio exceeds these bounds.
-    _ZOOM_UPPER = 1.5
-    _ZOOM_LOWER = 0.5
+    _gl_program: QOpenGLShaderProgram | None = None
+    _gl_init_attempted: bool = False
+    _gl_ok: bool = False
 
     def __init__(
         self,
@@ -91,16 +173,195 @@ class _GaussianBeamItem(QtWidgets.QGraphicsItem):
         self._r, self._g, self._b = r, g, b
         self._P = peak_alpha
 
-        self._cached_dpi = _GAUSSIAN_RENDER_DPI
-        self._cached_img = self._render_to_image(self._cached_dpi)
+        self._strip_vertices = _build_gaussian_triangle_strip(
+            local_pts, ws, perps, extent
+        )
+        self._vertex_count = int(self._strip_vertices.shape[0])
+
+        self._vbo: QOpenGLBuffer | None = None
+        self._vao: QOpenGLVertexArrayObject | None = None
+        self._vbo_uploaded = False
+
+        # Software fallback cache
+        self._fallback_dpi = 0.0
+        self._fallback_img: QtGui.QImage | None = None
+
         self.setCacheMode(QtWidgets.QGraphicsItem.CacheMode.NoCache)
 
-    def _render_to_image(self, dpi: float) -> QtGui.QImage:
+    @classmethod
+    def _ensure_shader(cls) -> bool:
+        if cls._gl_init_attempted:
+            return cls._gl_ok
+        cls._gl_init_attempted = True
+        if not _OPENGL_AVAILABLE:
+            cls._gl_ok = False
+            return False
+
+        prog = QOpenGLShaderProgram()
+        if not prog.addShaderFromSourceCode(
+            QOpenGLShader.ShaderTypeBit.Vertex, _GAUSSIAN_VERTEX_SHADER
+        ):
+            _logger.error("Gaussian beam vertex shader: %s", prog.log())
+            cls._gl_ok = False
+            return False
+        if not prog.addShaderFromSourceCode(
+            QOpenGLShader.ShaderTypeBit.Fragment, _GAUSSIAN_FRAGMENT_SHADER
+        ):
+            _logger.error("Gaussian beam fragment shader: %s", prog.log())
+            cls._gl_ok = False
+            return False
+        if not prog.link():
+            _logger.error("Gaussian beam shader link: %s", prog.log())
+            cls._gl_ok = False
+            return False
+
+        cls._gl_program = prog
+        cls._gl_ok = True
+        _logger.debug("Gaussian beam GLSL program linked OK")
+        return True
+
+    def _ensure_vbo(self) -> bool:
+        if self._vbo_uploaded and self._vbo is not None and self._vao is not None:
+            return True
+        if not _GaussianBeamItem._ensure_shader() or _GaussianBeamItem._gl_program is None:
+            return False
+
+        prog = _GaussianBeamItem._gl_program
+        raw = self._strip_vertices.tobytes()
+        nbytes = len(raw)
+
+        vbo = QOpenGLBuffer(QOpenGLBuffer.Type.VertexBuffer)
+        if not vbo.create():
+            return False
+        vbo.bind()
+        vbo.allocate(raw, nbytes)
+
+        vao = QOpenGLVertexArrayObject()
+        if not vao.create():
+            vbo.release()
+            return False
+
+        vao.bind()
+        vbo.bind()
+
+        # Vertex layout: [pos_x, pos_y, axis_x, axis_y, w] = 5 floats = 20 bytes
+        stride = 20
+        pos_loc = prog.attributeLocation("a_pos")
+        axis_loc = prog.attributeLocation("a_axis")
+        w_loc = prog.attributeLocation("a_w")
+        if pos_loc < 0 or axis_loc < 0 or w_loc < 0:
+            _logger.error(
+                "Gaussian shader missing attrs (a_pos=%s a_axis=%s a_w=%s)",
+                pos_loc, axis_loc, w_loc,
+            )
+            vao.release()
+            vbo.release()
+            return False
+
+        GL.glEnableVertexAttribArray(pos_loc)
+        GL.glVertexAttribPointer(pos_loc, 2, GL.GL_FLOAT, GL.GL_FALSE, stride, None)
+        GL.glEnableVertexAttribArray(axis_loc)
+        GL.glVertexAttribPointer(
+            axis_loc, 2, GL.GL_FLOAT, GL.GL_FALSE, stride, ctypes.c_void_p(8)
+        )
+        GL.glEnableVertexAttribArray(w_loc)
+        GL.glVertexAttribPointer(
+            w_loc, 1, GL.GL_FLOAT, GL.GL_FALSE, stride, ctypes.c_void_p(16)
+        )
+
+        vbo.release()
+        vao.release()
+
+        self._vbo = vbo
+        self._vao = vao
+        self._vbo_uploaded = True
+        return True
+
+    def _mvp_item_to_ndc(
+        self, dt: QtGui.QTransform, vw: float, vh: float
+    ) -> QtGui.QMatrix3x3:
+        """Item-local (mm) -> NDC: Qt device coords (Y down) then flip Y for GL NDC."""
+        # QTransform: x' = m11*x + m21*y + m31, y' = m12*x + m22*y + m32
+        m11, m21, m31 = dt.m11(), dt.m21(), dt.m31()
+        m12, m22, m32 = dt.m12(), dt.m22(), dt.m32()
+        inv_w = 2.0 / max(vw, 1.0)
+        inv_h = 2.0 / max(vh, 1.0)
+        # ndc_x = 2*x'/vw - 1, ndc_y = 1 - 2*y'/vh
+        return QtGui.QMatrix3x3([
+            m11 * inv_w,
+            m21 * inv_w,
+            m31 * inv_w - 1.0,
+            -m12 * inv_h,
+            -m22 * inv_h,
+            1.0 - m32 * inv_h,
+            0.0,
+            0.0,
+            1.0,
+        ])
+
+    def _draw_gl(self, painter: QtGui.QPainter, widget: QtWidgets.QWidget) -> bool:
+        if not _OPENGL_AVAILABLE or GL is None:
+            return False
+        if QtGui.QOpenGLContext.currentContext() is None:
+            return False
+        if not self._ensure_vbo() or self._vao is None:
+            return False
+        prog = _GaussianBeamItem._gl_program
+        if prog is None:
+            return False
+
+        vp = GL.glGetIntegerv(GL.GL_VIEWPORT)
+        vw = float(vp[2])
+        vh = float(vp[3])
+        if vw < 1.0 or vh < 1.0:
+            return False
+
+        dt = painter.deviceTransform()
+        mvp = self._mvp_item_to_ndc(dt, vw, vh)
+
+        prev_blend = GL.glIsEnabled(GL.GL_BLEND)
+        prev_depth = GL.glIsEnabled(GL.GL_DEPTH_TEST)
+
+        GL.glEnable(GL.GL_BLEND)
+        GL.glBlendFunc(GL.GL_ONE, GL.GL_ONE_MINUS_SRC_ALPHA)
+        GL.glDisable(GL.GL_DEPTH_TEST)
+
+        if not prog.bind():
+            return False
+
+        prog.setUniformValue("u_mvp", mvp)
+        prog.setUniformValue(
+            "u_color",
+            QtGui.QVector3D(
+                self._r / 255.0, self._g / 255.0, self._b / 255.0
+            ),
+        )
+        prog.setUniformValue("u_peak", float(self._P))
+
+        self._vao.bind()
+        GL.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, self._vertex_count)
+        self._vao.release()
+        prog.release()
+
+        if prev_depth:
+            GL.glEnable(GL.GL_DEPTH_TEST)
+        else:
+            GL.glDisable(GL.GL_DEPTH_TEST)
+        if not prev_blend:
+            GL.glDisable(GL.GL_BLEND)
+
+        return True
+
+    def _render_fallback_image(self, dpi: float) -> QtGui.QImage:
         rect = self._item_rect
         bw = max(rect.width(), 1e-6)
         bh = max(rect.height(), 1e-6)
-        w_px = max(1, min(int(math.ceil(bw * dpi)), _GAUSSIAN_IMAGE_PX_CAP))
-        h_px = max(1, min(int(math.ceil(bh * dpi)), _GAUSSIAN_IMAGE_PX_CAP))
+        w_px = max(
+            1, min(int(math.ceil(bw * dpi)), _GAUSSIAN_FALLBACK_IMAGE_PX_CAP)
+        )
+        h_px = max(
+            1, min(int(math.ceil(bh * dpi)), _GAUSSIAN_FALLBACK_IMAGE_PX_CAP)
+        )
 
         img = QtGui.QImage(w_px, h_px, QtGui.QImage.Format.Format_ARGB32_Premultiplied)
         img.fill(0)
@@ -112,7 +373,7 @@ class _GaussianBeamItem(QtWidgets.QGraphicsItem):
         ip.setCompositionMode(QtGui.QPainter.CompositionMode.CompositionMode_Source)
 
         n = len(self._local_pts)
-        L = _GAUSSIAN_N_CONTOURS
+        L = _GAUSSIAN_FALLBACK_CONTOURS
         extent = self._extent
         r, g, b, P = self._r, self._g, self._b, self._P
 
@@ -129,6 +390,32 @@ class _GaussianBeamItem(QtWidgets.QGraphicsItem):
         ip.end()
         return img
 
+    def _paint_fallback(self, painter: QtGui.QPainter) -> None:
+        current_dpi = abs(painter.deviceTransform().m11())
+        if current_dpi > 0.1:
+            if (
+                self._fallback_img is None
+                or abs(current_dpi / max(self._fallback_dpi, 0.01) - 1.0) > 0.25
+            ):
+                self._fallback_dpi = current_dpi
+                self._fallback_img = self._render_fallback_image(
+                    max(current_dpi, _GAUSSIAN_FALLBACK_DPI)
+                )
+        else:
+            if self._fallback_img is None:
+                self._fallback_img = self._render_fallback_image(_GAUSSIAN_FALLBACK_DPI)
+
+        painter.drawImage(
+            self._item_rect,
+            self._fallback_img,
+            QtCore.QRectF(
+                0.0,
+                0.0,
+                float(self._fallback_img.width()),
+                float(self._fallback_img.height()),
+            ),
+        )
+
     def boundingRect(self) -> QtCore.QRectF:
         return self._item_rect
 
@@ -138,28 +425,15 @@ class _GaussianBeamItem(QtWidgets.QGraphicsItem):
         option: QtWidgets.QStyleOptionGraphicsItem,
         widget: QtWidgets.QWidget | None = None,
     ) -> None:
-        # Adapt resolution to current zoom level
-        current_dpi = abs(painter.deviceTransform().m11())
-        if current_dpi > 0.1:
-            ratio = current_dpi / max(self._cached_dpi, 0.01)
-            if ratio > self._ZOOM_UPPER or ratio < self._ZOOM_LOWER:
-                self._cached_dpi = current_dpi
-                self._cached_img = self._render_to_image(current_dpi)
+        if _OPENGL_AVAILABLE and widget is not None:
+            painter.beginNativePainting()
+            try:
+                if self._draw_gl(painter, widget):
+                    return
+            finally:
+                painter.endNativePainting()
 
-        prev_mode = painter.compositionMode()
-        painter.setCompositionMode(
-            QtGui.QPainter.CompositionMode.CompositionMode_Screen
-        )
-        painter.drawImage(
-            self._item_rect,
-            self._cached_img,
-            QtCore.QRectF(
-                0.0, 0.0,
-                float(self._cached_img.width()),
-                float(self._cached_img.height()),
-            ),
-        )
-        painter.setCompositionMode(prev_mode)
+        self._paint_fallback(painter)
 
     def shape(self) -> QtGui.QPainterPath:
         path = QtGui.QPainterPath()
@@ -290,7 +564,7 @@ class RayRenderer:
         central ray on top.
 
         Args:
-            paths: List of RayPath objects to render
+            paths: List of RayPath objects
         """
         RAY_WIDTH_OPENGL_SCALE = 2.0
 
@@ -342,8 +616,8 @@ class RayRenderer:
         has_per_seg: bool,
     ) -> None:
         """
-        Render a Gaussian beam as one cached item: 128 contours rasterised
-        offscreen with CompositionMode_Source (exact alpha per ring, no Y banding).
+        Gaussian envelope: GLSL triangle strip when OpenGL viewport is active,
+        else contour rasterisation fallback.
         """
         points = p.points
         radii = p.beam_radii
@@ -381,6 +655,17 @@ class RayRenderer:
             else:
                 t = seg / slen
                 perps_np.append(np.array([-t[1], t[0]]))
+
+        # Laplacian smoothing removes tiny oscillations that create visible
+        # zigzag at the strip edges (amplified by large beam widths).
+        for _pass in range(5):
+            smoothed = list(perps_np)
+            for j in range(1, n - 1):
+                avg = 0.25 * perps_np[j - 1] + 0.5 * perps_np[j] + 0.25 * perps_np[j + 1]
+                nrm = float(np.linalg.norm(avg))
+                if nrm > 1e-12:
+                    smoothed[j] = avg / nrm
+            perps_np = smoothed
 
         min_x = min_y = math.inf
         max_x = max_y = -math.inf
