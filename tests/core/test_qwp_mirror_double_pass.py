@@ -54,18 +54,19 @@ def _apply_qwp_mirror_qwp(pol: Polarization, theta_deg: float) -> Polarization:
     return pol3
 
 
-def test_qwp_mirror_qwp_22_5_degrees_is_not_simple_45_rotation():
+def test_qwp_mirror_qwp_22_5_degrees_rotates_by_45():
+    """
+    QWP(22.5°) + mirror + QWP(22.5°) rotates H by 45°.
+
+    A QWP double-pass (with mirror between) acts as an HWP at the same
+    axis angle.  An HWP at θ rotates linear polarization by 2θ.
+    At θ=22.5°, the rotation is 2×22.5° = 45°, so H → +45° linear.
+    """
     pol_in = Polarization.horizontal()
     pol_out = _apply_qwp_mirror_qwp(pol_in, theta_deg=22.5)
 
-    # Check it's not linear at 45° (i.e., not a simple 2θ rotation)
     expected_45 = _linear_jones(45.0)
-    assert not _equivalent_up_to_global_phase(pol_out.jones_vector, expected_45, atol=1e-6)
-    # Also assert it's not purely linear (phase difference not 0 or π)
-    ex, ey = pol_out.jones_vector
-    phase_diff = np.angle(ey) - np.angle(ex)
-    phase_diff = np.arctan2(np.sin(phase_diff), np.cos(phase_diff))
-    assert not (abs(phase_diff) < 1e-3 or abs(abs(phase_diff) - np.pi) < 1e-3)
+    assert _equivalent_up_to_global_phase(pol_out.jones_vector, expected_45, atol=1e-6)
 
 
 def test_qwp_mirror_qwp_45_degrees_rotates_by_90():

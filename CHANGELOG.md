@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Raytracing engine**: `remaining_length` is now correctly decremented after each optical interaction — previously rays could propagate beyond the source's configured `ray_length_mm` after hitting any element
+- **Waveplate directionality tests**: Corrected 5 tests that had wrong physics expectations — waveplate Jones matrix is symmetric (`J = J^T`), so forward and backward passes are identical; the mirror between passes (not the waveplate direction) is what flips handedness in double-pass setups
+- **TIR test geometry**: Fixed surface normal direction in total-internal-reflection test so the ray is correctly interpreted as traveling from glass (n=1.5) into air (n=1.0)
+
 ## [0.3.3] - 2026-03-28
 
 ### Added
