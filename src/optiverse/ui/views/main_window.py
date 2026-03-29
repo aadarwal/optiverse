@@ -74,6 +74,7 @@ class MainWindow(QtWidgets.QMainWindow):
     act_export_pdf: QtGui.QAction
     act_quit: QtGui.QAction
     menu_recent: QtWidgets.QMenu
+    open_library_menu: QtWidgets.QMenu
     act_undo: QtGui.QAction
     act_redo: QtGui.QAction
     act_delete: QtGui.QAction

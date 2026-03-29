@@ -15,7 +15,7 @@ import math
 from typing import TYPE_CHECKING
 
 import numpy as np
-from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6 import QtCore, QtGui, QtWidgets, sip
 from PyQt6.QtOpenGL import (
     QOpenGLBuffer,
     QOpenGLShader,
@@ -234,7 +234,7 @@ class _GaussianBeamItem(QtWidgets.QGraphicsItem):
         if not vbo.create():
             return False
         vbo.bind()
-        vbo.allocate(raw, nbytes)
+        vbo.allocate(sip.voidptr(raw), nbytes)
 
         vao = QOpenGLVertexArrayObject()
         if not vao.create():
@@ -422,10 +422,12 @@ class _GaussianBeamItem(QtWidgets.QGraphicsItem):
 
     def paint(
         self,
-        painter: QtGui.QPainter,
-        option: QtWidgets.QStyleOptionGraphicsItem,
+        painter: QtGui.QPainter | None,
+        option: QtWidgets.QStyleOptionGraphicsItem | None,
         widget: QtWidgets.QWidget | None = None,
     ) -> None:
+        if painter is None:
+            return
         if _OPENGL_AVAILABLE and widget is not None:
             painter.beginNativePainting()
             try:

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from PyQt6 import QtCore, QtWidgets
@@ -487,7 +488,7 @@ class RotateItemsCommand(Command):
 class BatchCommand(Command):
     """Execute multiple Commands as one undo/redo step."""
 
-    def __init__(self, commands: list[Command]):
+    def __init__(self, commands: Sequence[Command]):
         self._commands = [c for c in commands if c is not None]
 
     def execute(self) -> None:

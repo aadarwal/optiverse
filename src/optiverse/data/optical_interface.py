@@ -163,6 +163,7 @@ class OpticalInterface:
 
         # Convert properties based on element_type
         element_type = old_interface.element_type
+        properties: OpticalProperties
 
         if element_type == "lens":
             ca = getattr(old_interface, "clear_aperture_mm", 0.0)

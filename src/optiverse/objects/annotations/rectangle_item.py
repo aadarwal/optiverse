@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import math
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from PyQt6 import QtCore, QtGui, QtWidgets
+
+if TYPE_CHECKING:
+    from ...objects.rotation_handler import WheelRotationTracker
 
 from ...core.protocols import HasLayerState
 from ...ui.widgets.smart_spinbox import SmartDoubleSpinBox
@@ -43,6 +46,7 @@ class RectangleItem(QtWidgets.QGraphicsObject):
         self._rotating = False
         self._rotation_start_angle = 0.0
         self._rotation_initial = 0.0
+        self._wheel_tracker: WheelRotationTracker | None = None
 
     def boundingRect(self) -> QtCore.QRectF:
         w = max(1.0, self._w)
@@ -82,10 +86,13 @@ class RectangleItem(QtWidgets.QGraphicsObject):
             return
         self._hovered = True
         self.update()
-        if self.scene() is not None:
-            views = self.scene().views()
+        scene = self.scene()
+        if scene is not None:
+            views = scene.views()
             if views:
-                views[0].viewport().update()
+                vp = views[0].viewport()
+                if vp is not None:
+                    vp.update()
         super().hoverEnterEvent(ev)
 
     def hoverLeaveEvent(self, ev: QtWidgets.QGraphicsSceneHoverEvent | None) -> None:
@@ -93,10 +100,13 @@ class RectangleItem(QtWidgets.QGraphicsObject):
             return
         self._hovered = False
         self.update()
-        if self.scene() is not None:
-            views = self.scene().views()
+        scene = self.scene()
+        if scene is not None:
+            views = scene.views()
             if views:
-                views[0].viewport().update()
+                vp = views[0].viewport()
+                if vp is not None:
+                    vp.update()
         super().hoverLeaveEvent(ev)
 
     def contextMenuEvent(self, ev: QtWidgets.QGraphicsSceneContextMenuEvent | None):
@@ -232,25 +242,22 @@ class RectangleItem(QtWidgets.QGraphicsObject):
         if self.isSelected() and (ev.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier):
             from ...objects.rotation_handler import WheelRotationTracker
 
-            if not hasattr(self, "_wheel_tracker"):
+            if self._wheel_tracker is None:
                 scene = self.scene()
                 undo_stack = None
-                if scene and scene.views():
+                if scene is not None and scene.views():
                     mw = scene.views()[0].window()
                     undo_stack = getattr(mw, "undo_stack", None)
-                if undo_stack:
-                    self._wheel_tracker = WheelRotationTracker(undo_stack)
-                else:
-                    self._wheel_tracker = None
+                if undo_stack is not None:
+                    self._wheel_tracker = WheelRotationTracker(lambda: undo_stack)
 
             dy = ev.angleDelta().y()  # type: ignore[attr-defined]
             steps = dy / 120.0
             rotation_delta = 2.0 * steps
 
             if self._wheel_tracker is not None:
-                self._wheel_tracker.track(self, rotation_delta)
-            else:
-                self.setRotation(self.rotation() + rotation_delta)
+                self._wheel_tracker.track([self])
+            self.setRotation(self.rotation() + rotation_delta)
 
             ev.accept()
         else:
