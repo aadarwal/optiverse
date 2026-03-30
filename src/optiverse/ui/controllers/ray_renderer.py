@@ -633,16 +633,7 @@ class RayRenderer:
 
         extent = _GAUSSIAN_DRAW_EXTENT
         peak_alpha = 0.85
-
-        if has_per_seg and len(p.intensities) > 0:
-            cnt = min(len(p.intensities), n)
-            avg_intensity = sum(
-                max(0.0, min(1.0, p.intensities[j])) for j in range(cnt)
-            ) / cnt
-        else:
-            avg_intensity = base_alpha / 255.0
-
-        P = peak_alpha * avg_intensity
+        default_intensity = base_alpha / 255.0
 
         pts = [np.asarray(points[i], dtype=float) for i in range(n)]
         ws = [float(radii[i]) for i in range(n)]
@@ -661,7 +652,20 @@ class RayRenderer:
                 cos_a = float(np.dot(d_prev, d_next)) / (lp * ln)
                 if cos_a < math.cos(_ANGLE_THRESHOLD):
                     splits.append(i)
-        splits.append(n)
+
+        # Also split at intensity boundaries so each sub-segment gets its
+        # own peak brightness.  Intensity is constant between surfaces, so
+        # a per-segment constant P is physically exact.
+        if has_per_seg and len(p.intensities) >= n:
+            for i in range(1, n):
+                prev_i = max(0.0, min(1.0, p.intensities[i - 1]))
+                curr_i = max(0.0, min(1.0, p.intensities[i]))
+                if abs(curr_i - prev_i) > 0.05:
+                    splits.append(i)
+
+        splits = sorted(set(splits))
+        if not splits or splits[-1] != n:
+            splits.append(n)
 
         for seg_idx in range(len(splits) - 1):
             s0 = splits[seg_idx]
@@ -671,6 +675,13 @@ class RayRenderer:
             seg_n = s1 - s0
             if seg_n < 2:
                 continue
+
+            if has_per_seg and len(p.intensities) > s0:
+                seg_intensity = max(0.0, min(1.0, p.intensities[s0]))
+            else:
+                seg_intensity = default_intensity
+            P = peak_alpha * seg_intensity
+
             self._render_gaussian_segment(
                 pts[s0:s1], ws[s0:s1], seg_n, extent, P, r, g, b, z_value,
             )
