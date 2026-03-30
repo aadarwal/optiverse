@@ -82,10 +82,25 @@ def _insert_gaussian_free_space_samples(
     w1 = beam_radius_from_q(q_final, wl)
 
     z_R = rayleigh_range_from_q(q_start, wl)
+
+    # When the beam waist falls inside this free-space segment, both endpoint
+    # radii can be large while the beam focuses to a tiny waist in between.
+    # The endpoint-only heuristics (z_R at start, dw between endpoints) miss
+    # this completely, resulting in n≈1 and no visible focus.  Detect this
+    # case and use the waist's Rayleigh range / radius for proper sampling.
+    re_q0 = q_start.real
+    z_waist = -re_q0
+    if 0 < z_waist < distance_mm:
+        z_R_waist = max(q_start.imag, 1e-12)
+        z_R = min(z_R, z_R_waist)
+        w_min = beam_radius_from_q(1j * q_start.imag, wl)
+        dw = max(abs(w1 - w0), abs(w0 - w_min), abs(w1 - w_min))
+    else:
+        dw = abs(w1 - w0)
+
     step = min(distance_mm, max(5.0, z_R / 4.0))
     n = max(1, int(math.ceil(distance_mm / step)))
 
-    dw = abs(w1 - w0)
     w_ref = max(w0, w1, 1e-9)
     rel_dw = dw / w_ref
     if rel_dw > _GAUSSIAN_ADAPT_REL_DW:
