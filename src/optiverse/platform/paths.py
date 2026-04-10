@@ -181,6 +181,33 @@ def get_builtin_library_root() -> Path:
     return get_package_root() / "objects" / "library"
 
 
+def _library_roots_component_resolve_order(library_roots: list[Path]) -> list[Path]:
+    """
+    Order library roots so user/custom libraries are tried before the built-in library.
+
+    ``@component/{name}/...`` is ambiguous when both the built-in catalog and a user
+    library define the same folder name (e.g. ``beam_block``). Resolution must pick
+    the same copy the user placed on the canvas; built-in is listed first in
+    :class:`LibraryService` discovery, so without reordering we would always load
+    shipped assets and ignore a user's override — breaking save/load visual parity.
+    """
+    try:
+        builtin_resolved = get_builtin_library_root().resolve()
+    except OSError:
+        return library_roots
+    non_builtin: list[Path] = []
+    builtin_only: list[Path] = []
+    for p in library_roots:
+        try:
+            if p.resolve() == builtin_resolved:
+                builtin_only.append(p)
+            else:
+                non_builtin.append(p)
+        except OSError:
+            non_builtin.append(p)
+    return non_builtin + builtin_only
+
+
 def get_package_root() -> Path:
     """
     Get the package root directory (src/optiverse).
@@ -481,6 +508,8 @@ def resolve_component_path(
     # Get library roots to search
     if library_roots is None:
         library_roots = get_all_library_roots()
+
+    library_roots = _library_roots_component_resolve_order(list(library_roots))
 
     # Search for component in all libraries
     for lib_root in library_roots:
