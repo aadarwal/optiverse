@@ -54,10 +54,11 @@ def trace_and_plot(mo, focal_length, n_rays, beam_size):
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import numpy as np
+
+    from optiverse.core.models import SourceParams
     from optiverse.raytracing.elements.lens import LensElement
     from optiverse.raytracing.elements.mirror import MirrorElement
     from optiverse.raytracing.engine import trace_rays_polymorphic
-    from optiverse.core.models import SourceParams
 
     # ---- Build optical elements ----
     lens_half = 30.0  # half-height of lens element (mm)
