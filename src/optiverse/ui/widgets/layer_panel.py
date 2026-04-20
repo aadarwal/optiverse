@@ -476,6 +476,14 @@ class LayerPanel(QtWidgets.QWidget):
             menu.exec(vp.mapToGlobal(pos))
 
     def _toggle_role(self, idx: QtCore.QModelIndex, role: int) -> None:
-        current = bool(idx.data(role))
-        self._model.setData(idx, not current, role)
+        from ..models.layer_item_model import LOCKED_ROLE
+
+        new_value = not bool(idx.data(role))
+        sm = self._tree.selectionModel()
+        selected = sm.selectedRows(0) if sm else []
+
+        if role == int(LOCKED_ROLE) and len(selected) > 1 and idx in selected:
+            self._model.toggle_locked_for_indexes(selected, new_value)
+        else:
+            self._model.setData(idx, new_value, role)
         self.refresh()

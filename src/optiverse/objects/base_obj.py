@@ -449,7 +449,17 @@ class BaseObj(QtWidgets.QGraphicsObject):
         if a == act_edit:
             self.open_editor()
         elif a == act_lock and act_lock is not None:
-            self.set_locked(act_lock.isChecked())
+            new_locked = act_lock.isChecked()
+            scene = self.scene()
+            selected = scene.selectedItems() if scene else []
+            peers = [
+                item for item in selected
+                if item is not self and hasattr(item, "set_locked")
+            ]
+            if peers:
+                self._batch_set_locked([self] + peers, new_locked)
+            else:
+                self.set_locked(new_locked)
         elif a == act_delete and act_delete is not None:
             if not self._locked:
                 self.requestDelete.emit(self)
@@ -458,6 +468,40 @@ class BaseObj(QtWidgets.QGraphicsObject):
             self._handle_z_order_action(
                 a, act_bring_to_front, act_bring_forward, act_send_backward, act_send_to_back
             )
+
+    def _batch_set_locked(self, items: list, new_locked: bool) -> None:
+        """Lock/unlock multiple items as a single undoable batch via the layer model."""
+        scene = self.scene()
+        if not scene or not scene.views():
+            return
+        window = scene.views()[0].window()
+        layer_state = getattr(window, "layer_state", None)
+        undo_stack = getattr(window, "undo_stack", None)
+        if not layer_state:
+            for item in items:
+                item.set_locked(new_locked)
+            return
+
+        from ..core.undo_commands import BatchCommand, ToggleLockCommand
+
+        layer_panel = getattr(window, "layer_panel", None)
+        model = layer_panel.model if layer_panel else None
+        apply_fn = model._apply_effective_locked if model else lambda n: None
+
+        cmds = []
+        for item in items:
+            if not hasattr(item, "item_uuid"):
+                continue
+            node = layer_state.get_node(item.item_uuid)
+            if node and node.locked != new_locked:
+                cmds.append(ToggleLockCommand(node, node.locked, new_locked, apply_fn))
+        if not cmds:
+            return
+        batch = BatchCommand(cmds) if len(cmds) > 1 else cmds[0]
+        if undo_stack:
+            undo_stack.push(batch)
+        else:
+            batch.execute()
 
     def _handle_z_order_action(
         self,
