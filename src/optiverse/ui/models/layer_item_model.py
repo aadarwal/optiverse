@@ -281,6 +281,32 @@ class LayerItemModel(QtCore.QAbstractItemModel):
 
         return False
 
+    def toggle_locked_for_indexes(
+        self, indexes: list[QtCore.QModelIndex], new_locked: bool
+    ) -> None:
+        """Toggle lock on multiple layer nodes as a single undoable batch."""
+        if not self._scene or not self._layer_state:
+            return
+        cmds: list[Command] = []
+        affected: list[QtCore.QModelIndex] = []
+        for idx in indexes:
+            node = self._node_from_index(idx)
+            if not node or node.locked == new_locked:
+                continue
+            cmds.append(
+                ToggleLockCommand(node, node.locked, new_locked, self._apply_effective_locked)
+            )
+            affected.append(idx)
+        if not cmds:
+            return
+        batch = BatchCommand(cmds) if len(cmds) > 1 else cmds[0]
+        if self._undo_stack:
+            self._undo_stack.push(batch)
+        else:
+            batch.execute()
+        for idx in affected:
+            self.dataChanged.emit(idx, idx, [int(LOCKED_ROLE)])
+
     def flags(self, index: QtCore.QModelIndex) -> QtCore.Qt.ItemFlag:
         if not index.isValid():
             return QtCore.Qt.ItemFlag.ItemIsDropEnabled

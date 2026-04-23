@@ -557,7 +557,17 @@ class ComponentItem(BaseObj):
         elif a == act_apply_all:
             self._apply_properties_to_all()
         elif a == act_lock and act_lock is not None:
-            self.set_locked(act_lock.isChecked())
+            new_locked = act_lock.isChecked()
+            scene = self.scene()
+            selected = scene.selectedItems() if scene else []
+            peers = [
+                item for item in selected
+                if item is not self and hasattr(item, "set_locked")
+            ]
+            if peers:
+                self._batch_set_locked([self] + peers, new_locked)
+            else:
+                self.set_locked(new_locked)
         elif a == act_delete and act_delete is not None:
             if not self._locked:
                 self.requestDelete.emit(self)

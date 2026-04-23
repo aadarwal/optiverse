@@ -123,7 +123,23 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
         # Lock icon - toggle on press, consume double-click
         if lock_rect.contains(pos):
             if is_press:
-                model.setData(index, not bool(index.data(LOCKED_ROLE)), int(LOCKED_ROLE))
+                new_locked = not bool(index.data(LOCKED_ROLE))
+                view = option.widget
+                sm = (
+                    view.selectionModel()
+                    if isinstance(view, QtWidgets.QAbstractItemView)
+                    else None
+                )
+                selected = sm.selectedRows(0) if sm else []
+                if len(selected) > 1 and index in selected:
+                    from ..models.layer_item_model import LayerItemModel
+
+                    if isinstance(model, LayerItemModel):
+                        model.toggle_locked_for_indexes(selected, new_locked)
+                    else:
+                        model.setData(index, new_locked, int(LOCKED_ROLE))
+                else:
+                    model.setData(index, new_locked, int(LOCKED_ROLE))
             return True
 
         # Folder icon - consume all clicks (no action, prevents edit)
