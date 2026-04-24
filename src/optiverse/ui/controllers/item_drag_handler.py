@@ -258,10 +258,6 @@ class ItemDragHandler:
         from ...core.undo_commands import BatchCommand, MoveItemCommand
         from ...objects import BaseObj
 
-        # Clear snap guides
-        if hasattr(self.view, "clear_snap_guides"):
-            self.view.clear_snap_guides()  # type: ignore[attr-defined]
-
         # Restore movable flags BEFORE creating undo commands
         self._restore_secondary_movable_flags()
 
@@ -294,6 +290,11 @@ class ItemDragHandler:
 
         # Schedule retrace
         self._schedule_retrace()
+
+        # Clear snap guides AFTER all setPos calls (grid snap, undo push) that
+        # can re-trigger magnetic snap via BaseObj.itemChange.
+        if hasattr(self.view, "clear_snap_guides"):
+            self.view.clear_snap_guides()  # type: ignore[attr-defined]
 
         return commands_created
 
@@ -436,6 +437,10 @@ class ItemDragHandler:
 
         # Schedule retrace
         self._schedule_retrace()
+
+        # Clear snap guides (group rotation setPos calls can trigger magnetic snap)
+        if hasattr(self.view, "clear_snap_guides"):
+            self.view.clear_snap_guides()  # type: ignore[attr-defined]
 
         return commands_created
 

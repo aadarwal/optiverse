@@ -375,6 +375,14 @@ class BaseObj(QtWidgets.QGraphicsObject):
         else:
             super().mouseReleaseEvent(ev)
 
+        # Safety net: clear any lingering snap guide lines left from a drag
+        # handled by Qt's native ItemIsMovable rather than our ItemDragHandler.
+        scene = self.scene()
+        if scene:
+            views = scene.views()
+            if views and hasattr(views[0], "clear_snap_guides"):
+                views[0].clear_snap_guides()
+
     def wheelEvent(self, ev: QtWidgets.QGraphicsSceneWheelEvent | None):
         """Ctrl + wheel → rotate element(s)."""
         if ev is None:
