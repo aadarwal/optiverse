@@ -5,6 +5,22 @@ All notable changes to Optiverse will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Ruler Edit dialog**: Right-click or layer-panel "Edit..." opens a dialog with display name and per-segment length/angle controls
+- **Angle Measure Edit dialog**: Right-click or layer-panel "Edit..." opens a dialog with display name, inner angle, and arm length controls
+- **Multi-element lock**: Locking an item via context menu now applies to the entire selection
+- **Marimo demo**: Interactive ray-tracing demo notebook under `examples/`
+
+### Fixed
+
+- **Lens Size scaling**: Standard Edit dialog now scales interface endpoint coordinates proportionally when "Size" changes, so lenses resize beyond 1" correctly (previously only the sprite scaled, not the optical surface)
+- **Snap guide persistence**: Purple dotted magnetic-snap guide lines no longer remain on the canvas after releasing a drag; `clear_snap_guides` is now called after all `setPos` calls in `handle_drag_end`, added to `handle_rotation_end`, and a safety-net clear in `BaseObj.mouseReleaseEvent`
+- **Gaussian beam rendering**: Detect mid-segment beam waist for proper subsampling; use per-segment intensity for brightness
+- **Component resolve order**: User library roots are resolved before built-in paths for `@component` lookups
+
 ## [0.3.3] - 2026-03-28
 
 ### Added
