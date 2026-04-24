@@ -429,7 +429,17 @@ class ComponentItem(BaseObj):
             self.edited.emit()
 
         def update_length():
-            self.params.object_height_mm = length.value()
+            old_height = self.params.object_height_mm
+            new_height = length.value()
+            if old_height > 0 and abs(new_height - old_height) > 1e-9:
+                scale = new_height / old_height
+                if self.params.interfaces:
+                    for iface in self.params.interfaces:
+                        iface.x1_mm *= scale
+                        iface.y1_mm *= scale
+                        iface.x2_mm *= scale
+                        iface.y2_mm *= scale
+            self.params.object_height_mm = new_height
             self._update_geom()
             self._maybe_attach_sprite()
             self.edited.emit()

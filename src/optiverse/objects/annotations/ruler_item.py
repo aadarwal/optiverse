@@ -24,6 +24,7 @@ from ...core.ui_constants import (
     RULER_TOTAL_LABEL_PERP_OFFSET,
 )
 from ...ui.theme_manager import is_dark_mode
+from ...ui.widgets.smart_spinbox import SmartDoubleSpinBox
 
 
 class RulerItem(QtWidgets.QGraphicsObject):
@@ -91,9 +92,46 @@ class RulerItem(QtWidgets.QGraphicsObject):
         if len(self._points) < 2:
             self._points = [QtCore.QPointF(-50, 0), QtCore.QPointF(50, 0)]
 
+        # Lock state (prevents movement, point editing, deletion)
+        self._locked = False
+
         # Interaction state
         self._grab: int | None = None  # index of grabbed point, or None
         self._initial_points: list[QtCore.QPointF] | None = None  # Track for undo
+
+    # ========== Locking ==========
+
+    def is_locked(self) -> bool:
+        return self._locked
+
+    def set_locked(self, locked: bool) -> None:
+        self._locked = locked
+        self._sync_lock_to_layer_node(locked)
+        if locked:
+            self.setCursor(QtCore.Qt.CursorShape.ForbiddenCursor)
+            self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
+        else:
+            self.setCursor(QtCore.Qt.CursorShape.CrossCursor)
+            self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+        self.update()
+
+    def _sync_lock_to_layer_node(self, locked: bool) -> None:
+        scene = self.scene()
+        if not scene or not scene.views():
+            return
+        window = scene.views()[0].window()
+        layer_state = getattr(window, "layer_state", None)
+        if layer_state is None:
+            return
+        node = layer_state.get_node(self.item_uuid)
+        if node:
+            node.locked = locked
+
+    def itemChange(self, change, value):
+        if change == QtWidgets.QGraphicsItem.GraphicsItemChange.ItemPositionChange:
+            if getattr(self, "_locked", False):
+                return self.pos()
+        return super().itemChange(change, value)
 
     # ========== Public API for Point Manipulation ==========
 
@@ -452,6 +490,10 @@ class RulerItem(QtWidgets.QGraphicsObject):
             ev.accept()
             return
 
+        if self._locked:
+            ev.ignore()
+            return
+
         which = self._nearest_point(ev.pos())
         if ev.button() == QtCore.Qt.MouseButton.LeftButton and which is not None:
             self._grab = which
@@ -470,6 +512,7 @@ class RulerItem(QtWidgets.QGraphicsObject):
         is_bend_point = nearest_idx is not None and 0 < nearest_idx < len(self._points) - 1
 
         m = QtWidgets.QMenu()
+        act_edit = m.addAction("Edit\u2026")
         act_del = m.addAction("Delete")
 
         # Add "Delete Point" option for bend points
@@ -480,6 +523,23 @@ class RulerItem(QtWidgets.QGraphicsObject):
 
         act_add_bend = m.addAction("Add Bend")
 
+        m.addSeparator()
+        act_lock = m.addAction("Lock")
+        if act_lock is not None:
+            act_lock.setCheckable(True)
+            act_lock.setChecked(self._locked)
+
+        if self._locked:
+            if act_edit is not None:
+                act_edit.setEnabled(False)
+            if act_del is not None:
+                act_del.setEnabled(False)
+                act_del.setToolTip("Item is locked")
+            if act_del_point is not None:
+                act_del_point.setEnabled(False)
+            if act_add_bend is not None:
+                act_add_bend.setEnabled(False)
+
         # Z-order options
         m.addSeparator()
         act_bring_to_front = m.addAction("Bring to Front")
@@ -489,7 +549,11 @@ class RulerItem(QtWidgets.QGraphicsObject):
 
         action = m.exec(ev.screenPos())
 
-        if action == act_del:
+        if action == act_lock and act_lock is not None:
+            self.set_locked(act_lock.isChecked())
+        elif action == act_edit:
+            self.open_editor()
+        elif action == act_del:
             # Emit signal for undoable deletion
             self.requestDelete.emit(self)
         elif action == act_del_point and is_bend_point and nearest_idx is not None:
@@ -589,6 +653,7 @@ class RulerItem(QtWidgets.QGraphicsObject):
                 before_state = {
                     "points": [[float(p.x()), float(p.y())] for p in self._initial_points],
                     "pos": {"x": float(self.pos().x()), "y": float(self.pos().y())},
+                    "display_name": self.display_name,
                 }
                 after_state = self.capture_state()
                 self._emit_property_change_command(before_state, after_state)
@@ -616,6 +681,7 @@ class RulerItem(QtWidgets.QGraphicsObject):
         return {
             "points": [[float(p.x()), float(p.y())] for p in self._points],
             "pos": {"x": float(self.pos().x()), "y": float(self.pos().y())},
+            "display_name": self.display_name,
         }
 
     def apply_state(self, state: dict[str, Any]) -> None:
@@ -626,6 +692,115 @@ class RulerItem(QtWidgets.QGraphicsObject):
             self.update()
         if "pos" in state:
             self.setPos(QtCore.QPointF(float(state["pos"]["x"]), float(state["pos"]["y"])))
+        if "display_name" in state:
+            self.display_name = state["display_name"]
+
+    @staticmethod
+    def _segment_length_angle_deg(
+        start: QtCore.QPointF, end: QtCore.QPointF
+    ) -> tuple[float, float]:
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        length = math.hypot(dx, dy)
+        if length < 1e-9:
+            return 0.0, 0.0
+        angle_deg = math.degrees(math.atan2(dy, dx))
+        return length, angle_deg
+
+    def _rebuild_points_from_segments(
+        self, segment_params: list[tuple[float, float]]
+    ) -> list[QtCore.QPointF]:
+        """Rebuild polyline from fixed first point and (length, angle_deg) per segment."""
+        if not self._points:
+            return []
+        out = [QtCore.QPointF(self._points[0])]
+        for length_mm, angle_deg in segment_params:
+            rad = math.radians(angle_deg)
+            dx = length_mm * math.cos(rad)
+            dy = length_mm * math.sin(rad)
+            prev = out[-1]
+            out.append(QtCore.QPointF(prev.x() + dx, prev.y() + dy))
+        return out
+
+    def open_editor(self) -> None:
+        """Open dialog to edit display name and each segment's length and angle."""
+        scene = self.scene()
+        parent_window = scene.views()[0].window() if scene and scene.views() else None
+        d = QtWidgets.QDialog(parent_window)
+        d.setWindowTitle("Edit Ruler")
+        outer = QtWidgets.QVBoxLayout(d)
+
+        initial_state = self.capture_state()
+
+        name_edit = QtWidgets.QLineEdit()
+        name_edit.setPlaceholderText("Layer name (optional)")
+        name_edit.setText(self.display_name or "")
+
+        def update_display_name() -> None:
+            text = name_edit.text().strip()
+            self.display_name = text if text else None
+
+        name_edit.textChanged.connect(lambda _t: update_display_name())
+
+        form = QtWidgets.QFormLayout()
+        form.addRow("Display name", name_edit)
+
+        segment_spins: list[tuple[SmartDoubleSpinBox, SmartDoubleSpinBox]] = []
+        for i in range(len(self._points) - 1):
+            length, angle_deg = self._segment_length_angle_deg(self._points[i], self._points[i + 1])
+            len_sb = SmartDoubleSpinBox()
+            len_sb.setRange(0.0, 1e7)
+            len_sb.setDecimals(3)
+            len_sb.setSuffix(" mm")
+            len_sb.setValue(length)
+            ang_sb = SmartDoubleSpinBox()
+            ang_sb.setRange(-1e6, 1e6)
+            ang_sb.setDecimals(2)
+            ang_sb.setSuffix(" \u00b0")
+            ang_sb.setToolTip("0\u00b0 = right, 90\u00b0 = down (scene coordinates)")
+            ang_sb.setValue(angle_deg)
+            segment_spins.append((len_sb, ang_sb))
+            row = QtWidgets.QHBoxLayout()
+            row.addWidget(len_sb)
+            row.addWidget(ang_sb)
+            wrap = QtWidgets.QWidget()
+            wrap.setLayout(row)
+            form.addRow(f"Segment {i + 1} (length / angle)", wrap)
+
+        outer.addLayout(form)
+
+        def read_segment_params() -> list[tuple[float, float]]:
+            return [(float(a.value()), float(b.value())) for a, b in segment_spins]
+
+        def apply_from_spins() -> None:
+            params = read_segment_params()
+            new_points = self._rebuild_points_from_segments(params)
+            if len(new_points) != len(self._points):
+                return
+            self.prepareGeometryChange()
+            self._points = new_points
+            self.update()
+
+        for len_sb, ang_sb in segment_spins:
+            len_sb.valueChanged.connect(lambda _v: apply_from_spins())
+            ang_sb.valueChanged.connect(lambda _v: apply_from_spins())
+
+        btn = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok
+            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        outer.addWidget(btn)
+        btn.accepted.connect(d.accept)
+        btn.rejected.connect(d.reject)
+
+        result = d.exec()
+
+        if result:
+            final_state = self.capture_state()
+            if initial_state != final_state:
+                self._emit_property_change_command(initial_state, final_state)
+        else:
+            self.apply_state(initial_state)
 
     # ========== Serialization ==========
 
@@ -647,12 +822,15 @@ class RulerItem(QtWidgets.QGraphicsObject):
         """Serialize ruler to dictionary."""
         # Save absolute points in scene space so reopening is exact
         points_scene = [self.mapToScene(p) for p in self._points]
-        return {
+        d: dict[str, Any] = {
             "type": "ruler",
             "points": [[float(p.x()), float(p.y())] for p in points_scene],
             "item_uuid": self.item_uuid,
             "z_value": float(self.zValue()),
         }
+        if self._locked:
+            d["locked"] = True
+        return d
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> RulerItem:
@@ -671,5 +849,7 @@ class RulerItem(QtWidgets.QGraphicsObject):
 
         if "z_value" in d:
             item.setZValue(float(d["z_value"]))
+        if d.get("locked"):
+            item.set_locked(True)
 
         return item

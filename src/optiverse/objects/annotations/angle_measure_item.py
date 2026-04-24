@@ -26,6 +26,7 @@ from ...core.ui_constants import (
     ANGLE_MEASURE_LINE_WIDTH,
     SELECTION_INDICATOR_COLOR,
 )
+from ...ui.widgets.smart_spinbox import SmartDoubleSpinBox
 
 
 class AngleMeasureItem(QtWidgets.QGraphicsObject):
@@ -90,6 +91,9 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
         self._point1 = QtCore.QPointF(point1 - vertex)
         self._point2 = QtCore.QPointF(point2 - vertex)
 
+        # Lock state (prevents movement, point editing, deletion)
+        self._locked = False
+
         # Dragging state
         self._dragging_point: str | None = None  # 'vertex', 'point1', 'point2', or None
         self._initial_points: dict[str, QtCore.QPointF] | None = None
@@ -103,6 +107,42 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
         self._endpoint_radius = ANGLE_MEASURE_ENDPOINT_RADIUS
         self._label_bg_color = QtGui.QColor(*ANGLE_MEASURE_LABEL_BG_COLOR)
         self._label_text_color = QtGui.QColor(*ANGLE_MEASURE_LABEL_TEXT_COLOR)
+
+    # ========== Locking ==========
+
+    def is_locked(self) -> bool:
+        return self._locked
+
+    def set_locked(self, locked: bool) -> None:
+        self._locked = locked
+        self._sync_lock_to_layer_node(locked)
+        if locked:
+            self.setCursor(QtCore.Qt.CursorShape.ForbiddenCursor)
+            self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
+        else:
+            self.setCursor(QtCore.Qt.CursorShape.CrossCursor)
+            self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+        self.update()
+
+    def _sync_lock_to_layer_node(self, locked: bool) -> None:
+        scene = self.scene()
+        if not scene or not scene.views():
+            return
+        window = scene.views()[0].window()
+        layer_state = getattr(window, "layer_state", None)
+        if layer_state is None:
+            return
+        node = layer_state.get_node(self.item_uuid)
+        if node:
+            node.locked = locked
+
+    def itemChange(self, change, value):
+        if change == QtWidgets.QGraphicsItem.GraphicsItemChange.ItemPositionChange:
+            if getattr(self, "_locked", False):
+                return self.pos()
+        return super().itemChange(change, value)
+
+    # ========== Properties ==========
 
     @property
     def vertex(self) -> QtCore.QPointF:
@@ -391,7 +431,21 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
         if event.button() == QtCore.Qt.MouseButton.RightButton:
             # Show context menu
             menu = QtWidgets.QMenu()
+            act_edit = menu.addAction("Edit\u2026")
             act_delete = menu.addAction("Delete")
+
+            menu.addSeparator()
+            act_lock = menu.addAction("Lock")
+            if act_lock is not None:
+                act_lock.setCheckable(True)
+                act_lock.setChecked(self._locked)
+
+            if self._locked:
+                if act_edit is not None:
+                    act_edit.setEnabled(False)
+                if act_delete is not None:
+                    act_delete.setEnabled(False)
+                    act_delete.setToolTip("Item is locked")
 
             # Add z-order options
             menu.addSeparator()
@@ -402,7 +456,11 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
 
             action = menu.exec(event.screenPos())
 
-            if action == act_delete:
+            if action == act_lock and act_lock is not None:
+                self.set_locked(act_lock.isChecked())
+            elif action == act_edit:
+                self.open_editor()
+            elif action == act_delete:
                 # Emit signal for undoable deletion
                 self.requestDelete.emit(self)
             else:
@@ -431,6 +489,10 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
                                     cmd.execute()
 
             event.accept()
+            return
+
+        if self._locked:
+            event.ignore()
             return
 
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
@@ -514,6 +576,7 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
                         float(self._initial_points["point2"].x()),
                         float(self._initial_points["point2"].y()),
                     ],
+                    "display_name": self.display_name,
                 }
                 # Create after state from current points
                 after_state = self.capture_state()
@@ -537,6 +600,7 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
             "vertex": [float(vertex_scene.x()), float(vertex_scene.y())],
             "point1": [float(point1_scene.x()), float(point1_scene.y())],
             "point2": [float(point2_scene.x()), float(point2_scene.y())],
+            "display_name": self.display_name,
         }
 
     def apply_state(self, state: dict[str, Any]) -> None:
@@ -550,9 +614,138 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
         if "point2" in state:
             point2_scene = QtCore.QPointF(float(state["point2"][0]), float(state["point2"][1]))
             self._point2 = self.mapFromScene(point2_scene)
+        if "display_name" in state:
+            self.display_name = state["display_name"]
 
         self.prepareGeometryChange()
         self.update()
+
+    def _set_inner_angle_and_arm_lengths(
+        self, inner_deg: float, arm1_len: float, arm2_len: float
+    ) -> None:
+        """Set arm geometry from inner angle (0–180°) and two arm lengths (item coordinates)."""
+        arm1_len = max(1e-6, float(arm1_len))
+        arm2_len = max(1e-6, float(arm2_len))
+        inner_deg = float(max(0.0, min(180.0, inner_deg)))
+        theta = math.radians(inner_deg)
+
+        v1 = self._point1 - self._vertex
+        len1 = math.hypot(v1.x(), v1.y())
+        if len1 < 1e-9:
+            ux, uy = 1.0, 0.0
+        else:
+            ux, uy = v1.x() / len1, v1.y() / len1
+
+        self._point1 = QtCore.QPointF(ux * arm1_len, uy * arm1_len)
+
+        v2 = self._point2 - self._vertex
+        len2_old = math.hypot(v2.x(), v2.y())
+        if len2_old < 1e-9:
+            v0x, v0y = 1.0, 0.0
+        else:
+            v0x, v0y = v2.x() / len2_old, v2.y() / len2_old
+
+        cos_t = math.cos(theta)
+        sin_t = math.sin(theta)
+        px = -uy
+        py = ux
+        vpx = cos_t * ux + sin_t * px
+        vpy = cos_t * uy + sin_t * py
+        vmx = cos_t * ux - sin_t * px
+        vmy = cos_t * uy - sin_t * py
+
+        dot_p = vpx * v0x + vpy * v0y
+        dot_m = vmx * v0x + vmy * v0y
+        if dot_p >= dot_m:
+            fx, fy = vpx, vpy
+        else:
+            fx, fy = vmx, vmy
+
+        fn = math.hypot(fx, fy)
+        if fn < 1e-12:
+            fx, fy = 1.0, 0.0
+            fn = 1.0
+        fx /= fn
+        fy /= fn
+        self._point2 = QtCore.QPointF(fx * arm2_len, fy * arm2_len)
+
+    def open_editor(self) -> None:
+        """Edit display name, inner angle, and arm lengths."""
+        scene = self.scene()
+        parent_window = scene.views()[0].window() if scene and scene.views() else None
+        d = QtWidgets.QDialog(parent_window)
+        d.setWindowTitle("Edit Angle Measure")
+        f = QtWidgets.QFormLayout(d)
+
+        initial_state = self.capture_state()
+
+        name_edit = QtWidgets.QLineEdit()
+        name_edit.setPlaceholderText("Layer name (optional)")
+        name_edit.setText(self.display_name or "")
+
+        def update_display_name() -> None:
+            text = name_edit.text().strip()
+            self.display_name = text if text else None
+
+        name_edit.textChanged.connect(lambda _t: update_display_name())
+
+        arm1_len = math.hypot(self._point1.x(), self._point1.y())
+        arm2_len = math.hypot(self._point2.x(), self._point2.y())
+        inner_deg = self._calculate_angle()
+
+        angle_sb = SmartDoubleSpinBox()
+        angle_sb.setRange(0.0, 180.0)
+        angle_sb.setDecimals(2)
+        angle_sb.setSuffix(" \u00b0")
+        angle_sb.setValue(inner_deg)
+
+        arm1_sb = SmartDoubleSpinBox()
+        arm1_sb.setRange(1e-6, 1e7)
+        arm1_sb.setDecimals(3)
+        arm1_sb.setSuffix(" mm")
+        arm1_sb.setValue(arm1_len)
+
+        arm2_sb = SmartDoubleSpinBox()
+        arm2_sb.setRange(1e-6, 1e7)
+        arm2_sb.setDecimals(3)
+        arm2_sb.setSuffix(" mm")
+        arm2_sb.setValue(arm2_len)
+
+        def apply_from_spins() -> None:
+            self.prepareGeometryChange()
+            self._set_inner_angle_and_arm_lengths(
+                angle_sb.value(), arm1_sb.value(), arm2_sb.value()
+            )
+            self.update()
+
+        angle_sb.valueChanged.connect(lambda _v: apply_from_spins())
+        arm1_sb.valueChanged.connect(lambda _v: apply_from_spins())
+        arm2_sb.valueChanged.connect(lambda _v: apply_from_spins())
+
+        f.addRow("Display name", name_edit)
+        f.addRow("Angle", angle_sb)
+        f.addRow("Arm 1 length", arm1_sb)
+        f.addRow("Arm 2 length", arm2_sb)
+
+        btn = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.StandardButton.Ok
+            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        )
+        f.addRow(btn)
+        btn.accepted.connect(d.accept)
+        btn.rejected.connect(d.reject)
+
+        result = d.exec()
+
+        if result:
+            final_state = self.capture_state()
+            if initial_state != final_state:
+                from ...core.undo_commands import PropertyChangeCommand
+
+                cmd = PropertyChangeCommand(self, initial_state, final_state)
+                self.commandCreated.emit(cmd)
+        else:
+            self.apply_state(initial_state)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary for save/load."""
@@ -561,7 +754,7 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
         point1_scene = self.mapToScene(self._point1)
         point2_scene = self.mapToScene(self._point2)
 
-        return {
+        d: dict[str, Any] = {
             "type": "angle_measure",
             "vertex": [float(vertex_scene.x()), float(vertex_scene.y())],
             "point1": [float(point1_scene.x()), float(point1_scene.y())],
@@ -569,6 +762,9 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
             "item_uuid": self.item_uuid,
             "z_value": float(self.zValue()),
         }
+        if self._locked:
+            d["locked"] = True
+        return d
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> AngleMeasureItem:
@@ -584,5 +780,7 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
         # Restore z-value if present
         if "z_value" in d:
             item.setZValue(float(d["z_value"]))
+        if d.get("locked"):
+            item.set_locked(True)
 
         return item
