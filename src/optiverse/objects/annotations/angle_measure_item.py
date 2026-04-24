@@ -91,6 +91,9 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
         self._point1 = QtCore.QPointF(point1 - vertex)
         self._point2 = QtCore.QPointF(point2 - vertex)
 
+        # Lock state (prevents movement, point editing, deletion)
+        self._locked = False
+
         # Dragging state
         self._dragging_point: str | None = None  # 'vertex', 'point1', 'point2', or None
         self._initial_points: dict[str, QtCore.QPointF] | None = None
@@ -104,6 +107,42 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
         self._endpoint_radius = ANGLE_MEASURE_ENDPOINT_RADIUS
         self._label_bg_color = QtGui.QColor(*ANGLE_MEASURE_LABEL_BG_COLOR)
         self._label_text_color = QtGui.QColor(*ANGLE_MEASURE_LABEL_TEXT_COLOR)
+
+    # ========== Locking ==========
+
+    def is_locked(self) -> bool:
+        return self._locked
+
+    def set_locked(self, locked: bool) -> None:
+        self._locked = locked
+        self._sync_lock_to_layer_node(locked)
+        if locked:
+            self.setCursor(QtCore.Qt.CursorShape.ForbiddenCursor)
+            self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
+        else:
+            self.setCursor(QtCore.Qt.CursorShape.CrossCursor)
+            self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+        self.update()
+
+    def _sync_lock_to_layer_node(self, locked: bool) -> None:
+        scene = self.scene()
+        if not scene or not scene.views():
+            return
+        window = scene.views()[0].window()
+        layer_state = getattr(window, "layer_state", None)
+        if layer_state is None:
+            return
+        node = layer_state.get_node(self.item_uuid)
+        if node:
+            node.locked = locked
+
+    def itemChange(self, change, value):
+        if change == QtWidgets.QGraphicsItem.GraphicsItemChange.ItemPositionChange:
+            if self._locked:
+                return self.pos()
+        return super().itemChange(change, value)
+
+    # ========== Properties ==========
 
     @property
     def vertex(self) -> QtCore.QPointF:
@@ -395,6 +434,19 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
             act_edit = menu.addAction("Edit\u2026")
             act_delete = menu.addAction("Delete")
 
+            menu.addSeparator()
+            act_lock = menu.addAction("Lock")
+            if act_lock is not None:
+                act_lock.setCheckable(True)
+                act_lock.setChecked(self._locked)
+
+            if self._locked:
+                if act_edit is not None:
+                    act_edit.setEnabled(False)
+                if act_delete is not None:
+                    act_delete.setEnabled(False)
+                    act_delete.setToolTip("Item is locked")
+
             # Add z-order options
             menu.addSeparator()
             act_bring_to_front = menu.addAction("Bring to Front")
@@ -404,7 +456,9 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
 
             action = menu.exec(event.screenPos())
 
-            if action == act_edit:
+            if action == act_lock and act_lock is not None:
+                self.set_locked(act_lock.isChecked())
+            elif action == act_edit:
                 self.open_editor()
             elif action == act_delete:
                 # Emit signal for undoable deletion
@@ -435,6 +489,10 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
                                     cmd.execute()
 
             event.accept()
+            return
+
+        if self._locked:
+            event.ignore()
             return
 
         if event.button() == QtCore.Qt.MouseButton.LeftButton:
@@ -696,7 +754,7 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
         point1_scene = self.mapToScene(self._point1)
         point2_scene = self.mapToScene(self._point2)
 
-        return {
+        d: dict[str, Any] = {
             "type": "angle_measure",
             "vertex": [float(vertex_scene.x()), float(vertex_scene.y())],
             "point1": [float(point1_scene.x()), float(point1_scene.y())],
@@ -704,6 +762,9 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
             "item_uuid": self.item_uuid,
             "z_value": float(self.zValue()),
         }
+        if self._locked:
+            d["locked"] = True
+        return d
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> AngleMeasureItem:
@@ -719,5 +780,7 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
         # Restore z-value if present
         if "z_value" in d:
             item.setZValue(float(d["z_value"]))
+        if d.get("locked"):
+            item.set_locked(True)
 
         return item

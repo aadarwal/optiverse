@@ -92,9 +92,46 @@ class RulerItem(QtWidgets.QGraphicsObject):
         if len(self._points) < 2:
             self._points = [QtCore.QPointF(-50, 0), QtCore.QPointF(50, 0)]
 
+        # Lock state (prevents movement, point editing, deletion)
+        self._locked = False
+
         # Interaction state
         self._grab: int | None = None  # index of grabbed point, or None
         self._initial_points: list[QtCore.QPointF] | None = None  # Track for undo
+
+    # ========== Locking ==========
+
+    def is_locked(self) -> bool:
+        return self._locked
+
+    def set_locked(self, locked: bool) -> None:
+        self._locked = locked
+        self._sync_lock_to_layer_node(locked)
+        if locked:
+            self.setCursor(QtCore.Qt.CursorShape.ForbiddenCursor)
+            self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
+        else:
+            self.setCursor(QtCore.Qt.CursorShape.CrossCursor)
+            self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
+        self.update()
+
+    def _sync_lock_to_layer_node(self, locked: bool) -> None:
+        scene = self.scene()
+        if not scene or not scene.views():
+            return
+        window = scene.views()[0].window()
+        layer_state = getattr(window, "layer_state", None)
+        if layer_state is None:
+            return
+        node = layer_state.get_node(self.item_uuid)
+        if node:
+            node.locked = locked
+
+    def itemChange(self, change, value):
+        if change == QtWidgets.QGraphicsItem.GraphicsItemChange.ItemPositionChange:
+            if self._locked:
+                return self.pos()
+        return super().itemChange(change, value)
 
     # ========== Public API for Point Manipulation ==========
 
@@ -453,6 +490,10 @@ class RulerItem(QtWidgets.QGraphicsObject):
             ev.accept()
             return
 
+        if self._locked:
+            ev.ignore()
+            return
+
         which = self._nearest_point(ev.pos())
         if ev.button() == QtCore.Qt.MouseButton.LeftButton and which is not None:
             self._grab = which
@@ -482,6 +523,23 @@ class RulerItem(QtWidgets.QGraphicsObject):
 
         act_add_bend = m.addAction("Add Bend")
 
+        m.addSeparator()
+        act_lock = m.addAction("Lock")
+        if act_lock is not None:
+            act_lock.setCheckable(True)
+            act_lock.setChecked(self._locked)
+
+        if self._locked:
+            if act_edit is not None:
+                act_edit.setEnabled(False)
+            if act_del is not None:
+                act_del.setEnabled(False)
+                act_del.setToolTip("Item is locked")
+            if act_del_point is not None:
+                act_del_point.setEnabled(False)
+            if act_add_bend is not None:
+                act_add_bend.setEnabled(False)
+
         # Z-order options
         m.addSeparator()
         act_bring_to_front = m.addAction("Bring to Front")
@@ -491,7 +549,9 @@ class RulerItem(QtWidgets.QGraphicsObject):
 
         action = m.exec(ev.screenPos())
 
-        if action == act_edit:
+        if action == act_lock and act_lock is not None:
+            self.set_locked(act_lock.isChecked())
+        elif action == act_edit:
             self.open_editor()
         elif action == act_del:
             # Emit signal for undoable deletion
@@ -762,12 +822,15 @@ class RulerItem(QtWidgets.QGraphicsObject):
         """Serialize ruler to dictionary."""
         # Save absolute points in scene space so reopening is exact
         points_scene = [self.mapToScene(p) for p in self._points]
-        return {
+        d: dict[str, Any] = {
             "type": "ruler",
             "points": [[float(p.x()), float(p.y())] for p in points_scene],
             "item_uuid": self.item_uuid,
             "z_value": float(self.zValue()),
         }
+        if self._locked:
+            d["locked"] = True
+        return d
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> RulerItem:
@@ -786,5 +849,7 @@ class RulerItem(QtWidgets.QGraphicsObject):
 
         if "z_value" in d:
             item.setZValue(float(d["z_value"]))
+        if d.get("locked"):
+            item.set_locked(True)
 
         return item

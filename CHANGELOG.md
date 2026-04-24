@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Ruler Edit dialog**: Right-click or layer-panel "Edit..." opens a dialog with display name and per-segment length/angle controls
 - **Angle Measure Edit dialog**: Right-click or layer-panel "Edit..." opens a dialog with display name, inner angle, and arm length controls
+- **Ruler / Angle Measure locking**: Lock toggle in context menu and layer panel; blocks movement, point dragging, editing, and deletion; persisted in save files
 - **Multi-element lock**: Locking an item via context menu now applies to the entire selection
 - **Marimo demo**: Interactive ray-tracing demo notebook under `examples/`
 
