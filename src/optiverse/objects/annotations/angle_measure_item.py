@@ -138,7 +138,7 @@ class AngleMeasureItem(QtWidgets.QGraphicsObject):
 
     def itemChange(self, change, value):
         if change == QtWidgets.QGraphicsItem.GraphicsItemChange.ItemPositionChange:
-            if self._locked:
+            if getattr(self, "_locked", False):
                 return self.pos()
         return super().itemChange(change, value)
 
