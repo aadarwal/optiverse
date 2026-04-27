@@ -22,8 +22,12 @@ dependencies = [
 
 [project.scripts]
 optiverse = "optiverse.app.main:main"
+optiverse-generate = "optiverse.ai.cli:main"
 
 [project.optional-dependencies]
+ai = [
+  "openai>=1.0",
+]
 dev = [
   "pytest>=8.0",
   "pytest-qt>=4.4",
@@ -40,7 +44,12 @@ Homepage = "https://github.com/QPG-MIT/optiverse"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["optiverse"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"optiverse.ai" = ["*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
