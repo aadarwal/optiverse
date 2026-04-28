@@ -550,7 +550,6 @@ class SettingsDialog(QtWidgets.QDialog):
         self.library_table.insertRow(row)
 
         # Col 0 — Enabled checkbox
-        always_on = source == "builtin"
         chk_item = QtWidgets.QTableWidgetItem()
         chk_item.setData(QtCore.Qt.ItemDataRole.UserRole, path)
         chk_item.setData(QtCore.Qt.ItemDataRole.UserRole + 1, source)
@@ -561,7 +560,7 @@ class SettingsDialog(QtWidgets.QDialog):
         )
         chk_item.setCheckState(
             QtCore.Qt.CheckState.Checked
-            if (always_on or enabled)
+            if enabled
             else QtCore.Qt.CheckState.Unchecked
         )
         self.library_table.setItem(row, 0, chk_item)
@@ -614,17 +613,9 @@ class SettingsDialog(QtWidgets.QDialog):
             return 0
 
     def _on_cell_changed(self, row: int, col: int):
-        """Revert checkbox changes on builtin libraries."""
+        """Handle checkbox changes in the library table."""
         if col != 0:
             return
-        chk = self.library_table.item(row, 0)
-        if chk is None:
-            return
-        source = chk.data(QtCore.Qt.ItemDataRole.UserRole + 1)
-        if source == "builtin" and chk.checkState() != QtCore.Qt.CheckState.Checked:
-            self.library_table.blockSignals(True)
-            chk.setCheckState(QtCore.Qt.CheckState.Checked)
-            self.library_table.blockSignals(False)
 
     def _add_library_path(self):
         """Add an existing directory as a library."""
@@ -782,9 +773,6 @@ class SettingsDialog(QtWidgets.QDialog):
             for i in range(self.library_table.rowCount()):
                 chk = self.library_table.item(i, 0)
                 if not chk:
-                    continue
-                source = chk.data(QtCore.Qt.ItemDataRole.UserRole + 1)
-                if source == "builtin":
                     continue
                 path = chk.data(QtCore.Qt.ItemDataRole.UserRole)
                 if chk.checkState() != QtCore.Qt.CheckState.Checked:

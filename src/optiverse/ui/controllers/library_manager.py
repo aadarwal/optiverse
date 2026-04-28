@@ -103,10 +103,21 @@ class LibraryManager:
 
         self.library_tree.clear()
 
-        # Load built-in (standard) components
-        builtin_records = ComponentRegistry.get_standard_components()
-        for rec in builtin_records:
-            rec["_source"] = "builtin"
+        # Load built-in (standard) components if enabled
+        builtin_records: list[dict] = []
+        if self._library_service is not None:
+            builtin_lib = next(
+                (lib for lib in self._library_service.get_all() if lib.source_type == "builtin"),
+                None,
+            )
+            builtin_enabled = builtin_lib is None or builtin_lib.enabled
+        else:
+            builtin_enabled = True
+
+        if builtin_enabled:
+            builtin_records = ComponentRegistry.get_standard_components()
+            for rec in builtin_records:
+                rec["_source"] = "builtin"
 
         # Load user / custom library components from all configured roots
         if self._library_service is not None:

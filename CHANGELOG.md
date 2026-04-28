@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Built-in library toggle**: The standard component library can now be unchecked in Preferences; previously the checkbox was force-locked and the library dock always showed built-in components regardless
 - **Lens Size scaling**: Standard Edit dialog now scales interface endpoint coordinates proportionally when "Size" changes, so lenses resize beyond 1" correctly (previously only the sprite scaled, not the optical surface)
 - **Snap guide persistence**: Purple dotted magnetic-snap guide lines no longer remain on the canvas after releasing a drag; `clear_snap_guides` is now called after all `setPos` calls in `handle_drag_end`, added to `handle_rotation_end`, and a safety-net clear in `BaseObj.mouseReleaseEvent`
 - **Gaussian beam rendering**: Detect mid-segment beam waist for proper subsampling; use per-segment intensity for brightness
