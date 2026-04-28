@@ -89,6 +89,8 @@ class LinkedAssemblyService(QtCore.QObject):
         self._suppress_paths: set[str] = set()
         # Path to the currently open main assembly (for circular detection)
         self._current_assembly_path: str | None = None
+        # instance UUID -> original source UUID (for write-back stability)
+        self._instance_to_source: dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -213,9 +215,7 @@ class LinkedAssemblyService(QtCore.QObject):
         for uid in self._link_items.get(link_uuid, []):
             item = self._find_scene_item(uid)
             if item:
-                item.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
-                item.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
-                item.setOpacity(1.0)
+                self._lock_item(item, is_editing=True)
 
     def end_edit_in_context(self, link_uuid: str, save: bool = True) -> bool:
         """Finish editing: write back to source and re-lock.
@@ -236,9 +236,7 @@ class LinkedAssemblyService(QtCore.QObject):
         for uid in self._link_items.get(link_uuid, []):
             item = self._find_scene_item(uid)
             if item:
-                item.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
-                item.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
-                item.setOpacity(0.85)
+                self._lock_item(item, is_editing=False)
 
         return success
 
@@ -260,9 +258,7 @@ class LinkedAssemblyService(QtCore.QObject):
         for uid in owned_uuids:
             item = self._find_scene_item(uid)
             if item:
-                item.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
-                item.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
-                item.setOpacity(1.0)
+                self._lock_item(item, is_editing=True)
 
     # ------------------------------------------------------------------
     # Serialization helpers
@@ -415,7 +411,10 @@ class LinkedAssemblyService(QtCore.QObject):
                 source_uuid = str(getattr(item, "item_uuid", ""))
                 inst_uuid = _instance_uuid(link_uuid, source_uuid)
                 item.item_uuid = inst_uuid  # type: ignore[attr-defined]
+                self._instance_to_source[inst_uuid] = source_uuid
                 self._apply_transform(item, ox, oy, rot)
+                if hasattr(item, "_sync_params_from_item"):
+                    item._sync_params_from_item()
                 self._lock_item(item, is_editing)
                 self._scene.addItem(item)
                 if connect_item_signals:
@@ -431,6 +430,7 @@ class LinkedAssemblyService(QtCore.QObject):
                 source_uuid = str(getattr(ruler, "item_uuid", ""))
                 inst_uuid = _instance_uuid(link_uuid, source_uuid)
                 ruler.item_uuid = inst_uuid  # type: ignore[attr-defined]
+                self._instance_to_source[inst_uuid] = source_uuid
                 self._apply_transform(ruler, ox, oy, rot)
                 self._lock_item(ruler, is_editing)
                 self._scene.addItem(ruler)
@@ -447,6 +447,7 @@ class LinkedAssemblyService(QtCore.QObject):
                 source_uuid = str(getattr(note, "item_uuid", ""))
                 inst_uuid = _instance_uuid(link_uuid, source_uuid)
                 note.item_uuid = inst_uuid  # type: ignore[attr-defined]
+                self._instance_to_source[inst_uuid] = source_uuid
                 self._apply_transform(note, ox, oy, rot)
                 self._lock_item(note, is_editing)
                 self._scene.addItem(note)
@@ -463,6 +464,7 @@ class LinkedAssemblyService(QtCore.QObject):
                 source_uuid = str(getattr(rect, "item_uuid", ""))
                 inst_uuid = _instance_uuid(link_uuid, source_uuid)
                 rect.item_uuid = inst_uuid  # type: ignore[attr-defined]
+                self._instance_to_source[inst_uuid] = source_uuid
                 self._apply_transform(rect, ox, oy, rot)
                 self._lock_item(rect, is_editing)
                 self._scene.addItem(rect)
@@ -511,6 +513,12 @@ class LinkedAssemblyService(QtCore.QObject):
 
     @staticmethod
     def _lock_item(item: QtWidgets.QGraphicsItem, is_editing: bool = False) -> None:
+        """Set linked-item interaction state via Qt flags and opacity.
+
+        This is intentionally separate from the user-facing set_locked()
+        mechanism -- linked-lock is a structural property of the reference,
+        not a user-togglable padlock.
+        """
         if is_editing:
             item.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
             item.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
@@ -519,6 +527,12 @@ class LinkedAssemblyService(QtCore.QObject):
             item.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
             item.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable, False)
             item.setOpacity(0.85)
+
+    def _restore_source_uuid(self, d: dict[str, Any], inst_uuid: str) -> None:
+        """Replace instance UUID in a serialized dict with the original source UUID."""
+        source_uuid = self._instance_to_source.get(inst_uuid)
+        if source_uuid and "item_uuid" in d:
+            d["item_uuid"] = source_uuid
 
     def _remove_scene_items(self, link_uuid: str) -> None:
         for uid in self._link_items.get(link_uuid, []):
@@ -564,18 +578,22 @@ class LinkedAssemblyService(QtCore.QObject):
 
             if isinstance(item, BaseObj) and isinstance(item, Serializable):
                 d = item.to_dict()
+                self._restore_source_uuid(d, uid)
                 self._reverse_transform_optical(d, ox, oy, rot)
                 data["items"].append(d)
             elif isinstance(item, RulerItem):
                 d = item.to_dict()
+                self._restore_source_uuid(d, uid)
                 self._reverse_transform_ruler(d, ox, oy, rot)
                 data["rulers"].append(d)
             elif isinstance(item, TextNoteItem):
                 d = item.to_dict()
+                self._restore_source_uuid(d, uid)
                 self._reverse_transform_text(d, ox, oy, rot)
                 data["texts"].append(d)
             elif isinstance(item, RectangleItem):
                 d = item.to_dict()
+                self._restore_source_uuid(d, uid)
                 self._reverse_transform_rectangle(d, ox, oy, rot)
                 data["rectangles"].append(d)
 
@@ -708,4 +726,5 @@ class LinkedAssemblyService(QtCore.QObject):
         self._link_caches.clear()
         self._pending_changed_paths.clear()
         self._suppress_paths.clear()
+        self._instance_to_source.clear()
         self._current_assembly_path = None

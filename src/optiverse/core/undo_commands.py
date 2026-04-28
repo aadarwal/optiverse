@@ -500,6 +500,34 @@ class BatchCommand(Command):
             cmd.undo()
 
 
+class UpdateLinkOffsetCommand(Command):
+    """Update a linked assembly's offset in its metadata (undoable)."""
+
+    def __init__(
+        self,
+        layer_state: LayerTreeState,
+        link_uuid: str,
+        old_offset: tuple[float, float],
+        new_offset: tuple[float, float],
+    ):
+        self._layer_state = layer_state
+        self._link_uuid = link_uuid
+        self._old_offset = old_offset
+        self._new_offset = new_offset
+
+    def execute(self) -> None:
+        self._apply_offset(self._new_offset)
+
+    def undo(self) -> None:
+        self._apply_offset(self._old_offset)
+
+    def _apply_offset(self, offset: tuple[float, float]) -> None:
+        node = self._layer_state.get_node(self._link_uuid)
+        if node and node.link_metadata:
+            node.link_metadata.offset_x = offset[0]
+            node.link_metadata.offset_y = offset[1]
+
+
 class BatchPropertyChangeCommand(Command):
     """Undo/redo batch property changes across multiple items.
 

@@ -49,6 +49,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Linked Assemblies — path traversal protection**: `resolve_assembly_relative_path` now blocks `..` traversal outside the assembly directory
 - **Linked Assemblies — missing signals**: `unlink_embed` emits `traceRequested`; `finish_edit_in_context` calls `mark_modified()`
 - **Linked Assemblies — stacked dialog guard**: Rapid file-watcher events no longer stack multiple update confirmation dialogs
+- **Linked Assemblies — menu label**: Renamed "Link Assembly" to "Add Assembly as Link" for clarity
+- **Linked Assemblies — double link emoji**: Removed duplicate 🔗 prefix from linked group names in the layer panel
+- **Linked Assemblies — locking**: Linked items now use Qt-level flag locking (selectable/movable) separate from the user-facing padlock, matching SolidWorks-style behavior where the layer model skips locked-state propagation for non-editing linked groups
+- **Linked Assemblies — Edit in Context raytracing**: Source params are now synced after applying instance offsets during materialization, fixing stale ray origins after "Finish Editing" when the linked group had been repositioned
+- **Linked Assemblies — UUID stability**: Write-back now restores original source UUIDs instead of leaking instance UUIDs into the source file, preventing UUID drift across edit cycles
+- **Linked Assemblies — group drag**: Clicking any item in a non-editing linked group now drags the entire assembly as a rigid body (SolidWorks-style); individual component movement is blocked; LinkMetadata offsets are updated and undoable
+- **Linked Assemblies — delete workflow**: Deleting a linked assembly now offers "Unlink", "Delete", and "Cancel" instead of requiring a separate unlink step first; works from both the context menu and Backspace/Delete key
 
 ## [0.3.3] - 2026-03-28
 

@@ -968,7 +968,7 @@ class FileController(QtCore.QObject):
                     assembly_dir=assembly_dir,
                 )
 
-                group_name = f"\U0001f517 {os.path.splitext(os.path.basename(path))[0]}"
+                group_name = os.path.splitext(os.path.basename(path))[0]
 
                 meta = LinkMetadata(source_path=path)
 

@@ -483,7 +483,12 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         apply_to_node(node)
 
     def _apply_effective_locked(self, node: LayerNode) -> None:
-        """Apply effective locked state to node and all descendants."""
+        """Apply effective locked state to node and all descendants.
+
+        Linked groups that are not in editing mode are skipped entirely --
+        their children's interaction state is managed by LinkedAssemblyService,
+        not the user-facing lock mechanism.
+        """
         layer_state = self._layer_state
         if not layer_state:
             return
@@ -495,6 +500,8 @@ class LayerItemModel(QtCore.QAbstractItemModel):
                         effective = layer_state.is_effectively_locked(n.uuid)
                         item.set_locked(effective)
             else:
+                if n.is_linked() and n.link_metadata and not n.link_metadata.editing:
+                    return
                 for child in n.children:
                     apply_to_node(child)
 

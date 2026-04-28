@@ -119,7 +119,7 @@ class ActionBuilder:
         w.act_import_as_layer.setShortcutContext(QtCore.Qt.ShortcutContext.WindowShortcut)
         w.act_import_as_layer.triggered.connect(w.import_assembly_as_layer)
 
-        w.act_link_assembly = QtGui.QAction("\U0001f517 Link Assembly…", w)
+        w.act_link_assembly = QtGui.QAction("\U0001f517 Add Assembly as Link…", w)
         w.act_link_assembly.setShortcut(QtGui.QKeySequence("Ctrl+Shift+L"))
         w.act_link_assembly.setShortcutContext(QtCore.Qt.ShortcutContext.WindowShortcut)
         w.act_link_assembly.triggered.connect(w.link_assembly)

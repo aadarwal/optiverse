@@ -320,6 +320,7 @@ class MainWindow(QtWidgets.QMainWindow):
             undo_stack=self.undo_stack,
             snap_to_grid_getter=self._get_snap_to_grid,
             schedule_retrace=self._schedule_retrace,
+            layer_state=self.layer_state,
         )
 
         # Component operations handler - copy, paste, delete, drop
@@ -531,8 +532,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._refresh_layer_panel()
 
     def delete_selected(self):
-        """Delete selected items (delegated to component_ops)."""
-        self.component_ops.delete_selected()
+        """Delete selected items — routes to layer panel when it has focus."""
+        if self.layer_panel.has_tree_focus():
+            self.layer_panel._delete_selected()
+        else:
+            self.component_ops.delete_selected()
         self._refresh_layer_panel()
 
     def copy_selected(self):

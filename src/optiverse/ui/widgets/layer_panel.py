@@ -139,6 +139,10 @@ class LayerPanel(QtWidgets.QWidget):
         window = views[0].window()
         return cast("UndoStack | None", getattr(window, "undo_stack", None))
 
+    def has_tree_focus(self) -> bool:
+        """True when the layer tree view currently has keyboard focus."""
+        return self._tree.hasFocus()
+
     def cleanup(self) -> None:
         """Clean up before shutdown to prevent accessing deleted objects."""
         self._refresh_timer.stop()
@@ -362,12 +366,12 @@ class LayerPanel(QtWidgets.QWidget):
             elif iu := idx.data(ITEM_UUID_ROLE):
                 item_uuids.add(str(iu))
 
-        linked_blocked: list[str] = []
+        linked_groups: list[tuple[str, str]] = []  # (gid, display_name)
         for gid in list(group_uuids):
             if self._layer_state:
                 node = self._layer_state.get_node(gid)
                 if node and node.is_linked():
-                    linked_blocked.append(node.name or gid)
+                    linked_groups.append((gid, node.name or gid))
                     group_uuids.discard(gid)
                     continue
                 cmd = DeleteGroupCommand(self._layer_state, gid, keep_items=False)
@@ -376,13 +380,8 @@ class LayerPanel(QtWidgets.QWidget):
                 else:
                     cmd.execute()
 
-        if linked_blocked:
-            QtWidgets.QMessageBox.information(
-                self,
-                "Cannot Delete Linked Assembly",
-                "Unlink (embed) these assemblies before deleting:\n"
-                + "\n".join(f"  - {n}" for n in linked_blocked),
-            )
+        if linked_groups:
+            self._prompt_linked_delete(linked_groups)
 
         # Skip items that belong to a linked group
         if self._layer_state:
@@ -564,6 +563,40 @@ class LayerPanel(QtWidgets.QWidget):
         mw = self.window()
         if hasattr(mw, "file_controller"):
             mw.file_controller.unlink_embed(group_uuid)
+
+    def _prompt_linked_delete(self, linked_groups: list[tuple[str, str]]) -> None:
+        """Show a dialog for linked assemblies with Unlink / Delete / Cancel."""
+        names = "\n".join(f"  - {name}" for _, name in linked_groups)
+        msg = QtWidgets.QMessageBox(self)
+        msg.setIcon(QtWidgets.QMessageBox.Icon.Question)
+        msg.setWindowTitle("Linked Assembly")
+        msg.setText(
+            f"The following are linked assemblies:\n{names}\n\n"
+            "What would you like to do?"
+        )
+        btn_unlink = msg.addButton("Unlink", QtWidgets.QMessageBox.ButtonRole.AcceptRole)
+        btn_delete = msg.addButton("Delete", QtWidgets.QMessageBox.ButtonRole.DestructiveRole)
+        msg.addButton(QtWidgets.QMessageBox.StandardButton.Cancel)
+        msg.exec()
+
+        clicked = msg.clickedButton()
+        if clicked is btn_unlink:
+            for gid, _ in linked_groups:
+                self._unlink_embed(gid)
+        elif clicked is btn_delete:
+            for gid, _ in linked_groups:
+                self._delete_linked_group(gid)
+
+    def _delete_linked_group(self, group_uuid: str) -> None:
+        """Fully delete a linked assembly: clean up service state and layer tree."""
+        mw = self.window()
+        if hasattr(mw, "linked_assembly_service"):
+            mw.linked_assembly_service.remove_link(group_uuid)
+        if self._layer_state:
+            self._layer_state.delete_group(group_uuid, emit=True)
+        if hasattr(mw, "file_controller"):
+            mw.file_controller.mark_modified()
+            mw.file_controller.traceRequested.emit()
 
     def _toggle_role(self, idx: QtCore.QModelIndex, role: int) -> None:
         from ..models.layer_item_model import LOCKED_ROLE

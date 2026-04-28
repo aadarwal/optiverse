@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 if TYPE_CHECKING:
+    from ...core.layer_tree_state import LayerTreeState
     from ...core.undo_stack import UndoStack
 
 
@@ -71,6 +72,9 @@ class DragContext:
     # primary_item is NOT set in this mode — is_dragging() returns False.
     rotation_only: bool = False
 
+    # Non-empty when dragging a linked assembly as a whole.
+    link_uuid: str | None = None
+
     def clear(self) -> None:
         """Reset all drag state."""
         self.primary_item = None
@@ -82,6 +86,7 @@ class DragContext:
         self.is_group_rotation = False
         self.press_offset = QtCore.QPointF()
         self.rotation_only = False
+        self.link_uuid = None
 
 
 class ItemDragHandler:
@@ -106,12 +111,14 @@ class ItemDragHandler:
         undo_stack: UndoStack,
         snap_to_grid_getter: Callable[[], bool],
         schedule_retrace: Callable[[], None],
+        layer_state: LayerTreeState | None = None,
     ):
         self.scene = scene
         self.view = view
         self.undo_stack = undo_stack
         self._get_snap_to_grid = snap_to_grid_getter
         self._schedule_retrace = schedule_retrace
+        self._layer_state = layer_state
 
         # All drag state encapsulated in DragContext
         self._drag = DragContext()
@@ -167,6 +174,21 @@ class ItemDragHandler:
         if isinstance(draggable_item, AngleMeasureItem):
             if draggable_item._point_at_pos(scene_pos) is not None:
                 return False
+
+        # ---- Check linked group membership ----
+        linked_group = self._find_linked_group(draggable_item)
+        if linked_group is not None:
+            group_uuid, node = linked_group
+            if node.link_metadata and node.link_metadata.editing:
+                pass  # editing mode — treat as normal individual drag below
+            else:
+                return self._start_linked_group_drag(
+                    draggable_item, group_uuid, scene_pos,
+                )
+
+        # ---- Reject non-selectable items (user-locked) ----
+        if not (draggable_item.flags() & QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable):
+            return False
 
         # ---- Handle selection ----
         # Since we consume the press event, Qt won't handle selection.
@@ -262,11 +284,12 @@ class ItemDragHandler:
         self._restore_secondary_movable_flags()
 
         commands_created = False
+        is_linked = self._drag.link_uuid is not None
 
         # Apply snap to grid and collect move commands
-        move_commands: list[MoveItemCommand] = []
+        move_commands: list = []
         for it, old_pos in self._drag.initial_positions.items():
-            if isinstance(it, BaseObj) and self._get_snap_to_grid():
+            if not is_linked and isinstance(it, BaseObj) and self._get_snap_to_grid():
                 from ...core import preferences
 
                 g = preferences.grid_snap_size_mm
@@ -276,6 +299,12 @@ class ItemDragHandler:
             new_pos = it.pos()
             if old_pos != new_pos:
                 move_commands.append(MoveItemCommand(it, old_pos, new_pos))
+
+        # For linked group drags, also update LinkMetadata offsets
+        if is_linked and move_commands and self._layer_state:
+            offset_cmd = self._build_link_offset_command()
+            if offset_cmd:
+                move_commands.append(offset_cmd)
 
         # Push move commands — batch multiple into a single undo step
         if move_commands:
@@ -462,3 +491,91 @@ class ItemDragHandler:
         for item in self._drag.items_with_movable_disabled:
             item.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable, True)
         self._drag.items_with_movable_disabled.clear()
+
+    # ------------------------------------------------------------------
+    # Linked-group helpers
+    # ------------------------------------------------------------------
+
+    def _build_link_offset_command(self):
+        """Create an undo command that updates LinkMetadata offsets for the drag delta."""
+        from ...core.undo_commands import UpdateLinkOffsetCommand
+
+        if not self._layer_state or not self._drag.link_uuid or not self._drag.primary_item:
+            return None
+        node = self._layer_state.get_node(self._drag.link_uuid)
+        if not node or not node.link_metadata:
+            return None
+
+        old_pos = self._drag.initial_positions.get(self._drag.primary_item)
+        if old_pos is None:
+            return None
+        new_pos = self._drag.primary_item.pos()
+        delta_x = new_pos.x() - old_pos.x()
+        delta_y = new_pos.y() - old_pos.y()
+        if abs(delta_x) < 1e-9 and abs(delta_y) < 1e-9:
+            return None
+
+        meta = node.link_metadata
+        old_offset = (meta.offset_x, meta.offset_y)
+        new_offset = (meta.offset_x + delta_x, meta.offset_y + delta_y)
+        meta.offset_x = new_offset[0]
+        meta.offset_y = new_offset[1]
+
+        return UpdateLinkOffsetCommand(
+            self._layer_state, self._drag.link_uuid, old_offset, new_offset,
+        )
+
+    # ------------------------------------------------------------------
+    # Linked-group detection helpers
+    # ------------------------------------------------------------------
+
+    def _find_linked_group(
+        self, item: QtWidgets.QGraphicsItem,
+    ) -> tuple[str, object] | None:
+        """If *item* belongs to a linked assembly group, return (group_uuid, node)."""
+        if not self._layer_state:
+            return None
+        item_uuid = getattr(item, "item_uuid", None)
+        if not item_uuid:
+            return None
+        group_uuid = self._layer_state.get_group_for_item(item_uuid)
+        if not group_uuid:
+            return None
+        node = self._layer_state.get_node(group_uuid)
+        if node and node.is_linked():
+            return group_uuid, node
+        return None
+
+    def _start_linked_group_drag(
+        self,
+        clicked_item: QtWidgets.QGraphicsItem,
+        group_uuid: str,
+        scene_pos: QtCore.QPointF,
+    ) -> bool:
+        """Set up a drag that moves all items in a linked group as a rigid body."""
+        if not self._layer_state:
+            return False
+
+        item_uuids = self._layer_state.get_group_items_recursive(group_uuid)
+        group_items: list[QtWidgets.QGraphicsItem] = []
+        for uid in item_uuids:
+            for scene_item in self.scene.items():
+                if getattr(scene_item, "item_uuid", None) == uid:
+                    group_items.append(scene_item)
+                    break
+
+        if not group_items:
+            return False
+
+        self._drag.primary_item = clicked_item
+        self._drag.link_uuid = group_uuid
+        self._drag.press_offset = scene_pos - clicked_item.pos()
+
+        primary_pos = clicked_item.pos()
+        for item in group_items:
+            self._drag.initial_positions[item] = QtCore.QPointF(item.pos())
+            if item is not clicked_item:
+                self._drag.secondary_items.append(item)
+                self._drag.secondary_offsets[item] = item.pos() - primary_pos
+
+        return True
