@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Multi-element lock**: Locking an item via context menu now applies to the entire selection
 - **Marimo demo**: Interactive ray-tracing demo notebook under `examples/`
 
+### Removed
+
+- **Dead code cleanup**: Removed ~1,176 lines of unused code left behind from past restructurings — 3 entire modules (`BaseMeasureItem`, `ray_layer`, `beamsplitter_cube_factory`), 7 unused classes, 6 unused functions, and 12 speculative exception subclasses that were never raised
+
 ### Fixed
 
 - **Built-in library toggle**: The standard component library can now be unchecked in Preferences; previously the checkbox was force-locked and the library dock always showed built-in components regardless

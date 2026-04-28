@@ -29,17 +29,3 @@ class HasComponentEditor(Protocol):
         """
         ...
 
-
-@runtime_checkable
-class HasUndoStack(Protocol):
-    """
-    Protocol for windows that have an undo stack.
-
-    Used to access undo functionality without direct coupling.
-    """
-
-    @property
-    def undo_stack(self) -> object:
-        """Get the undo stack."""
-        ...
-

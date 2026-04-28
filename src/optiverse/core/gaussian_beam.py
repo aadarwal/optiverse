@@ -61,27 +61,6 @@ def beam_radius_from_q(q: complex, wavelength_nm: float) -> float:
     return math.sqrt(w_sq)
 
 
-def wavefront_radius_from_q(q: complex) -> float:
-    """
-    Extract wavefront radius of curvature R(z) from the q-parameter.
-
-    From 1/q = 1/R - i*lambda/(pi*w^2), the radius of curvature is:
-        R = 1 / Re(1/q)
-
-    Returns float('inf') at the waist (flat wavefront).
-
-    Args:
-        q: Complex beam parameter (in mm)
-
-    Returns:
-        Radius of curvature in mm (positive = diverging, negative = converging)
-    """
-    re_inv_q = (1.0 / q).real
-    if abs(re_inv_q) < 1e-15:
-        return float("inf")
-    return 1.0 / re_inv_q
-
-
 def rayleigh_range(w0_mm: float, wavelength_nm: float) -> float:
     """Compute the Rayleigh range z_R = pi * w0^2 / lambda."""
     wavelength_mm = wavelength_nm * 1e-6
@@ -122,33 +101,6 @@ def apply_abcd(q: complex, A: float, B: float, C: float, D: float) -> complex:
     if abs(denom) < 1e-30:
         return q
     return (A * q + B) / denom
-
-
-def clip_gaussian_at_aperture(beam_radius_mm: float, half_aperture_mm: float) -> float:
-    """
-    Fraction of power in a 1D Gaussian (intensity ~ exp(-2 y^2 / w^2)) passing a hard slit.
-
-    For a symmetric aperture (-a, +a) with half-width a, the transmitted power fraction is
-    erf(sqrt(2) * a / w).
-
-    Args:
-        beam_radius_mm: 1/e^2 half-width w of the beam (mm)
-        half_aperture_mm: Half-width of the clear aperture (mm)
-
-    Returns:
-        Fraction in (0, 1], or 1.0 if clipping does not apply.
-    """
-    if beam_radius_mm <= 1e-15 or half_aperture_mm <= 0.0:
-        return 1.0
-    w = beam_radius_mm
-    a = half_aperture_mm
-    arg = math.sqrt(2.0) * a / w
-    # Clamp erf argument for numerical stability
-    if arg > 8.0:
-        return 1.0
-    if arg < -8.0:
-        return 0.0
-    return max(0.0, min(1.0, math.erf(arg)))
 
 
 def clip_gaussian_circular_aperture(beam_radius_mm: float, aperture_radius_mm: float) -> float:
