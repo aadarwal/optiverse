@@ -157,6 +157,43 @@ class SceneFileManager:
 
         return data
 
+    def serialize_selected(self, uuids: set[str]) -> dict:
+        """Serialize only the scene items whose *item_uuid* is in *uuids*."""
+        from optiverse.objects.annotations.path_measure_item import PathMeasureItem
+
+        from ..objects import BaseObj, RectangleItem
+        from ..objects.annotations import RulerItem, TextNoteItem
+
+        data: dict[str, Any] = {
+            "version": "2.0",
+            "items": [],
+            "rulers": [],
+            "texts": [],
+            "rectangles": [],
+            "path_measures": [],
+            "layer_state": {},
+        }
+
+        for it in self.scene.items():
+            uid = getattr(it, "item_uuid", None)
+            if uid is None or str(uid) not in uuids:
+                continue
+            if isinstance(it, BaseObj) and isinstance(it, Serializable):
+                data["items"].append(it.to_dict())
+            elif isinstance(it, RulerItem):
+                data["rulers"].append(it.to_dict())
+            elif isinstance(it, TextNoteItem):
+                data["texts"].append(it.to_dict())
+            elif isinstance(it, RectangleItem):
+                data["rectangles"].append(it.to_dict())
+            elif isinstance(it, PathMeasureItem):
+                data["path_measures"].append(it.to_dict())
+
+        if self._layer_state:
+            data["layer_state"] = self._layer_state.pruned_to_dict(uuids)
+
+        return data
+
     def do_autosave(self):
         """Perform autosave to temporary file."""
         if not self._is_modified:

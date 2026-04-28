@@ -479,6 +479,10 @@ class PathMeasureItem(QtWidgets.QGraphicsObject):
             act_send_backward = menu.addAction("Send Backward")
             act_send_to_back = menu.addAction("Send to Back")
 
+            from ..context_menu_helpers import add_export_selected_action
+
+            add_export_selected_action(menu, self.scene())
+
             action = menu.exec(event.screenPos())
 
             if action == act_edit_length:
