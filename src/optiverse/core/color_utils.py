@@ -116,20 +116,6 @@ def wavelength_to_hex(wavelength_nm: float) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
-def wavelength_to_qcolor(wavelength_nm: float) -> QtGui.QColor:
-    """
-    Convert wavelength to QColor.
-
-    Args:
-        wavelength_nm: Wavelength in nanometers
-
-    Returns:
-        QColor instance
-    """
-    r, g, b = wavelength_to_rgb(wavelength_nm)
-    return QtGui.QColor(r, g, b)
-
-
 # Common laser wavelengths (in nm) for reference
 LASER_WAVELENGTHS = {
     "UV (355nm Nd:YAG 3rd)": 355.0,

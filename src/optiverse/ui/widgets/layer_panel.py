@@ -419,6 +419,12 @@ class LayerPanel(QtWidgets.QWidget):
             if main_window is not None and hasattr(main_window, "open_component_editor_for_item"):
                 main_window.open_component_editor_for_item(item)
 
+    def _export_selected_as_assembly(self) -> None:
+        """Delegate to FileController via the main window."""
+        mw = self.window()
+        if hasattr(mw, "file_controller"):
+            mw.file_controller.export_selected_as_assembly()
+
     def _show_context_menu(self, pos: QtCore.QPoint) -> None:
         idx = self._tree.indexAt(pos)
         menu = QtWidgets.QMenu(self)
@@ -471,6 +477,16 @@ class LayerPanel(QtWidgets.QWidget):
             ]:
                 if act := z_menu.addAction(label):
                     act.triggered.connect(lambda _, o=op: self._apply_z_order(o))
+
+        menu.addSeparator()
+        has_selection = bool(
+            self._scene and any(
+                hasattr(it, "item_uuid") for it in self._scene.selectedItems()
+            )
+        )
+        if export_act := menu.addAction("Export Selected as Assembly\u2026"):
+            export_act.setEnabled(has_selection)
+            export_act.triggered.connect(self._export_selected_as_assembly)
 
         if vp := self._tree.viewport():
             menu.exec(vp.mapToGlobal(pos))

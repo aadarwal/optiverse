@@ -376,20 +376,54 @@ class LayerTreeState(QtCore.QObject):
 
     def to_dict(self) -> dict[str, Any]:
         def node_to_dict(n: LayerNode) -> dict[str, Any]:
-            d: dict[str, Any] = {"uuid": n.uuid, "type": n.node_type}
-            if n.name is not None:
-                d["name"] = n.name
-            if n.collapsed:
-                d["collapsed"] = True
-            if not n.visible:
-                d["visible"] = False
-            if n.locked:
-                d["locked"] = True
+            d = self._node_to_export_dict(n)
             if n.children:
                 d["children"] = [node_to_dict(c) for c in n.children]
             return d
 
         return {"version": 1, "nodes": [node_to_dict(n) for n in self._roots]}
+
+    def pruned_to_dict(self, keep_uuids: set[str]) -> dict[str, Any]:
+        """Serialize only the subtree relevant to *keep_uuids*.
+
+        Item nodes whose UUID is NOT in *keep_uuids* are dropped.
+        Group nodes are kept only if they have at least one kept descendant.
+        """
+
+        def _prune(n: LayerNode) -> dict[str, Any] | None:
+            if n.is_item():
+                return self._node_to_export_dict(n) if n.uuid in keep_uuids else None
+            # Group: recurse children, keep group only if any child survives
+            kept_children = []
+            for child in n.children:
+                result = _prune(child)
+                if result is not None:
+                    kept_children.append(result)
+            if not kept_children:
+                return None
+            d = self._node_to_export_dict(n)
+            d["children"] = kept_children
+            return d
+
+        nodes = []
+        for root in self._roots:
+            result = _prune(root)
+            if result is not None:
+                nodes.append(result)
+        return {"version": 1, "nodes": nodes}
+
+    @staticmethod
+    def _node_to_export_dict(n: LayerNode) -> dict[str, Any]:
+        d: dict[str, Any] = {"uuid": n.uuid, "type": n.node_type}
+        if n.name is not None:
+            d["name"] = n.name
+        if n.collapsed:
+            d["collapsed"] = True
+        if not n.visible:
+            d["visible"] = False
+        if n.locked:
+            d["locked"] = True
+        return d
 
     @classmethod
     def from_dict(cls, data: dict, parent: QtCore.QObject | None = None) -> LayerTreeState:

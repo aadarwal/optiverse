@@ -205,6 +205,33 @@ class FileController(QtCore.QObject):
                 self.file_manager.save_to_file(path)
                 self._add_recent_file(path)
 
+    def export_selected_as_assembly(self) -> None:
+        """Export the currently selected scene items as a new assembly file."""
+        uuids = {
+            str(it.item_uuid)
+            for it in self._scene.selectedItems()
+            if hasattr(it, "item_uuid")
+        }
+        if not uuids:
+            QtWidgets.QMessageBox.information(
+                self._parent,
+                "Export Selected",
+                "No items are selected. Select one or more items first.",
+            )
+            return
+
+        with ErrorContext("while exporting selected items", suppress=True):
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self._parent,
+                "Export Selected as Assembly",
+                "",
+                "Optics Assembly (*.json)",
+            )
+            if path:
+                data = self.file_manager.serialize_selected(uuids)
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+
     def new_assembly(self) -> bool:
         """
         Create a new empty assembly.

@@ -123,6 +123,10 @@ class RectangleItem(QtWidgets.QGraphicsObject):
         act_send_backward = m.addAction("Send Backward")
         act_send_to_back = m.addAction("Send to Back")
 
+        from ..context_menu_helpers import add_export_selected_action
+
+        add_export_selected_action(m, self.scene())
+
         a = m.exec(ev.screenPos())
         if a == act_edit:
             self.open_editor()

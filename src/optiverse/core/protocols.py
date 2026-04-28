@@ -137,40 +137,6 @@ class HasShape(Protocol):
 
 
 @runtime_checkable
-class Clonable(Protocol):
-    """
-    Protocol for items that can be cloned.
-
-    Items implementing this protocol:
-    - Can create a copy of themselves via `clone()`
-    """
-
-    def clone(self, offset_mm: tuple[float, float] = (20.0, 20.0)) -> Any:
-        """Create a clone of this item with an offset."""
-        ...
-
-
-@runtime_checkable
-class HasInterfaces(Protocol):
-    """
-    Protocol for items that have optical interfaces.
-
-    Items implementing this protocol:
-    - Have an `interfaces` property returning interface definitions
-    - Can get interface positions via `get_interface_positions()`
-    """
-
-    @property
-    def interfaces(self) -> Any:
-        """Get the interface definitions."""
-        ...
-
-    def get_interface_positions(self) -> dict[str, tuple[float, float]]:
-        """Get positions of all interfaces in scene coordinates."""
-        ...
-
-
-@runtime_checkable
 class HasUndoStack(Protocol):
     """
     Protocol for objects that provide an undo stack.

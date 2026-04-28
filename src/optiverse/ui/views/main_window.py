@@ -5,7 +5,6 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from optiverse import __version__
@@ -56,11 +55,6 @@ def _get_icon_path(icon_name: str) -> str:
     """Get the full path to an icon file."""
     icons_dir = Path(__file__).parent.parent / "icons"
     return str(icons_dir / icon_name)
-
-
-def to_np(p: QtCore.QPointF) -> np.ndarray:
-    """Convert QPointF to numpy array."""
-    return np.array([p.x(), p.y()], float)
 
 
 class MainWindow(QtWidgets.QMainWindow):

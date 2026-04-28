@@ -442,7 +442,6 @@ class MySceneItem(QGraphicsObject):
 
 Base classes that provide this:
 - `BaseObj` - For optical components
-- `BaseMeasureItem` - For measurement annotations
 - `RulerItem`, `PathMeasureItem`, `AngleMeasureItem` - Annotation items
 
 ### Ray Tracing
