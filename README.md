@@ -14,6 +14,7 @@ Optiverse is a powerful, interactive tool for designing and simulating optical s
 ## Features
 
 - **Interactive Ray Tracing**: Real-time visualization of light propagation through optical systems
+- **AI Layout Generation**: Generate optical table layouts from natural language using LLMs ([docs](docs/AI_LAYOUT_GENERATION.md))
 - **Component Editor**: Create custom optical components with multiple interfaces (lenses, mirrors, beamsplitters)
 - **Hardware-Accelerated Rendering**: OpenGL-powered ray display (100x+ faster than software rendering)
 - **Numba JIT Optimization**: 4-8x raytracing speedup on all Python versions (3.9-3.12+)
@@ -87,11 +88,29 @@ optiverse
 python -m optiverse.app.main
 ```
 
+### AI Layout Generation (optional)
+
+```bash
+# Install with AI support (OpenAI)
+pip install -e '.[ai]'
+
+# Set API key
+export OPENAI_API_KEY='sk-...'
+
+# Generate a layout from natural language
+python -m optiverse.ai.cli "Mach-Zehnder interferometer" -o mz.json
+
+# Or from a beam path spec file (no API key needed)
+python -m optiverse.ai.cli --spec my_spec.json -o layout.json
+```
+
+See [docs/AI_LAYOUT_GENERATION.md](docs/AI_LAYOUT_GENERATION.md) for the full guide.
+
 ### Development Installation
 
 ```bash
 # Install with development tools (testing, linting, type checking)
-pip install -e .[dev]
+pip install -e '.[dev]'
 ```
 
 ## Python Version Support
@@ -295,6 +314,7 @@ python tools/test_save_load_manual.py
 optiverse/
 ├── src/optiverse/
 │   ├── app/           # Application entry point
+│   ├── ai/            # AI layout generation (LLM + solver pipeline)
 │   ├── core/          # Physics engine (Snell's law, Fresnel, etc.)
 │   ├── raytracing/    # Polymorphic ray tracing engine
 │   ├── objects/       # Qt graphics items (mirrors, lenses, sources)

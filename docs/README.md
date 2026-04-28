@@ -27,6 +27,9 @@ Welcome to the Optiverse documentation! This directory contains comprehensive gu
   Visual guide to using rulers and coordinate systems in the component editor.
 
 #### Features
+- **[AI Layout Generation](AI_LAYOUT_GENERATION.md)** ⭐  
+  Generate optical table layouts from natural language prompts or structured beam path specs using AI. Includes setup guide, CLI usage, Python API, and examples.
+
 - **[Zemax Import Guide](ZEMAX_IMPORT_UI_GUIDE.md)**  
   Complete guide to importing optical designs from Zemax (.zmx) files into Optiverse.
 
@@ -103,6 +106,9 @@ Welcome to the Optiverse documentation! This directory contains comprehensive gu
 - [INTERFACE_COLOR_GUIDE.md](INTERFACE_COLOR_GUIDE.md)
 - [REFRACTIVE_INDEX_LABELS.md](REFRACTIVE_INDEX_LABELS.md)
 - [RULER_VISUAL_GUIDE.md](RULER_VISUAL_GUIDE.md)
+
+**AI Layout Generation**
+- [AI_LAYOUT_GENERATION.md](AI_LAYOUT_GENERATION.md)
 
 **Import/Export**
 - [ZEMAX_IMPORT_UI_GUIDE.md](ZEMAX_IMPORT_UI_GUIDE.md)
