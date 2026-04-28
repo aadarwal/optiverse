@@ -653,7 +653,6 @@ class DeleteGroupCommand(Command):
             old = layer_state.get_parent_and_index(group_uuid)
             if old:
                 self._old_parent_uuid, self._old_index = old
-            # serialize just this subtree (including visible/locked for full restore)
             def node_to_dict(n):
                 d = {"uuid": n.uuid, "type": n.node_type}
                 if n.name is not None:
@@ -664,6 +663,8 @@ class DeleteGroupCommand(Command):
                     d["visible"] = False
                 if n.locked:
                     d["locked"] = True
+                if n.link_metadata is not None:
+                    d["link_metadata"] = n.link_metadata.to_dict()
                 if n.children:
                     d["children"] = [node_to_dict(c) for c in n.children]
                 return d
@@ -689,26 +690,51 @@ class DeleteGroupCommand(Command):
         root = tmp.get_root_nodes()[0] if tmp.get_root_nodes() else None
         if not root:
             return
-        # Add group node (UUID preserved)
-        self._layer_state.create_group(
-            root.name or "Group",
-            parent_group_uuid=self._old_parent_uuid,
-            index=self._old_index,
-            group_uuid=root.uuid,
-            emit=False,
-        )
+        # Add group node (UUID preserved), restoring link_metadata if present
+        lm_data = self._snapshot.get("link_metadata")
+        if lm_data:
+            from .layer_tree_state import LinkMetadata
+
+            self._layer_state.create_linked_group(
+                root.name or "Group",
+                link_metadata=LinkMetadata.from_dict(lm_data),
+                parent_group_uuid=self._old_parent_uuid,
+                index=self._old_index,
+                group_uuid=root.uuid,
+                emit=False,
+            )
+        else:
+            self._layer_state.create_group(
+                root.name or "Group",
+                parent_group_uuid=self._old_parent_uuid,
+                index=self._old_index,
+                group_uuid=root.uuid,
+                emit=False,
+            )
         self._layer_state.set_group_collapsed(root.uuid, root.collapsed, emit=False)
         # Add children recursively
         def add_children(parent_uuid: str, children):
             for ch in children:
                 if ch["type"] == "group":
                     gid = ch["uuid"]
-                    self._layer_state.create_group(
-                        ch.get("name", "Group"),
-                        parent_group_uuid=parent_uuid,
-                        group_uuid=gid,
-                        emit=False,
-                    )
+                    ch_lm = ch.get("link_metadata")
+                    if ch_lm:
+                        from .layer_tree_state import LinkMetadata
+
+                        self._layer_state.create_linked_group(
+                            ch.get("name", "Group"),
+                            link_metadata=LinkMetadata.from_dict(ch_lm),
+                            parent_group_uuid=parent_uuid,
+                            group_uuid=gid,
+                            emit=False,
+                        )
+                    else:
+                        self._layer_state.create_group(
+                            ch.get("name", "Group"),
+                            parent_group_uuid=parent_uuid,
+                            group_uuid=gid,
+                            emit=False,
+                        )
                     self._layer_state.set_group_collapsed(
                         gid, bool(ch.get("collapsed", False)), emit=False
                     )

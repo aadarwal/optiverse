@@ -30,6 +30,7 @@ class Icons:
     FOLDER: str = "📁"
     FOLDER_ADD: str = "📁+"
     FOLDER_REMOVE: str = "📁-"
+    LINK: str = "🔗"
     N1_COLOR: str = "#FFD700"  # Gold
     N2_COLOR: str = "#9370DB"  # Purple
 

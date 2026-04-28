@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 ITEM_UUID_ROLE = QtCore.Qt.ItemDataRole.UserRole
 GROUP_UUID_ROLE = QtCore.Qt.ItemDataRole.UserRole + 1
 IS_GROUP_ROLE = QtCore.Qt.ItemDataRole.UserRole + 2
+IS_LINKED_ROLE = QtCore.Qt.ItemDataRole.UserRole + 3
 VISIBLE_ROLE = QtCore.Qt.ItemDataRole.UserRole + 10
 LOCKED_ROLE = QtCore.Qt.ItemDataRole.UserRole + 11
 
@@ -191,6 +192,8 @@ class LayerItemModel(QtCore.QAbstractItemModel):
             return node.name or "Group" if node.is_group() else self._get_item_name(node.uuid)
         if role == int(IS_GROUP_ROLE):
             return node.is_group()
+        if role == int(IS_LINKED_ROLE):
+            return node.is_linked()
         if role == int(GROUP_UUID_ROLE) and node.is_group():
             return node.uuid
         if role == int(ITEM_UUID_ROLE) and node.is_item():
@@ -358,6 +361,16 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         target_node = self._node_from_index(parent) if parent.isValid() else None
         if target_node and target_node.is_item():
             return False
+
+        # Block drops into a linked group
+        if target_node and target_node.is_linked():
+            return False
+
+        # Block dragging items out of a linked group
+        for uid in moved_uuids:
+            node = self._layer_state.get_node(uid)
+            if node and node.parent and node.parent.is_linked():
+                return False
 
         dest_list = target_node.children if target_node else self._layer_state.get_root_nodes()
         insert_row = row if row >= 0 else len(dest_list)

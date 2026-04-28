@@ -21,7 +21,7 @@ from .constants import Icons
 if TYPE_CHECKING:
     from ...core.undo_stack import UndoStack
 
-from ..models.layer_item_model import GROUP_UUID_ROLE, IS_GROUP_ROLE, ITEM_UUID_ROLE
+from ..models.layer_item_model import GROUP_UUID_ROLE, IS_GROUP_ROLE, IS_LINKED_ROLE, ITEM_UUID_ROLE
 
 
 class LayerPanel(QtWidgets.QWidget):
@@ -362,13 +362,34 @@ class LayerPanel(QtWidgets.QWidget):
             elif iu := idx.data(ITEM_UUID_ROLE):
                 item_uuids.add(str(iu))
 
-        for gid in group_uuids:
+        linked_blocked: list[str] = []
+        for gid in list(group_uuids):
             if self._layer_state:
+                node = self._layer_state.get_node(gid)
+                if node and node.is_linked():
+                    linked_blocked.append(node.name or gid)
+                    group_uuids.discard(gid)
+                    continue
                 cmd = DeleteGroupCommand(self._layer_state, gid, keep_items=False)
                 if undo:
                     undo.push(cmd)
                 else:
                     cmd.execute()
+
+        if linked_blocked:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Cannot Delete Linked Assembly",
+                "Unlink (embed) these assemblies before deleting:\n"
+                + "\n".join(f"  - {n}" for n in linked_blocked),
+            )
+
+        # Skip items that belong to a linked group
+        if self._layer_state:
+            for uid in list(item_uuids):
+                node = self._layer_state.get_node(uid)
+                if node and node.parent and node.parent.is_linked():
+                    item_uuids.discard(uid)
 
         for uid in item_uuids:
             item = next(
@@ -458,8 +479,39 @@ class LayerPanel(QtWidgets.QWidget):
             menu.addSeparator()
 
             if bool(idx.data(IS_GROUP_ROLE)):
-                if act := menu.addAction("Ungroup"):
-                    act.triggered.connect(self._ungroup_selected)
+                is_linked = bool(idx.data(IS_LINKED_ROLE))
+                if is_linked:
+                    group_uuid = str(idx.data(GROUP_UUID_ROLE) or "")
+                    node = self._layer_state.get_node(group_uuid) if self._layer_state else None
+                    is_editing = (
+                        node.link_metadata.editing
+                        if node and node.link_metadata
+                        else False
+                    )
+
+                    if is_editing:
+                        if act := menu.addAction("Finish Editing"):
+                            act.triggered.connect(
+                                lambda _=False, u=group_uuid: self._finish_edit_linked(u)
+                            )
+                    else:
+                        if act := menu.addAction("\U0001f517 Edit in Context"):
+                            act.triggered.connect(
+                                lambda _=False, u=group_uuid: self._edit_linked_in_context(u)
+                            )
+
+                    if act := menu.addAction("Refresh from Source"):
+                        act.triggered.connect(
+                            lambda _=False, u=group_uuid: self._refresh_linked(u)
+                        )
+                    if act := menu.addAction("Unlink (Embed)"):
+                        act.triggered.connect(
+                            lambda _=False, u=group_uuid: self._unlink_embed(u)
+                        )
+                    menu.addSeparator()
+                else:
+                    if act := menu.addAction("Ungroup"):
+                        act.triggered.connect(self._ungroup_selected)
             else:
                 if act := menu.addAction("Group with Selected"):
                     act.triggered.connect(self._group_selected)
@@ -490,6 +542,28 @@ class LayerPanel(QtWidgets.QWidget):
 
         if vp := self._tree.viewport():
             menu.exec(vp.mapToGlobal(pos))
+
+    # --- Linked Assembly Actions ---
+
+    def _edit_linked_in_context(self, group_uuid: str) -> None:
+        mw = self.window()
+        if hasattr(mw, "file_controller"):
+            mw.file_controller.edit_linked_in_context(group_uuid)
+
+    def _finish_edit_linked(self, group_uuid: str) -> None:
+        mw = self.window()
+        if hasattr(mw, "file_controller"):
+            mw.file_controller.finish_edit_in_context(group_uuid)
+
+    def _refresh_linked(self, group_uuid: str) -> None:
+        mw = self.window()
+        if hasattr(mw, "file_controller"):
+            mw.file_controller.refresh_linked_assembly(group_uuid)
+
+    def _unlink_embed(self, group_uuid: str) -> None:
+        mw = self.window()
+        if hasattr(mw, "file_controller"):
+            mw.file_controller.unlink_embed(group_uuid)
 
     def _toggle_role(self, idx: QtCore.QModelIndex, role: int) -> None:
         from ..models.layer_item_model import LOCKED_ROLE

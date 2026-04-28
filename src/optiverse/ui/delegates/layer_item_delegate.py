@@ -10,6 +10,7 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 
 from ..models.layer_item_model import (
     IS_GROUP_ROLE,
+    IS_LINKED_ROLE,
     LOCKED_ROLE,
     VISIBLE_ROLE,
 )
@@ -65,8 +66,10 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
             self._draw_centered_text(painter, vis_rect, vis_text, opt.palette, text_color_role)
             self._draw_centered_text(painter, lock_rect, lock_text, opt.palette, text_color_role)
             if is_group:
+                is_linked = bool(index.data(IS_LINKED_ROLE))
+                folder_icon = Icons.LINK if is_linked else Icons.FOLDER
                 self._draw_centered_text(
-                    painter, folder_rect, Icons.FOLDER, opt.palette, text_color_role
+                    painter, folder_rect, folder_icon, opt.palette, text_color_role
                 )
 
             # Draw label

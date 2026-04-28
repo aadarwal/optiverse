@@ -22,6 +22,34 @@ NodeType = Literal["group", "item"]
 
 
 @dataclass
+class LinkMetadata:
+    """Metadata for a linked assembly group (external file reference)."""
+
+    source_path: str
+    offset_x: float = 0.0
+    offset_y: float = 0.0
+    rotation_deg: float = 0.0
+    editing: bool = field(default=False, repr=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_path": self.source_path,
+            "offset_x": self.offset_x,
+            "offset_y": self.offset_y,
+            "rotation_deg": self.rotation_deg,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> LinkMetadata:
+        return cls(
+            source_path=data["source_path"],
+            offset_x=float(data.get("offset_x", 0.0)),
+            offset_y=float(data.get("offset_y", 0.0)),
+            rotation_deg=float(data.get("rotation_deg", 0.0)),
+        )
+
+
+@dataclass
 class LayerNode:
     uuid: str
     node_type: NodeType
@@ -31,12 +59,16 @@ class LayerNode:
     locked: bool = False
     parent: LayerNode | None = field(default=None, repr=False)
     children: list[LayerNode] = field(default_factory=list, repr=False)
+    link_metadata: LinkMetadata | None = field(default=None, repr=False)
 
     def is_group(self) -> bool:
         return self.node_type == "group"
 
     def is_item(self) -> bool:
         return self.node_type == "item"
+
+    def is_linked(self) -> bool:
+        return self.link_metadata is not None
 
 
 class LayerTreeState(QtCore.QObject):
@@ -338,6 +370,32 @@ class LayerTreeState(QtCore.QObject):
         walk(node)
         return out
 
+    def get_linked_groups(self) -> list[LayerNode]:
+        """Return all group nodes that have link_metadata (linked assemblies)."""
+        return [n for n in self._uuid_to_node.values() if n.is_group() and n.is_linked()]
+
+    def create_linked_group(
+        self,
+        name: str,
+        link_metadata: LinkMetadata,
+        parent_group_uuid: str | None = None,
+        index: int = 0,
+        group_uuid: str | None = None,
+        emit: bool = True,
+    ) -> str:
+        """Create a group node with linked assembly metadata."""
+        gid = group_uuid or str(uuid_module.uuid4())
+        if gid in self._uuid_to_node:
+            return gid
+        node = LayerNode(
+            uuid=gid, node_type="group", name=name, link_metadata=link_metadata,
+        )
+        self._uuid_to_node[gid] = node
+        self._insert_node(node, parent_group_uuid, index)
+        if emit:
+            self._emit_changed()
+        return gid
+
     def is_effectively_visible(self, uuid: str) -> bool:
         """Returns True if node AND all ancestors are visible (Photoshop-style)."""
         node = self._uuid_to_node.get(uuid)
@@ -423,6 +481,8 @@ class LayerTreeState(QtCore.QObject):
             d["visible"] = False
         if n.locked:
             d["locked"] = True
+        if n.link_metadata is not None:
+            d["link_metadata"] = n.link_metadata.to_dict()
         return d
 
     @classmethod
@@ -432,6 +492,9 @@ class LayerTreeState(QtCore.QObject):
             return st
 
         def dict_to_node(d: dict, parent_node: LayerNode | None) -> LayerNode:
+            link_meta = None
+            if "link_metadata" in d:
+                link_meta = LinkMetadata.from_dict(d["link_metadata"])
             node = LayerNode(
                 uuid=d["uuid"],
                 node_type=d["type"],
@@ -440,6 +503,7 @@ class LayerTreeState(QtCore.QObject):
                 visible=bool(d.get("visible", True)),
                 locked=bool(d.get("locked", False)),
                 parent=parent_node,
+                link_metadata=link_meta,
             )
             st._uuid_to_node[node.uuid] = node
             for child_d in d.get("children", []) or []:

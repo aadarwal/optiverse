@@ -87,3 +87,35 @@ class UnknownTypeError(SerializationError):
     def __init__(self, type_name: str):
         self.type_name = type_name
         super().__init__(f"Unknown item type: '{type_name}'", context=f"type={type_name}")
+
+
+# =============================================================================
+# Linked Assembly Errors
+# =============================================================================
+
+
+class LinkedAssemblyError(OptiverseError):
+    """Base class for linked assembly errors."""
+
+    pass
+
+
+class LinkedAssemblyLoadError(LinkedAssemblyError):
+    """Raised when a linked assembly source file cannot be loaded."""
+
+    def __init__(self, path: str, reason: str):
+        self.path = path
+        self.reason = reason
+        super().__init__(
+            f"Failed to load linked assembly from '{path}': {reason}", context=path,
+        )
+
+
+class CircularLinkError(LinkedAssemblyError):
+    """Raised when linking would create a circular reference."""
+
+    def __init__(self, path: str):
+        self.path = path
+        super().__init__(
+            f"Circular link detected: '{path}' would create a cycle", context=path,
+        )

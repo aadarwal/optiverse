@@ -119,6 +119,11 @@ class ActionBuilder:
         w.act_import_as_layer.setShortcutContext(QtCore.Qt.ShortcutContext.WindowShortcut)
         w.act_import_as_layer.triggered.connect(w.import_assembly_as_layer)
 
+        w.act_link_assembly = QtGui.QAction("\U0001f517 Link Assembly…", w)
+        w.act_link_assembly.setShortcut(QtGui.QKeySequence("Ctrl+Shift+L"))
+        w.act_link_assembly.setShortcutContext(QtCore.Qt.ShortcutContext.WindowShortcut)
+        w.act_link_assembly.triggered.connect(w.link_assembly)
+
         w.act_export_image = QtGui.QAction("Export Image…", w)
         w.act_export_image.triggered.connect(w.export_image)
 
@@ -437,6 +442,7 @@ class ActionBuilder:
         mFile.addAction(w.act_save_as)
         mFile.addSeparator()
         mFile.addAction(w.act_import_as_layer)
+        mFile.addAction(w.act_link_assembly)
         mFile.addSeparator()
         mFile.addAction(w.act_export_image)
         mFile.addAction(w.act_export_pdf)
@@ -536,6 +542,7 @@ class ActionBuilder:
         w.addAction(w.act_save)
         w.addAction(w.act_save_as)
         w.addAction(w.act_import_as_layer)
+        w.addAction(w.act_link_assembly)
         w.addAction(w.act_quit)
 
         # Edit actions

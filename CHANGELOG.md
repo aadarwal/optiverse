@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Linked Assemblies**: Reference external assembly files instead of copying their content (File > 🔗 Link Assembly… or Ctrl+Shift+L). Linked sub-assemblies appear as locked groups marked with 🔗 in the layer panel, with the following capabilities:
+  - **File watching with user-confirmed updates**: When a linked source file changes on disk, you are notified and can choose to update
+  - **Multiple instances**: The same source file can be linked multiple times with independent position/rotation
+  - **Edit in Context** (SolidWorks-style): Right-click a linked group > "Edit in Context" to unlock items for editing; changes write back to the source file on "Finish Editing"
+  - **Unlink (Embed)**: Convert a linked group to a regular group, breaking the external reference
+  - **Refresh from Source**: Manually reload linked content from the source file
+  - **Offline resilience**: Cached snapshots allow assemblies to open even if source files are temporarily unavailable
+  - **Deterministic UUIDs**: Linked item UUIDs are stable across reloads, preserving undo history and references
+  - **Circular link detection**: Prevents A→B→C→A reference cycles (up to depth 5)
+  - **Portable paths**: Uses `@assembly/` relative paths so linked assemblies work when project directories are moved
 - **Export Selected as Assembly**: Right-click selected items in the layer panel or on the canvas and choose "Export Selected as Assembly…" to save them as a new `.json` assembly file, preserving group hierarchy
 - **Ruler Edit dialog**: Right-click or layer-panel "Edit..." opens a dialog with display name and per-segment length/angle controls
 - **Angle Measure Edit dialog**: Right-click or layer-panel "Edit..." opens a dialog with display name, inner angle, and arm length controls
@@ -29,6 +39,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Snap guide persistence**: Purple dotted magnetic-snap guide lines no longer remain on the canvas after releasing a drag; `clear_snap_guides` is now called after all `setPos` calls in `handle_drag_end`, added to `handle_rotation_end`, and a safety-net clear in `BaseObj.mouseReleaseEvent`
 - **Gaussian beam rendering**: Detect mid-segment beam waist for proper subsampling; use per-segment intensity for brightness
 - **Component resolve order**: User library roots are resolved before built-in paths for `@component` lookups
+- **Linked Assemblies — Edit in Context write-back**: Per-type reverse transforms now use the correct serialization keys for each item type (optical: `x_mm`/`y_mm`/`angle_deg`, rulers: `points`, rectangles: `x`/`y`/`angle_deg`, text: `x`/`y`)
+- **Linked Assemblies — write-back preserves source structure**: Edit-in-context now reads the existing source JSON and merges only the edited item lists, preserving `layer_state`, `path_measures`, nested links, and other top-level keys
+- **Linked Assemblies — unlink only affects owned items**: `unlink_embed` now only unlocks items belonging to the specific linked group instead of corrupting all scene items
+- **Linked Assemblies — serialization path order**: `@assembly/` relative path conversion now happens before `to_dict()` so saved files actually contain portable paths
+- **Linked Assemblies — circular detection**: `_current_assembly_path` is now set when opening or saving, so circular link detection correctly prevents linking back to the main assembly
+- **Linked Assemblies — File > New resets state**: `new_assembly` now resets linked assembly service state and assembly directory to prevent stale path resolution
+- **Linked Assemblies — delete/drag integrity**: Deletion of linked groups is blocked (must unlink first); dragging items into or out of linked groups is rejected; undo snapshots preserve `link_metadata`
+- **Linked Assemblies — path traversal protection**: `resolve_assembly_relative_path` now blocks `..` traversal outside the assembly directory
+- **Linked Assemblies — missing signals**: `unlink_embed` emits `traceRequested`; `finish_edit_in_context` calls `mark_modified()`
+- **Linked Assemblies — stacked dialog guard**: Rapid file-watcher events no longer stack multiple update confirmation dialogs
 
 ## [0.3.3] - 2026-03-28
 
