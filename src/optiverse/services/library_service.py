@@ -96,10 +96,7 @@ class LibraryService(QtCore.QObject):
         self.refresh()
 
     def set_enabled(self, path: Path, enabled: bool) -> None:
-        """Enable or disable a library and refresh.
-
-        The built-in library cannot be disabled.
-        """
+        """Enable or disable a library and refresh."""
         resolved = str(path.resolve())
         disabled = self._read_disabled_paths()
         if enabled:
@@ -146,9 +143,7 @@ class LibraryService(QtCore.QObject):
                 return
             seen.add(key)
             exists = path.exists() and path.is_dir()
-            # Only built-in library is always enabled (cannot be toggled off)
-            always_on = source_type == "builtin"
-            enabled = True if always_on else (key not in disabled)
+            enabled = key not in disabled
             libs.append(
                 LibraryInfo(
                     path=path,
