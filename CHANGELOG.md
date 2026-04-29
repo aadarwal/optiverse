@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Auto-delete empty groups**: Groups are now automatically removed when all their members are deleted. Nested groups cascade correctly, linked assembly groups are excluded, and the cleanup is fully undoable/redoable
+
 ## [0.3.4] - 2026-04-28
 
 ### Added

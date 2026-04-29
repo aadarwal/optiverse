@@ -80,6 +80,98 @@ class AddItemCommand(Command):
             self._executed = False
 
 
+def _collect_empty_ancestor_groups(
+    layer_state: LayerTreeState,
+    parent_uuids: set[str],
+) -> list[tuple[dict[str, Any], str | None, int]]:
+    """Walk up from parent groups and collect snapshots of empty non-linked groups.
+
+    Returns a list of (snapshot_dict, parent_uuid, index) tuples in leaf-to-root
+    order (i.e. innermost empty group first). Each group is removed from the tree
+    as it is collected so that its own parent can then be checked for emptiness.
+    """
+    from .layer_tree_state import LayerNode
+
+    def _node_to_dict(n: LayerNode) -> dict[str, Any]:
+        d: dict[str, Any] = {"uuid": n.uuid, "type": n.node_type}
+        if n.name is not None:
+            d["name"] = n.name
+        if n.collapsed:
+            d["collapsed"] = True
+        if not n.visible:
+            d["visible"] = False
+        if n.locked:
+            d["locked"] = True
+        if n.link_metadata is not None:
+            d["link_metadata"] = n.link_metadata.to_dict()
+        return d
+
+    removed: list[tuple[dict[str, Any], str | None, int]] = []
+    visited: set[str] = set()
+
+    for group_uuid in parent_uuids:
+        current_uuid: str | None = group_uuid
+        while current_uuid and current_uuid not in visited:
+            visited.add(current_uuid)
+            node = layer_state.get_node(current_uuid)
+            if not node or not node.is_group():
+                break
+            if node.is_linked():
+                break
+            if node.children:
+                break
+            # Empty non-linked group — snapshot and remove
+            parent_node = node.parent
+            parent_uid = parent_node.uuid if parent_node else None
+            siblings = parent_node.children if parent_node else layer_state.get_root_nodes()
+            try:
+                idx = siblings.index(node)
+            except ValueError:
+                idx = 0
+            snapshot = _node_to_dict(node)
+            removed.append((snapshot, parent_uid, idx))
+            layer_state.delete_group(current_uuid, emit=False)
+            current_uuid = parent_uid
+
+    return removed
+
+
+def _restore_empty_ancestor_groups(
+    layer_state: LayerTreeState,
+    removed_groups: list[tuple[dict[str, Any], str | None, int]],
+) -> None:
+    """Recreate previously auto-deleted empty groups (in reverse order = root-first)."""
+    from .layer_tree_state import LinkMetadata
+
+    for snapshot, parent_uuid, idx in reversed(removed_groups):
+        gid = snapshot["uuid"]
+        if layer_state.get_node(gid):
+            continue
+        lm_data = snapshot.get("link_metadata")
+        if lm_data:
+            layer_state.create_linked_group(
+                snapshot.get("name") or "Group",
+                link_metadata=LinkMetadata.from_dict(lm_data),
+                parent_group_uuid=parent_uuid,
+                index=idx,
+                group_uuid=gid,
+                emit=False,
+            )
+        else:
+            layer_state.create_group(
+                snapshot.get("name") or "Group",
+                parent_group_uuid=parent_uuid,
+                index=idx,
+                group_uuid=gid,
+                emit=False,
+            )
+        node = layer_state.get_node(gid)
+        if node:
+            node.collapsed = bool(snapshot.get("collapsed", False))
+            node.visible = snapshot.get("visible", True)
+            node.locked = bool(snapshot.get("locked", False))
+
+
 class RemoveItemCommand(Command):
     """Command to remove an item from the scene."""
 
@@ -101,6 +193,7 @@ class RemoveItemCommand(Command):
         self.item = item
         self._layer_state = layer_state
         self._executed = False
+        self._removed_groups: list[tuple[dict[str, Any], str | None, int]] = []
 
         # Store layer-tree context for undo (item parent/group placement)
         self._item_uuid: str | None = getattr(item, "item_uuid", None)
@@ -119,9 +212,14 @@ class RemoveItemCommand(Command):
     def execute(self) -> None:
         """Remove the item from the scene and its group."""
         if not self._executed:
-            # Remove from layer state first (authoritative)
             if self._layer_state and self._item_uuid:
-                self._layer_state.remove_item(self._item_uuid, emit=True)
+                self._layer_state.remove_item(self._item_uuid, emit=False)
+                # Auto-delete empty ancestor groups
+                if self._old_parent_uuid:
+                    self._removed_groups = _collect_empty_ancestor_groups(
+                        self._layer_state, {self._old_parent_uuid}
+                    )
+                self._layer_state.changed.emit()
             self.scene.removeItem(self.item)
             self._executed = True
 
@@ -130,6 +228,10 @@ class RemoveItemCommand(Command):
         if self._executed:
             self.scene.addItem(self.item)
             if self._layer_state and self._item_uuid:
+                # Restore auto-deleted groups first so parent exists
+                if self._removed_groups:
+                    _restore_empty_ancestor_groups(self._layer_state, self._removed_groups)
+                    self._removed_groups = []
                 # Restore item placement
                 if self._old_parent_uuid and self._layer_state.get_node(self._old_parent_uuid):
                     self._layer_state.add_item(
@@ -255,6 +357,7 @@ class RemoveMultipleItemsCommand(Command):
         self.items = items
         self._layer_state = layer_state
         self._executed = False
+        self._removed_groups: list[tuple[dict[str, Any], str | None, int]] = []
 
         # Store per-item tree placement for undo
         self._placements: dict[str, tuple[str | None, int]] = {}
@@ -285,6 +388,14 @@ class RemoveMultipleItemsCommand(Command):
                     item_uuid = getattr(item, "item_uuid", None)
                     if item_uuid:
                         self._layer_state.remove_item(item_uuid, emit=False)
+                # Auto-delete empty ancestor groups
+                parent_uuids = {
+                    p for p, _ in self._placements.values() if p is not None
+                }
+                if parent_uuids:
+                    self._removed_groups = _collect_empty_ancestor_groups(
+                        self._layer_state, parent_uuids
+                    )
                 self._layer_state.changed.emit()
             for item in self.items:
                 self.scene.removeItem(item)
@@ -296,6 +407,10 @@ class RemoveMultipleItemsCommand(Command):
             for item in self.items:
                 self.scene.addItem(item)
             if self._layer_state:
+                # Restore auto-deleted groups first so parents exist
+                if self._removed_groups:
+                    _restore_empty_ancestor_groups(self._layer_state, self._removed_groups)
+                    self._removed_groups = []
                 for item in self.items:
                     item_uuid = getattr(item, "item_uuid", None)
                     if not item_uuid:
