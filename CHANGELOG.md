@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Group relative locking**: Locked items inside an unlocked group now move together as a unit when any locked member is dragged, preserving relative positions. Locking an individual element means "only movable as part of the group, not independently." A locked group still blocks all movement
+- **Rectangle & Text Note locking**: `RectangleItem` and `TextNoteItem` now support the full lock workflow — context-menu toggle, blocked movement/rotation/deletion, forbidden cursor, and lock state persisted in save files
 - **Linked Assemblies**: Reference external assembly files instead of copying their content (File > 🔗 Link Assembly… or Ctrl+Shift+L). Linked sub-assemblies appear as locked groups marked with 🔗 in the layer panel, with the following capabilities:
   - **File watching with user-confirmed updates**: When a linked source file changes on disk, you are notified and can choose to update
   - **Multiple instances**: The same source file can be linked multiple times with independent position/rotation
@@ -31,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - **Dead code cleanup**: Removed ~1,176 lines of unused code left behind from past restructurings — 3 entire modules (`BaseMeasureItem`, `ray_layer`, `beamsplitter_cube_factory`), 7 unused classes, 6 unused functions, and 12 speculative exception subclasses that were never raised
+
+### Changed
+
+- **Locked items remain selectable**: Locked items now stay selectable (clickable) on the canvas; previously locking removed `ItemIsSelectable`, making locked items completely inert. This enables group-relative-lock dragging and aligns with Photoshop/Figma-style lock behavior
 
 ### Fixed
 
