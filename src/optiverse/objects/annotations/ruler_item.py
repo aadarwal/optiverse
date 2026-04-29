@@ -94,6 +94,7 @@ class RulerItem(QtWidgets.QGraphicsObject):
 
         # Lock state (prevents movement, point editing, deletion)
         self._locked = False
+        self._group_drag_override = False
 
         # Interaction state
         self._grab: int | None = None  # index of grabbed point, or None
@@ -109,10 +110,8 @@ class RulerItem(QtWidgets.QGraphicsObject):
         self._sync_lock_to_layer_node(locked)
         if locked:
             self.setCursor(QtCore.Qt.CursorShape.ForbiddenCursor)
-            self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
         else:
             self.setCursor(QtCore.Qt.CursorShape.CrossCursor)
-            self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.update()
 
     def _sync_lock_to_layer_node(self, locked: bool) -> None:
@@ -129,7 +128,7 @@ class RulerItem(QtWidgets.QGraphicsObject):
 
     def itemChange(self, change, value):
         if change == QtWidgets.QGraphicsItem.GraphicsItemChange.ItemPositionChange:
-            if getattr(self, "_locked", False):
+            if getattr(self, "_locked", False) and not getattr(self, "_group_drag_override", False):
                 return self.pos()
         return super().itemChange(change, value)
 
@@ -491,7 +490,8 @@ class RulerItem(QtWidgets.QGraphicsObject):
             return
 
         if self._locked:
-            ev.ignore()
+            # Allow click for selection/group-drag but block point editing
+            super().mousePressEvent(ev)
             return
 
         which = self._nearest_point(ev.pos())

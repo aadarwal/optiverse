@@ -26,7 +26,10 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
         self.setFlags(
             QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable
             | QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+            | QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges
         )
+        self._locked = False
+        self._group_drag_override = False
         self.setDefaultTextColor(QtGui.QColor(10, 10, 40))
         f = self.font()
         f.setPointSizeF(11.0)
@@ -38,8 +41,44 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
         # Apply scale(1, -1) to flip text back to readable orientation
         self.setTransform(QtGui.QTransform.fromScale(1.0, -1.0))
 
+    # ========== Locking ==========
+
+    def is_locked(self) -> bool:
+        return self._locked
+
+    def set_locked(self, locked: bool) -> None:
+        self._locked = locked
+        self._sync_lock_to_layer_node(locked)
+        if locked:
+            self.setCursor(QtCore.Qt.CursorShape.ForbiddenCursor)
+        else:
+            self.setCursor(QtCore.Qt.CursorShape.IBeamCursor)
+        self.update()
+
+    def _sync_lock_to_layer_node(self, locked: bool) -> None:
+        scene = self.scene()
+        if not scene or not scene.views():
+            return
+        window = scene.views()[0].window()
+        layer_state = getattr(window, "layer_state", None)
+        if layer_state is None:
+            return
+        node = layer_state.get_node(self.item_uuid)
+        if node:
+            node.locked = locked
+
+    def itemChange(self, change, value):
+        if change == QtWidgets.QGraphicsItem.GraphicsItemChange.ItemPositionChange:
+            if self._locked and not self._group_drag_override:
+                return self.pos()
+        return super().itemChange(change, value)
+
+    # ========== Events ==========
+
     def mouseDoubleClickEvent(self, ev: QtWidgets.QGraphicsSceneMouseEvent | None):
         if ev is None:
+            return
+        if self._locked:
             return
         self._text_before_edit = self.toPlainText()
         self.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextEditorInteraction)
@@ -66,10 +105,23 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
             self._text_before_edit = None
 
     def contextMenuEvent(self, ev: QtWidgets.QGraphicsSceneContextMenuEvent | None):
-        """Right-click context menu with Edit, Delete, and Z-Order options."""
+        """Right-click context menu with Edit, Delete, Lock, and Z-Order options."""
         m = QtWidgets.QMenu()
         act_edit = m.addAction("Edit")
         act_del = m.addAction("Delete")
+
+        m.addSeparator()
+        act_lock = m.addAction("Lock")
+        if act_lock is not None:
+            act_lock.setCheckable(True)
+            act_lock.setChecked(self._locked)
+
+        if self._locked:
+            if act_edit is not None:
+                act_edit.setEnabled(False)
+            if act_del is not None:
+                act_del.setEnabled(False)
+                act_del.setToolTip("Item is locked")
 
         # Add z-order options
         m.addSeparator()
@@ -85,30 +137,34 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
         if ev is None:
             return
         a = m.exec(ev.screenPos())
-        if a == act_edit:
-            self._text_before_edit = self.toPlainText()
-            self.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextEditorInteraction)
-            cursor = self.textCursor()
-            cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
-            self.setTextCursor(cursor)
-            self.setFocus()
+        if a == act_lock and act_lock is not None:
+            self.set_locked(act_lock.isChecked())
+        elif a == act_edit:
+            if not self._locked:
+                self._text_before_edit = self.toPlainText()
+                self.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextEditorInteraction)
+                cursor = self.textCursor()
+                cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
+                self.setTextCursor(cursor)
+                self.setFocus()
         elif a == act_del:
-            scene = self.scene()
-            if scene is not None:
-                from ...core.undo_commands import RemoveItemCommand
+            if not self._locked:
+                scene = self.scene()
+                if scene is not None:
+                    from ...core.undo_commands import RemoveItemCommand
 
-                layer_state = None
-                undo_stack = None
-                if scene.views():
-                    mw = scene.views()[0].window()
-                    if isinstance(mw, HasLayerState):
-                        layer_state = mw.layer_state
-                    undo_stack = getattr(mw, "undo_stack", None)
-                cmd = RemoveItemCommand(scene, self, layer_state)
-                if undo_stack:
-                    undo_stack.push(cmd)
-                else:
-                    cmd.execute()
+                    layer_state = None
+                    undo_stack = None
+                    if scene.views():
+                        mw = scene.views()[0].window()
+                        if isinstance(mw, HasLayerState):
+                            layer_state = mw.layer_state
+                        undo_stack = getattr(mw, "undo_stack", None)
+                    cmd = RemoveItemCommand(scene, self, layer_state)
+                    if undo_stack:
+                        undo_stack.push(cmd)
+                    else:
+                        cmd.execute()
         else:
             # Handle z-order actions
             action_map = {
@@ -154,7 +210,7 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize text note to dictionary."""
-        return {
+        d: dict[str, Any] = {
             "type": "text",
             "text": self.toPlainText(),
             "x": float(self.scenePos().x()),
@@ -164,6 +220,9 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
             "item_uuid": self.item_uuid,
             "z_value": float(self.zValue()),
         }
+        if self._locked:
+            d["locked"] = True
+        return d
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> TextNoteItem:
@@ -182,5 +241,7 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
         # Restore z-value if present
         if "z_value" in d:
             item.setZValue(float(d["z_value"]))
+        if d.get("locked"):
+            item.set_locked(True)
 
         return item
