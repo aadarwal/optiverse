@@ -357,6 +357,13 @@ class SceneFileManager:
                 # KeyError: missing required fields, ValueError/TypeError: invalid data
                 self.log_service.error(f"Error loading path measure: {e}", "Load")
 
+        # Reconnect autolabel signals (owner.edited → label.follow_owner)
+        from ..objects.generic.component_item import ComponentItem
+
+        for it in self.scene.items():
+            if isinstance(it, ComponentItem):
+                it.connect_autolabel()
+
         # Build ordering input for legacy migration from scene z-values
         items_with_z: list[tuple[float, str]] = []
         for it in self.scene.items():

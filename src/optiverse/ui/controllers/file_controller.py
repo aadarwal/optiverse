@@ -928,6 +928,13 @@ class FileController(QtCore.QObject):
             except (KeyError, ValueError, TypeError) as e:
                 self._log_service.error(f"Error importing rectangle: {e}", "Import")
 
+        # Reconnect autolabel signals for any imported ComponentItems
+        from ...objects.generic.component_item import ComponentItem
+
+        for it in self._scene.items():
+            if isinstance(it, ComponentItem) and it.item_uuid in imported_uuids:
+                it.connect_autolabel()
+
         # Get groups from the file and track which items are grouped
         file_groups = data.get("groups", [])
         grouped_uuids: set[str] = set()

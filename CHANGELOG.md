@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Autolabel**: Right-click a component and toggle "Autolabel" to display its key optical property (e.g. "f = 100 mm" for a lens, "QWP @ 45°" for a waveplate) as a text label. Labels follow their owner when moved, are cascade-deleted when the owner is removed, and are fully undoable. Repositioning a label manually is preserved across subsequent owner moves
+- **Layer panel nesting for autolabels**: Autolabel items appear as collapsible children of their owner component in the layer panel, with dimmed italic styling. They cannot be independently dragged or deleted from the panel
+
 ### Fixed
 
 - **Component Editor shortcuts**: Keyboard shortcuts (Save, Undo, Redo, Copy, Paste) now correctly target the Component Editor when it is the active window instead of routing to the main window. Fixed undo/redo leaking across windows via `ApplicationShortcut`, and enabled the native menu bar on macOS so the editor's menus appear at the screen top when active

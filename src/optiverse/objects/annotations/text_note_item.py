@@ -11,6 +11,11 @@ from ...core.protocols import HasLayerState
 class TextNoteItem(QtWidgets.QGraphicsTextItem):
     """
     Movable, editable text note. Double-click to edit; right-click → Delete/Edit.
+
+    When ``owner_uuid`` is set, this item acts as an **autolabel** — a label
+    that is logically owned by another scene item (typically a ComponentItem).
+    Autolabels follow their owner's position and are cascade-deleted when the
+    owner is removed.
     """
 
     # Type name for layer panel identification
@@ -22,6 +27,12 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
         self.item_uuid = item_uuid if item_uuid else str(uuid.uuid4())
         # Custom display name for layer panel (None = use type_name)
         self.display_name: str | None = None
+
+        # Autolabel owner link — UUID of the parent item this label belongs to.
+        # When set, the label follows the owner and is deleted with it.
+        self.owner_uuid: str | None = None
+        # Local offset from owner's scene position (set when label is created)
+        self._owner_offset: QtCore.QPointF = QtCore.QPointF(0.0, 0.0)
 
         self.setFlags(
             QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsMovable
@@ -40,6 +51,37 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
         # Compensate for the view's Y-axis inversion (view has scale(1, -1))
         # Apply scale(1, -1) to flip text back to readable orientation
         self.setTransform(QtGui.QTransform.fromScale(1.0, -1.0))
+
+    # ========== Autolabel helpers ==========
+
+    @property
+    def is_autolabel(self) -> bool:
+        """True if this text note is an autolabel owned by another item."""
+        return self.owner_uuid is not None
+
+    def follow_owner(self) -> None:
+        """Reposition this label relative to its owner's current scene position.
+
+        Called as a slot connected to the owner's ``edited`` signal.
+        """
+        owner = self._find_owner()
+        if owner is None:
+            return
+        new_pos = owner.scenePos() + self._owner_offset
+        if (new_pos - self.pos()).manhattanLength() > 0.01:
+            self.setPos(new_pos)
+
+    def _find_owner(self) -> QtWidgets.QGraphicsItem | None:
+        """Look up the owner item in the scene by UUID."""
+        if self.owner_uuid is None:
+            return None
+        scene = self.scene()
+        if scene is None:
+            return None
+        for it in scene.items():
+            if getattr(it, "item_uuid", None) == self.owner_uuid:
+                return it
+        return None
 
     # ========== Locking ==========
 
@@ -71,6 +113,11 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
         if change == QtWidgets.QGraphicsItem.GraphicsItemChange.ItemPositionChange:
             if self._locked and not self._group_drag_override:
                 return self.pos()
+        elif change == QtWidgets.QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
+            if self.owner_uuid is not None:
+                owner = self._find_owner()
+                if owner is not None:
+                    self._owner_offset = self.pos() - owner.scenePos()
         return super().itemChange(change, value)
 
     # ========== Events ==========
@@ -191,18 +238,20 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
                                 cmd.execute()
 
     def clone(self, offset_mm: tuple[float, float] = (20.0, 20.0)) -> TextNoteItem:
-        """Create a deep copy of this text note with optional position offset."""
+        """Create a deep copy of this text note with optional position offset.
+
+        Autolabel ownership is intentionally *not* copied — the clone becomes
+        a standalone text note.  The caller (e.g. copy/paste) is responsible
+        for re-linking if desired.
+        """
         from PyQt6.QtCore import QPointF
 
-        # Create new text note with same text
         new_item = TextNoteItem(self.toPlainText())
 
-        # Copy properties
         new_item.setDefaultTextColor(self.defaultTextColor())
         new_item.setFont(self.font())
         new_item.setZValue(self.zValue())
 
-        # Set offset position
         new_pos = self.scenePos() + QPointF(offset_mm[0], offset_mm[1])
         new_item.setPos(new_pos)
 
@@ -222,6 +271,10 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
         }
         if self._locked:
             d["locked"] = True
+        if self.owner_uuid is not None:
+            d["owner_uuid"] = self.owner_uuid
+            d["owner_offset_x"] = float(self._owner_offset.x())
+            d["owner_offset_y"] = float(self._owner_offset.y())
         return d
 
     @staticmethod
@@ -243,5 +296,14 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
             item.setZValue(float(d["z_value"]))
         if d.get("locked"):
             item.set_locked(True)
+
+        # Restore autolabel link
+        owner_uuid = d.get("owner_uuid")
+        if owner_uuid:
+            item.owner_uuid = owner_uuid
+            item._owner_offset = QtCore.QPointF(
+                float(d.get("owner_offset_x", 0.0)),
+                float(d.get("owner_offset_y", 0.0)),
+            )
 
         return item

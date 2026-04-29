@@ -539,6 +539,13 @@ class ComponentItem(BaseObj):
         m.addSeparator()
         act_apply_all = m.addAction("Apply Properties to All\u2026")
 
+        # Autolabel toggle
+        has_label = self._find_autolabel() is not None
+        act_autolabel = m.addAction("Autolabel")
+        if act_autolabel is not None:
+            act_autolabel.setCheckable(True)
+            act_autolabel.setChecked(has_label)
+
         act_delete = m.addAction("Delete")
 
         m.addSeparator()
@@ -570,6 +577,8 @@ class ComponentItem(BaseObj):
             self._open_in_component_editor()
         elif a == act_apply_all:
             self._apply_properties_to_all()
+        elif a == act_autolabel:
+            self._toggle_autolabel()
         elif a == act_lock and act_lock is not None:
             new_locked = act_lock.isChecked()
             scene = self.scene()
@@ -607,6 +616,151 @@ class ComponentItem(BaseObj):
         if not hasattr(main_window, "apply_component_properties_to_all"):
             return
         main_window.apply_component_properties_to_all(self)
+
+    # ------------------------------------------------------------------
+    # Autolabel
+    # ------------------------------------------------------------------
+
+    def get_autolabel_text(self) -> str:
+        """Build a concise label string from this component's optical interfaces."""
+        if not self.params.interfaces:
+            return self.params.name or "Component"
+
+        parts: list[str] = []
+        for iface in self.params.interfaces:
+            et = iface.element_type
+            if et == "lens":
+                parts.append(f"f = {iface.efl_mm:g} mm")
+            elif et == "mirror":
+                parts.append("Mirror")
+            elif et == "beam_splitter":
+                label = "PBS" if iface.is_polarizing else "BS"
+                parts.append(f"{label} {iface.split_T:g}/{iface.split_R:g}")
+            elif et == "dichroic":
+                parts.append(f"\u03bbc = {iface.cutoff_wavelength_nm:g} nm")
+            elif et == "polarizing_interface":
+                sub = iface.polarizer_subtype
+                if sub == "waveplate":
+                    if iface.phase_shift_deg == 90.0:
+                        parts.append(f"QWP @ {iface.fast_axis_deg:g}\u00b0")
+                    elif iface.phase_shift_deg == 180.0:
+                        parts.append(f"HWP @ {iface.fast_axis_deg:g}\u00b0")
+                    else:
+                        parts.append(
+                            f"WP {iface.phase_shift_deg:g}\u00b0 @ {iface.fast_axis_deg:g}\u00b0"
+                        )
+                elif sub == "linear_polarizer":
+                    parts.append(f"Pol @ {iface.transmission_axis_deg:g}\u00b0")
+                elif sub == "faraday_rotator":
+                    parts.append(f"Faraday {iface.rotation_angle_deg:g}\u00b0")
+                else:
+                    parts.append("Polarizer")
+            elif et == "refractive_interface":
+                parts.append(f"n = {iface.n1:g} \u2192 {iface.n2:g}")
+            elif et == "beam_block":
+                parts.append("Block")
+        return ", ".join(parts) if parts else (self.params.name or "Component")
+
+    def _find_autolabel(self):
+        """Return the existing autolabel TextNoteItem for this component, or None."""
+        from ..annotations.text_note_item import TextNoteItem
+
+        scene = self.scene()
+        if scene is None:
+            return None
+        for it in scene.items():
+            if isinstance(it, TextNoteItem) and it.owner_uuid == self.item_uuid:
+                return it
+        return None
+
+    def _label_offset(self) -> QtCore.QPointF:
+        """Compute a default offset to place the label above the element."""
+        br = self.boundingRect()
+        above_y = br.top() + br.height() / 2 + 10.0
+        return QtCore.QPointF(0.0, above_y)
+
+    def create_autolabel(self):
+        """Create an autolabel TextNoteItem and add it to the scene."""
+        from ..annotations.text_note_item import TextNoteItem
+
+        scene = self.scene()
+        if scene is None:
+            return None
+
+        if self._find_autolabel() is not None:
+            return None
+
+        text = self.get_autolabel_text()
+        label = TextNoteItem(text)
+        label.owner_uuid = self.item_uuid
+        label._owner_offset = self._label_offset()
+
+        label.setPos(self.scenePos() + label._owner_offset)
+
+        f = label.font()
+        f.setPointSizeF(9.0)
+        label.setFont(f)
+        label.setDefaultTextColor(QtGui.QColor(80, 80, 80))
+
+        self.edited.connect(label.follow_owner)
+
+        return label
+
+    def remove_autolabel(self):
+        """Remove the autolabel from the scene (if any) and return it."""
+        label = self._find_autolabel()
+        if label is None:
+            return None
+        try:
+            self.edited.disconnect(label.follow_owner)
+        except (TypeError, RuntimeError):
+            pass
+        return label
+
+    def _toggle_autolabel(self):
+        """Toggle the autolabel on/off via undo stack."""
+        from ...core.undo_commands import AddItemCommand, RemoveItemCommand
+
+        scene = self.scene()
+        if scene is None:
+            return
+
+        undo_stack = None
+        layer_state = None
+        if scene.views():
+            mw = scene.views()[0].window()
+            undo_stack = getattr(mw, "undo_stack", None)
+            layer_state = getattr(mw, "layer_state", None)
+
+        existing = self._find_autolabel()
+        if existing is not None:
+            # Remove existing autolabel
+            try:
+                self.edited.disconnect(existing.follow_owner)
+            except (TypeError, RuntimeError):
+                pass
+            cmd = RemoveItemCommand(scene, existing, layer_state)
+            if undo_stack:
+                undo_stack.push(cmd)
+            else:
+                cmd.execute()
+        else:
+            # Create new autolabel
+            label = self.create_autolabel()
+            if label is not None:
+                cmd = AddItemCommand(
+                    scene, label, layer_state, parent_uuid=str(self.item_uuid)
+                )
+                if undo_stack:
+                    undo_stack.push(cmd)
+                else:
+                    cmd.execute()
+
+    def connect_autolabel(self) -> None:
+        """Reconnect the edited signal to an existing autolabel (used after load)."""
+        label = self._find_autolabel()
+        if label is not None:
+            self.edited.connect(label.follow_owner)
 
     # ------------------------------------------------------------------
     # Serialization

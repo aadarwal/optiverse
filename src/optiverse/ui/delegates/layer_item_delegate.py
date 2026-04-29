@@ -9,6 +9,7 @@ from __future__ import annotations
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from ..models.layer_item_model import (
+    IS_AUTOLABEL_ROLE,
     IS_GROUP_ROLE,
     IS_LINKED_ROLE,
     LOCKED_ROLE,
@@ -52,9 +53,14 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
 
             rect = opt.rect.adjusted(LAYER_ITEM_MARGIN, 0, -LAYER_ITEM_MARGIN, 0)
             is_group = bool(index.data(IS_GROUP_ROLE))
+            is_autolabel = bool(index.data(IS_AUTOLABEL_ROLE))
 
             # Icon rects
             vis_rect, lock_rect, folder_rect, text_rect = self._layout_rects(rect, is_group)
+
+            # Dimmed opacity for autolabel rows
+            if is_autolabel and not is_selected:
+                painter.setOpacity(0.55)
 
             # Determine icon states
             visible = bool(index.data(VISIBLE_ROLE))
@@ -72,8 +78,12 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
                     painter, folder_rect, folder_icon, opt.palette, text_color_role
                 )
 
-            # Draw label
+            # Draw label (italic for autolabels)
             label = str(index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")
+            if is_autolabel:
+                font = painter.font()
+                font.setItalic(True)
+                painter.setFont(font)
             painter.setPen(opt.palette.color(text_color_role))
             painter.drawText(
                 text_rect,

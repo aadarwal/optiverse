@@ -99,8 +99,8 @@ class LayerPanel(QtWidgets.QWidget):
         self._tree.deleteKeyPressed.connect(self._delete_selected)
         self._tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self._tree.customContextMenuRequested.connect(self._show_context_menu)
-        self._tree.expanded.connect(lambda idx: self._set_group_collapsed(idx, False))
-        self._tree.collapsed.connect(lambda idx: self._set_group_collapsed(idx, True))
+        self._tree.expanded.connect(lambda idx: self._set_node_collapsed(idx, False))
+        self._tree.collapsed.connect(lambda idx: self._set_node_collapsed(idx, True))
         layout.addWidget(self._tree, 1)
 
         # Z-order buttons
@@ -183,22 +183,28 @@ class LayerPanel(QtWidgets.QWidget):
             idx = self._model.index(r, 0, parent)
             if not idx.isValid():
                 continue
-            if bool(idx.data(IS_GROUP_ROLE)):
-                group_uuid = cast(str, idx.data(GROUP_UUID_ROLE))
+            row_count = self._model.rowCount(idx)
+            if row_count > 0:
+                uuid = None
+                if bool(idx.data(IS_GROUP_ROLE)):
+                    uuid = cast(str, idx.data(GROUP_UUID_ROLE))
+                else:
+                    uuid = cast(str, idx.data(ITEM_UUID_ROLE))
                 node = (
-                    self._layer_state.get_node(group_uuid)
-                    if group_uuid and self._layer_state
+                    self._layer_state.get_node(uuid)
+                    if uuid and self._layer_state
                     else None
                 )
                 collapsed = bool(getattr(node, "collapsed", False)) if node else False
                 self._tree.setExpanded(idx, not collapsed)
-            self._walk_and_apply_collapsed(idx)
+                self._walk_and_apply_collapsed(idx)
 
-    def _set_group_collapsed(self, idx: QtCore.QModelIndex, collapsed: bool) -> None:
-        if not self._layer_state or not idx.isValid() or not bool(idx.data(IS_GROUP_ROLE)):
+    def _set_node_collapsed(self, idx: QtCore.QModelIndex, collapsed: bool) -> None:
+        if not self._layer_state or not idx.isValid():
             return
-        if group_uuid := idx.data(GROUP_UUID_ROLE):
-            self._layer_state.set_group_collapsed(str(group_uuid), collapsed, emit=True)
+        node_uuid = idx.data(GROUP_UUID_ROLE) if bool(idx.data(IS_GROUP_ROLE)) else idx.data(ITEM_UUID_ROLE)
+        if node_uuid:
+            self._layer_state.set_node_collapsed(str(node_uuid), collapsed, emit=True)
 
     # --- Z-Order ---
 
@@ -383,11 +389,15 @@ class LayerPanel(QtWidgets.QWidget):
         if linked_groups:
             self._prompt_linked_delete(linked_groups)
 
-        # Skip items that belong to a linked group
+        # Skip items that belong to a linked group or are autolabel children
         if self._layer_state:
             for uid in list(item_uuids):
                 node = self._layer_state.get_node(uid)
-                if node and node.parent and node.parent.is_linked():
+                if not node:
+                    continue
+                if node.parent and node.parent.is_linked():
+                    item_uuids.discard(uid)
+                elif node.parent and node.parent.is_item():
                     item_uuids.discard(uid)
 
         for uid in item_uuids:
