@@ -200,10 +200,20 @@ class FileController(QtCore.QObject):
     def save_assembly_as(self):
         """Save As: always prompt for new file location."""
         with ErrorContext("while saving assembly", suppress=True):
+            default_dir = (
+                str(Path(self.saved_file_path).parent)
+                if self.saved_file_path
+                else ""
+            )
             path, _ = QtWidgets.QFileDialog.getSaveFileName(
-                self._parent, "Save Assembly As", "", "Optics Assembly (*.json)"
+                self._parent,
+                "Save Assembly As",
+                default_dir,
+                "Optics Assembly (*.json)",
             )
             if path:
+                if not path.lower().endswith(".json"):
+                    path += ".json"
                 self.file_manager.save_to_file(path)
                 self._add_recent_file(path)
 
@@ -223,13 +233,20 @@ class FileController(QtCore.QObject):
             return
 
         with ErrorContext("while exporting selected items", suppress=True):
+            default_dir = (
+                str(Path(self.saved_file_path).parent)
+                if self.saved_file_path
+                else ""
+            )
             path, _ = QtWidgets.QFileDialog.getSaveFileName(
                 self._parent,
                 "Export Selected as Assembly",
-                "",
+                default_dir,
                 "Optics Assembly (*.json)",
             )
             if path:
+                if not path.lower().endswith(".json"):
+                    path += ".json"
                 data = self.file_manager.serialize_selected(uuids)
                 with open(path, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2)

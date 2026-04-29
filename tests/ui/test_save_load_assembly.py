@@ -358,6 +358,71 @@ class TestSaveLoadAssembly:
         # Scene should be unchanged
         assert len(main_window.scene.items()) == initial_count
 
+    def test_save_appends_json_extension(self, main_window, tmp_path, qtbot):
+        """Test that .json is appended when user omits the extension."""
+        source = SourceItem(SourceParams(x_mm=10.0, y_mm=20.0))
+        main_window.scene.addItem(source)
+
+        # Return a path without .json extension from the dialog
+        save_path = tmp_path / "my_assembly"
+        import unittest.mock as mock
+
+        with mock.patch.object(
+            QtWidgets.QFileDialog, "getSaveFileName", return_value=(str(save_path), "")
+        ):
+            main_window.save_assembly()
+
+        # File should be saved with .json appended
+        expected_path = tmp_path / "my_assembly.json"
+        assert expected_path.exists()
+        assert not save_path.exists()
+
+        # Verify the file is valid JSON
+        with open(expected_path) as f:
+            data = json.load(f)
+        assert "sources" in data
+
+    def test_save_does_not_double_json_extension(self, main_window, tmp_path, qtbot):
+        """Test that .json is not appended if already present."""
+        source = SourceItem(SourceParams(x_mm=10.0, y_mm=20.0))
+        main_window.scene.addItem(source)
+
+        save_path = tmp_path / "my_assembly.json"
+        import unittest.mock as mock
+
+        with mock.patch.object(
+            QtWidgets.QFileDialog, "getSaveFileName", return_value=(str(save_path), "")
+        ):
+            main_window.save_assembly()
+
+        assert save_path.exists()
+        # Should NOT create a .json.json file
+        assert not (tmp_path / "my_assembly.json.json").exists()
+
+    def test_save_as_defaults_to_saved_file_directory(self, main_window, tmp_path, qtbot):
+        """Test that Save As dialog opens in the directory of the last saved file."""
+        import unittest.mock as mock
+
+        # First save to establish a saved_file_path
+        first_path = tmp_path / "subdir" / "first.json"
+        first_path.parent.mkdir(parents=True, exist_ok=True)
+        source = SourceItem(SourceParams())
+        main_window.scene.addItem(source)
+
+        with mock.patch.object(
+            QtWidgets.QFileDialog, "getSaveFileName", return_value=(str(first_path), "")
+        ) as mock_dialog:
+            main_window.save_assembly()
+
+        # Now do Save As again -- dialog should default to the subdir
+        with mock.patch.object(
+            QtWidgets.QFileDialog, "getSaveFileName", return_value=("", "")
+        ) as mock_dialog:
+            main_window.file_controller.save_assembly_as()
+
+        call_args = mock_dialog.call_args[0]
+        assert str(tmp_path / "subdir") == call_args[2]
+
     def test_backward_compatibility_missing_fields(self, main_window, tmp_path, qtbot):
         """Test that loading old files without new fields works (backward compatibility)."""
         # Create a JSON file without new fields (simulating old format)

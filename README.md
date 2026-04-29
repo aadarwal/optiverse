@@ -140,9 +140,13 @@ python -m optiverse.app.main
 | Action | Windows/Linux | macOS |
 |--------|---------------|-------|
 | **File** | | |
+| New Assembly | `Ctrl+N` | `⌘N` |
 | Open Assembly | `Ctrl+O` | `⌘O` |
+| Close Assembly | `Ctrl+W` | `⌘W` |
 | Save | `Ctrl+S` | `⌘S` |
 | Save As | `Ctrl+Shift+S` | `⌘⇧S` |
+| Import Assembly as Layer | `Ctrl+Shift+I` | `⌘⇧I` |
+| Add Assembly as Link | `Ctrl+Shift+L` | `⌘⇧L` |
 | **Edit** | | |
 | Undo | `Ctrl+Z` | `⌘Z` |
 | Redo | `Ctrl+Y` | `⌘Y` |
@@ -157,12 +161,30 @@ python -m optiverse.app.main
 | Recenter View | `Ctrl+Shift+0` | `⌘⇧0` |
 | **Tools** | | |
 | Retrace Rays | `Space` | `Space` |
+| Ruler Tool | `R` | `R` |
 | Component Editor | `Ctrl+E` | `⌘E` |
 | Show Log Window | `Ctrl+L` | `⌘L` |
 | **Collaboration** | | |
 | Connect/Host Session | `Ctrl+Shift+C` | `⌘⇧C` |
 | **General** | | |
 | Cancel Current Tool | `Esc` | `Esc` |
+
+### Mouse Interactions
+
+| Action | Windows/Linux | macOS |
+|--------|---------------|-------|
+| **Selection** | | |
+| Select item | Click | Click |
+| Add/remove from selection | `Shift` + click | `⇧` + click |
+| **Movement** | | |
+| Move selected items | Drag | Drag |
+| **Rotation** | | |
+| Rotate selected item(s) | `Ctrl` + drag | `⌘` + drag |
+| Rotate with 45° snap | `Ctrl` + `Shift` + drag | `⌘` + `⇧` + drag |
+| Rotate in steps (scroll) | `Ctrl` + scroll wheel | `⌘` + scroll wheel |
+| **View Navigation** | | |
+| Pan canvas | Middle mouse drag | Middle mouse drag / Two-finger scroll |
+| Zoom | `Ctrl` + scroll | `⌘` + scroll / Pinch gesture |
 
 ### Component Editor
 

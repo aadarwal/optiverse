@@ -139,13 +139,13 @@ class ActionBuilder:
         # --- Edit Actions ---
         w.act_undo = QtGui.QAction("Undo", w)
         w.act_undo.setShortcut(QtGui.QKeySequence("Ctrl+Z"))
-        w.act_undo.setShortcutContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
+        w.act_undo.setShortcutContext(QtCore.Qt.ShortcutContext.WindowShortcut)
         w.act_undo.triggered.connect(w._do_undo)
         w.act_undo.setEnabled(False)
 
         w.act_redo = QtGui.QAction("Redo", w)
         w.act_redo.setShortcut(QtGui.QKeySequence("Ctrl+Y"))
-        w.act_redo.setShortcutContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
+        w.act_redo.setShortcutContext(QtCore.Qt.ShortcutContext.WindowShortcut)
         w.act_redo.triggered.connect(w._do_redo)
         w.act_redo.setEnabled(False)
 
