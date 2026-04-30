@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **Locked items remain selectable**: Locked items now stay selectable (clickable) on the canvas; previously locking removed `ItemIsSelectable`, making locked items completely inert. This enables group-relative-lock dragging and aligns with Photoshop/Figma-style lock behavior
+- **Layer panel icons**: Image-based layer-type icons were removed in favor of programmatically drawn shapes so the layer panel renders consistently across environments (including WSL and mixed-DPI setups)
 
 ### Fixed
 
