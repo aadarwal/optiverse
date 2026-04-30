@@ -9,14 +9,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from PyQt6 import QtCore, QtWidgets
+from PyQt6 import QtCore, QtGui, QtWidgets
 
 from ...core.layer_tree_state import LayerTreeState
 from ...core.undo_commands import CreateGroupCommand, DeleteGroupCommand
 from ..delegates import LayerItemDelegate
+from ..delegates.layer_icons import make_folder_add_icon, make_folder_remove_icon
 from ..models import LayerItemModel
 from ..views.keyboard_layer_tree_view import KeyboardLayerTreeView
-from .constants import Icons
 
 if TYPE_CHECKING:
     from ...core.undo_stack import UndoStack
@@ -66,12 +66,15 @@ class LayerPanel(QtWidgets.QWidget):
         h_layout.addWidget(title)
         h_layout.addStretch()
 
+        palette = self.palette()
+        text_role = QtGui.QPalette.ColorRole.WindowText
+        icon_size = 20
         for icon, tooltip, callback in [
-            (Icons.FOLDER_ADD, "Group selected items", self._group_selected),
-            (Icons.FOLDER_REMOVE, "Ungroup selected group", self._ungroup_selected),
+            (make_folder_add_icon(icon_size, palette, text_role), "Group selected items", self._group_selected),
+            (make_folder_remove_icon(icon_size, palette, text_role), "Ungroup selected group", self._ungroup_selected),
         ]:
             btn = QtWidgets.QToolButton()
-            btn.setText(icon)
+            btn.setIcon(icon)
             btn.setToolTip(tooltip)
             btn.clicked.connect(callback)
             h_layout.addWidget(btn)

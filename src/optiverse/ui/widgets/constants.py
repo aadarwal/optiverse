@@ -22,15 +22,7 @@ RULER_LABEL_HEIGHT: int = 12
 
 
 class Icons:
-    """Emoji icons used in the UI."""
-    VISIBLE: str = "👁"
-    HIDDEN: str = "○"
-    LOCKED: str = "🔒"
-    UNLOCKED: str = "🔓"
-    FOLDER: str = "📁"
-    FOLDER_ADD: str = "📁+"
-    FOLDER_REMOVE: str = "📁-"
-    LINK: str = "🔗"
+    """Color constants for UI icons."""
     N1_COLOR: str = "#FFD700"  # Gold
     N2_COLOR: str = "#9370DB"  # Purple
 
