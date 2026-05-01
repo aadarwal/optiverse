@@ -6,6 +6,7 @@ from typing import Any
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from ...core.protocols import HasLayerState
+from ...ui.theme_manager import is_dark_mode
 
 
 class TextNoteItem(QtWidgets.QGraphicsTextItem):
@@ -41,7 +42,9 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
         )
         self._locked = False
         self._group_drag_override = False
-        self.setDefaultTextColor(QtGui.QColor(10, 10, 40))
+        self.setDefaultTextColor(
+            QtGui.QColor("white") if is_dark_mode() else QtGui.QColor("black")
+        )
         f = self.font()
         f.setPointSizeF(11.0)
         self.setFont(f)
@@ -129,12 +132,28 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
             return
         self._text_before_edit = self.toPlainText()
         self.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.TextEditorInteraction)
-        super().mouseDoubleClickEvent(ev)
+        self.setFocus()
+        cursor = self.textCursor()
+        cursor.select(QtGui.QTextCursor.SelectionType.Document)
+        self.setTextCursor(cursor)
+
+    def keyPressEvent(self, ev: QtGui.QKeyEvent | None):
+        if ev is None:
+            return
+        if ev.key() == QtCore.Qt.Key.Key_Escape:
+            self.clearFocus()
+            self.setSelected(False)
+            ev.accept()
+            return
+        super().keyPressEvent(ev)
 
     def focusOutEvent(self, ev: QtGui.QFocusEvent | None):
         if ev is None:
             return
         super().focusOutEvent(ev)
+        cursor = self.textCursor()
+        cursor.clearSelection()
+        self.setTextCursor(cursor)
         self.setTextInteractionFlags(QtCore.Qt.TextInteractionFlag.NoTextInteraction)
         old_text = getattr(self, "_text_before_edit", None)
         if old_text is not None:
@@ -282,7 +301,11 @@ class TextNoteItem(QtWidgets.QGraphicsTextItem):
         """Deserialize text note from dictionary."""
         item_uuid = d.get("item_uuid")
         item = TextNoteItem(d.get("text", "Text"), item_uuid)
-        col = QtGui.QColor(d.get("color", "#0A0A28"))
+        raw_color = d.get("color", "")
+        if raw_color and raw_color.lower() != "#0a0a28":
+            col = QtGui.QColor(raw_color)
+        else:
+            col = QtGui.QColor("white") if is_dark_mode() else QtGui.QColor("black")
         item.setDefaultTextColor(col)
         f = item.font()
         ps = d.get("point_size")

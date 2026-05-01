@@ -673,11 +673,12 @@ class ComponentItem(BaseObj):
                 return it
         return None
 
-    def _label_offset(self) -> QtCore.QPointF:
-        """Compute a default offset to place the label above the element."""
+    def _label_offset(self, label_width: float = 0.0) -> QtCore.QPointF:
+        """Compute a default offset to place the label centered above the element."""
         br = self.boundingRect()
-        above_y = br.top() + br.height() / 2 + 10.0
-        return QtCore.QPointF(0.0, above_y)
+        above_y = br.bottom() + 10.0
+        center_x = br.center().x() - label_width / 2.0
+        return QtCore.QPointF(center_x, above_y)
 
     def create_autolabel(self):
         """Create an autolabel TextNoteItem and add it to the scene."""
@@ -693,14 +694,19 @@ class ComponentItem(BaseObj):
         text = self.get_autolabel_text()
         label = TextNoteItem(text)
         label.owner_uuid = self.item_uuid
-        label._owner_offset = self._label_offset()
-
-        label.setPos(self.scenePos() + label._owner_offset)
 
         f = label.font()
         f.setPointSizeF(9.0)
         label.setFont(f)
-        label.setDefaultTextColor(QtGui.QColor(80, 80, 80))
+        from ...ui.theme_manager import is_dark_mode
+
+        label.setDefaultTextColor(
+            QtGui.QColor("white") if is_dark_mode() else QtGui.QColor("black")
+        )
+
+        label_width = label.boundingRect().width()
+        label._owner_offset = self._label_offset(label_width)
+        label.setPos(self.scenePos() + label._owner_offset)
 
         self.edited.connect(label.follow_owner)
 
