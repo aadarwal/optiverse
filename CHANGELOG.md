@@ -5,23 +5,7 @@ All notable changes to Optiverse will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Added
-
-- **Autolabel**: Right-click a component and toggle "Autolabel" to display its key optical property (e.g. "f = 100 mm" for a lens, "QWP @ 45°" for a waveplate) as a text label. Labels follow their owner when moved, are cascade-deleted when the owner is removed, and are fully undoable. Repositioning a label manually is preserved across subsequent owner moves
-- **Layer panel nesting for autolabels**: Autolabel items appear as collapsible children of their owner component in the layer panel, with dimmed italic styling. They cannot be independently dragged or deleted from the panel
-
-### Fixed
-
-- **Component Editor shortcuts**: Keyboard shortcuts (Save, Undo, Redo, Copy, Paste) now correctly target the Component Editor when it is the active window instead of routing to the main window. Fixed undo/redo leaking across windows via `ApplicationShortcut`, and enabled the native menu bar on macOS so the editor's menus appear at the screen top when active
-- **Save dialog shows previous files**: The Save As dialog now opens in the directory of the last saved file and automatically appends `.json` when the user omits the extension, ensuring previously saved assemblies are visible in the file browser
-- **Auto-delete empty groups**: Groups are now automatically removed when all their members are deleted. Nested groups cascade correctly, linked assembly groups are excluded, and the cleanup is fully undoable/redoable
-- **Text note color**: Text notes now use theme-aware colors (white in dark mode, black in light mode) instead of hardcoded dark blue that was difficult to read on dark backgrounds
-- **Text note editing UX**: Double-click reliably enters edit mode with all text selected; Escape exits edit mode and deselects; text selection highlighting is properly cleared when exiting edit mode; clicking elsewhere while editing correctly exits edit mode
-- **Autolabel positioning**: Labels now appear centered horizontally above the component sprite instead of overlapping it
-
-## [0.3.4] - 2026-04-28
+## [0.3.4] - 2026-04-30
 
 ### Added
 
@@ -43,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Ruler / Angle Measure locking**: Lock toggle in context menu and layer panel; blocks movement, point dragging, editing, and deletion; persisted in save files
 - **Multi-element lock**: Locking an item via context menu now applies to the entire selection
 - **Marimo demo**: Interactive ray-tracing demo notebook under `examples/`
+- **Autolabel**: Right-click a component and toggle "Autolabel" to display its key optical property (e.g. "f = 100 mm" for a lens, "QWP @ 45°" for a waveplate) as a text label. Labels follow their owner when moved, are cascade-deleted when the owner is removed, and are fully undoable. Repositioning a label manually is preserved across subsequent owner moves
+- **Layer panel nesting for autolabels**: Autolabel items appear as collapsible children of their owner component in the layer panel, with dimmed italic styling. They cannot be independently dragged or deleted from the panel
 
 ### Removed
 
@@ -60,23 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Snap guide persistence**: Purple dotted magnetic-snap guide lines no longer remain on the canvas after releasing a drag; `clear_snap_guides` is now called after all `setPos` calls in `handle_drag_end`, added to `handle_rotation_end`, and a safety-net clear in `BaseObj.mouseReleaseEvent`
 - **Gaussian beam rendering**: Detect mid-segment beam waist for proper subsampling; use per-segment intensity for brightness
 - **Component resolve order**: User library roots are resolved before built-in paths for `@component` lookups
-- **Linked Assemblies — Edit in Context write-back**: Per-type reverse transforms now use the correct serialization keys for each item type (optical: `x_mm`/`y_mm`/`angle_deg`, rulers: `points`, rectangles: `x`/`y`/`angle_deg`, text: `x`/`y`)
-- **Linked Assemblies — write-back preserves source structure**: Edit-in-context now reads the existing source JSON and merges only the edited item lists, preserving `layer_state`, `path_measures`, nested links, and other top-level keys
-- **Linked Assemblies — unlink only affects owned items**: `unlink_embed` now only unlocks items belonging to the specific linked group instead of corrupting all scene items
-- **Linked Assemblies — serialization path order**: `@assembly/` relative path conversion now happens before `to_dict()` so saved files actually contain portable paths
-- **Linked Assemblies — circular detection**: `_current_assembly_path` is now set when opening or saving, so circular link detection correctly prevents linking back to the main assembly
-- **Linked Assemblies — File > New resets state**: `new_assembly` now resets linked assembly service state and assembly directory to prevent stale path resolution
-- **Linked Assemblies — delete/drag integrity**: Deletion of linked groups is blocked (must unlink first); dragging items into or out of linked groups is rejected; undo snapshots preserve `link_metadata`
-- **Linked Assemblies — path traversal protection**: `resolve_assembly_relative_path` now blocks `..` traversal outside the assembly directory
-- **Linked Assemblies — missing signals**: `unlink_embed` emits `traceRequested`; `finish_edit_in_context` calls `mark_modified()`
-- **Linked Assemblies — stacked dialog guard**: Rapid file-watcher events no longer stack multiple update confirmation dialogs
-- **Linked Assemblies — menu label**: Renamed "Link Assembly" to "Add Assembly as Link" for clarity
-- **Linked Assemblies — double link emoji**: Removed duplicate 🔗 prefix from linked group names in the layer panel
-- **Linked Assemblies — locking**: Linked items now use Qt-level flag locking (selectable/movable) separate from the user-facing padlock, matching SolidWorks-style behavior where the layer model skips locked-state propagation for non-editing linked groups
-- **Linked Assemblies — Edit in Context raytracing**: Source params are now synced after applying instance offsets during materialization, fixing stale ray origins after "Finish Editing" when the linked group had been repositioned
-- **Linked Assemblies — UUID stability**: Write-back now restores original source UUIDs instead of leaking instance UUIDs into the source file, preventing UUID drift across edit cycles
-- **Linked Assemblies — group drag**: Clicking any item in a non-editing linked group now drags the entire assembly as a rigid body (SolidWorks-style); individual component movement is blocked; LinkMetadata offsets are updated and undoable
-- **Linked Assemblies — delete workflow**: Deleting a linked assembly now offers "Unlink", "Delete", and "Cancel" instead of requiring a separate unlink step first; works from both the context menu and Backspace/Delete key
+- **Component Editor shortcuts**: Keyboard shortcuts (Save, Undo, Redo, Copy, Paste) now correctly target the Component Editor when it is the active window instead of routing to the main window. Fixed undo/redo leaking across windows via `ApplicationShortcut`, and enabled the native menu bar on macOS so the editor's menus appear at the screen top when active
+- **Save dialog shows previous files**: The Save As dialog now opens in the directory of the last saved file and automatically appends `.json` when the user omits the extension, ensuring previously saved assemblies are visible in the file browser
+- **Auto-delete empty groups**: Groups are now automatically removed when all their members are deleted. Nested groups cascade correctly, linked assembly groups are excluded, and the cleanup is fully undoable/redoable
+- **Text note color**: Text notes now use theme-aware colors (white in dark mode, black in light mode) instead of hardcoded dark blue that was difficult to read on dark backgrounds
+- **Text note editing UX**: Double-click reliably enters edit mode with all text selected; Escape exits edit mode and deselects; text selection highlighting is properly cleared when exiting edit mode; clicking elsewhere while editing correctly exits edit mode
+
 
 ## [0.3.3] - 2026-03-28
 
