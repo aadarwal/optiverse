@@ -303,14 +303,16 @@ def make_folder_add_icon(
     painter = QtGui.QPainter(pixmap)
     painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
 
-    folder_rect = QtCore.QRect(0, 0, size, size)
+    # Draw folder in the left portion, leaving room for badge
+    folder_size = int(size * 0.85)
+    folder_rect = QtCore.QRect(0, size - folder_size, folder_size, folder_size)
     draw_folder_icon(painter, folder_rect, palette, color_role)
 
     color = _icon_color(palette, color_role)
-    painter.setPen(_make_pen(color, 1.8))
-    bx = size * 1.05
+    painter.setPen(_make_pen(color, 1.6))
+    bx = folder_size + (pw - folder_size) / 2.0
     by = size * 0.5
-    arm = size * 0.22
+    arm = size * 0.2
     painter.drawLine(QtCore.QPointF(bx, by - arm), QtCore.QPointF(bx, by + arm))
     painter.drawLine(QtCore.QPointF(bx - arm, by), QtCore.QPointF(bx + arm, by))
 
@@ -330,14 +332,16 @@ def make_folder_remove_icon(
     painter = QtGui.QPainter(pixmap)
     painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
 
-    folder_rect = QtCore.QRect(0, 0, size, size)
+    # Draw folder in the left portion, leaving room for badge
+    folder_size = int(size * 0.85)
+    folder_rect = QtCore.QRect(0, size - folder_size, folder_size, folder_size)
     draw_folder_icon(painter, folder_rect, palette, color_role)
 
     color = _icon_color(palette, color_role)
-    painter.setPen(_make_pen(color, 1.8))
-    bx = size * 1.05
+    painter.setPen(_make_pen(color, 1.6))
+    bx = folder_size + (pw - folder_size) / 2.0
     by = size * 0.5
-    arm = size * 0.22
+    arm = size * 0.2
     painter.drawLine(QtCore.QPointF(bx - arm, by), QtCore.QPointF(bx + arm, by))
 
     painter.end()
