@@ -486,7 +486,7 @@ class RemoveMultipleItemsCommand(Command):
             if owner_uuid and owner_uuid not in item_uuids:
                 for scene_it in scene.items():
                     if getattr(scene_it, "item_uuid", None) == owner_uuid:
-                        self._autolabel_owners[it.item_uuid] = scene_it
+                        self._autolabel_owners[it.item_uuid] = scene_it  # type: ignore[attr-defined]
                         break
 
         for uid in item_uuids:
@@ -540,7 +540,7 @@ class RemoveMultipleItemsCommand(Command):
 
             if self._layer_state:
                 for item in self.items:
-                    item_uuid = getattr(item, "item_uuid", None)
+                    item_uuid = getattr(item, "item_uuid", None)  # type: ignore[assignment]
                     if item_uuid:
                         self._layer_state.remove_item(item_uuid, emit=False)
                 # Auto-delete empty ancestor groups

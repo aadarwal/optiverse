@@ -30,7 +30,7 @@ class KeyboardLayerTreeView(QtWidgets.QTreeView):
 
     def drawBranches(
         self,
-        painter: QtGui.QPainter,
+        painter: QtGui.QPainter | None,
         rect: QtCore.QRect,
         index: QtCore.QModelIndex,
     ) -> None:

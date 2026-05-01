@@ -70,8 +70,16 @@ class LayerPanel(QtWidgets.QWidget):
         text_role = QtGui.QPalette.ColorRole.WindowText
         icon_size = 20
         for icon, tooltip, callback in [
-            (make_folder_add_icon(icon_size, palette, text_role), "Group selected items", self._group_selected),
-            (make_folder_remove_icon(icon_size, palette, text_role), "Ungroup selected group", self._ungroup_selected),
+            (
+                make_folder_add_icon(icon_size, palette, text_role),
+                "Group selected items",
+                self._group_selected,
+            ),
+            (
+                make_folder_remove_icon(icon_size, palette, text_role),
+                "Ungroup selected group",
+                self._ungroup_selected,
+            ),
         ]:
             btn = QtWidgets.QToolButton()
             btn.setIcon(icon)
@@ -462,7 +470,7 @@ class LayerPanel(QtWidgets.QWidget):
     def _export_selected_as_assembly(self) -> None:
         """Delegate to FileController via the main window."""
         mw = self.window()
-        if hasattr(mw, "file_controller"):
+        if mw is not None and hasattr(mw, "file_controller"):
             mw.file_controller.export_selected_as_assembly()
 
     def _show_context_menu(self, pos: QtCore.QPoint) -> None:
@@ -566,22 +574,22 @@ class LayerPanel(QtWidgets.QWidget):
 
     def _edit_linked_in_context(self, group_uuid: str) -> None:
         mw = self.window()
-        if hasattr(mw, "file_controller"):
+        if mw is not None and hasattr(mw, "file_controller"):
             mw.file_controller.edit_linked_in_context(group_uuid)
 
     def _finish_edit_linked(self, group_uuid: str) -> None:
         mw = self.window()
-        if hasattr(mw, "file_controller"):
+        if mw is not None and hasattr(mw, "file_controller"):
             mw.file_controller.finish_edit_in_context(group_uuid)
 
     def _refresh_linked(self, group_uuid: str) -> None:
         mw = self.window()
-        if hasattr(mw, "file_controller"):
+        if mw is not None and hasattr(mw, "file_controller"):
             mw.file_controller.refresh_linked_assembly(group_uuid)
 
     def _unlink_embed(self, group_uuid: str) -> None:
         mw = self.window()
-        if hasattr(mw, "file_controller"):
+        if mw is not None and hasattr(mw, "file_controller"):
             mw.file_controller.unlink_embed(group_uuid)
 
     def _prompt_linked_delete(self, linked_groups: list[tuple[str, str]]) -> None:
@@ -610,11 +618,11 @@ class LayerPanel(QtWidgets.QWidget):
     def _delete_linked_group(self, group_uuid: str) -> None:
         """Fully delete a linked assembly: clean up service state and layer tree."""
         mw = self.window()
-        if hasattr(mw, "linked_assembly_service"):
+        if mw is not None and hasattr(mw, "linked_assembly_service"):
             mw.linked_assembly_service.remove_link(group_uuid)
         if self._layer_state:
             self._layer_state.delete_group(group_uuid, emit=True)
-        if hasattr(mw, "file_controller"):
+        if mw is not None and hasattr(mw, "file_controller"):
             mw.file_controller.mark_modified()
             mw.file_controller.traceRequested.emit()
 
