@@ -113,7 +113,7 @@ class LayerTreeState(QtCore.QObject):
             for n in nodes:
                 if n.is_item():
                     out.append(n.uuid)
-                else:
+                if n.children:
                     walk(n.children)
 
         walk(self._roots)
@@ -145,7 +145,7 @@ class LayerTreeState(QtCore.QObject):
     def add_item(
         self,
         item_uuid: str,
-        parent_group_uuid: str | None = None,
+        parent_uuid: str | None = None,
         index: int = 0,
         emit: bool = True,
     ) -> None:
@@ -153,7 +153,7 @@ class LayerTreeState(QtCore.QObject):
             return
         node = LayerNode(uuid=item_uuid, node_type="item")
         self._uuid_to_node[item_uuid] = node
-        self._insert_node(node, parent_group_uuid, index)
+        self._insert_node(node, parent_uuid, index)
         if emit:
             self._emit_changed()
 
@@ -215,6 +215,15 @@ class LayerTreeState(QtCore.QObject):
     def set_group_collapsed(self, group_uuid: str, collapsed: bool, emit: bool = True) -> None:
         node = self._uuid_to_node.get(group_uuid)
         if not node or not node.is_group():
+            return
+        node.collapsed = collapsed
+        if emit:
+            self._emit_changed()
+
+    def set_node_collapsed(self, uuid: str, collapsed: bool, emit: bool = True) -> None:
+        """Set collapsed state on any node type (groups or items with children)."""
+        node = self._uuid_to_node.get(uuid)
+        if not node:
             return
         node.collapsed = collapsed
         if emit:
@@ -364,7 +373,7 @@ class LayerTreeState(QtCore.QObject):
             for c in n.children:
                 if c.is_item():
                     out.append(c.uuid)
-                else:
+                if c.children:
                     walk(c)
 
         walk(node)
@@ -450,7 +459,15 @@ class LayerTreeState(QtCore.QObject):
 
         def _prune(n: LayerNode) -> dict[str, Any] | None:
             if n.is_item():
-                return self._node_to_export_dict(n) if n.uuid in keep_uuids else None
+                if n.uuid not in keep_uuids:
+                    return None
+                d = self._node_to_export_dict(n)
+                if n.children:
+                    kept = [_prune(c) for c in n.children]
+                    kept = [k for k in kept if k is not None]
+                    if kept:
+                        d["children"] = kept
+                return d
             # Group: recurse children, keep group only if any child survives
             kept_children = []
             for child in n.children:
@@ -624,11 +641,11 @@ class LayerTreeState(QtCore.QObject):
                 self._roots.remove(node)
         node.parent = None
 
-    def _insert_node(self, node: LayerNode, parent_group_uuid: str | None, index: int) -> None:
+    def _insert_node(self, node: LayerNode, parent_uuid: str | None, index: int) -> None:
         parent_node: LayerNode | None = None
-        if parent_group_uuid:
-            pn = self._uuid_to_node.get(parent_group_uuid)
-            if pn and pn.is_group():
+        if parent_uuid:
+            pn = self._uuid_to_node.get(parent_uuid)
+            if pn:
                 parent_node = pn
         siblings = parent_node.children if parent_node else self._roots
         node.parent = parent_node

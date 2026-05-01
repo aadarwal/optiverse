@@ -31,6 +31,7 @@ ITEM_UUID_ROLE = QtCore.Qt.ItemDataRole.UserRole
 GROUP_UUID_ROLE = QtCore.Qt.ItemDataRole.UserRole + 1
 IS_GROUP_ROLE = QtCore.Qt.ItemDataRole.UserRole + 2
 IS_LINKED_ROLE = QtCore.Qt.ItemDataRole.UserRole + 3
+IS_AUTOLABEL_ROLE = QtCore.Qt.ItemDataRole.UserRole + 4
 VISIBLE_ROLE = QtCore.Qt.ItemDataRole.UserRole + 10
 LOCKED_ROLE = QtCore.Qt.ItemDataRole.UserRole + 11
 
@@ -108,12 +109,16 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         return list(self._order)
 
     def item_uuids_under(self, index: QtCore.QModelIndex) -> list[str]:
-        """Get item UUIDs under index (groups expand to all descendants)."""
+        """Get item UUIDs under index (groups/items expand to all descendants)."""
         node = self._node_from_index(index)
         if not node:
             return []
         if node.is_item():
-            return [node.uuid]
+            uuids = [node.uuid]
+            for child in node.children:
+                if child.is_item():
+                    uuids.append(child.uuid)
+            return uuids
         if self._layer_state:
             return self._layer_state.get_group_items_recursive(node.uuid)
         return []
@@ -131,7 +136,7 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         if not parent.isValid():
             return len(self._layer_state.get_root_nodes())
         node = self._node_from_index(parent)
-        return len(node.children) if node and node.is_group() else 0
+        return len(node.children) if node and (node.is_group() or node.children) else 0
 
     def index(
         self, row: int, column: int, parent: QtCore.QModelIndex | None = None
@@ -148,7 +153,7 @@ class LayerItemModel(QtCore.QAbstractItemModel):
             return self._create_index(row, column, roots[row].uuid)
 
         parent_node = self._node_from_index(parent)
-        if not parent_node or not parent_node.is_group() or row >= len(parent_node.children):
+        if not parent_node or row >= len(parent_node.children):
             return QtCore.QModelIndex()
         return self._create_index(row, column, parent_node.children[row].uuid)
 
@@ -194,6 +199,8 @@ class LayerItemModel(QtCore.QAbstractItemModel):
             return node.is_group()
         if role == int(IS_LINKED_ROLE):
             return node.is_linked()
+        if role == int(IS_AUTOLABEL_ROLE):
+            return node.is_item() and node.parent is not None and node.parent.is_item()
         if role == int(GROUP_UUID_ROLE) and node.is_group():
             return node.uuid
         if role == int(ITEM_UUID_ROLE) and node.is_item():
@@ -316,6 +323,9 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         node = self._node_from_index(index)
         if not node:
             return QtCore.Qt.ItemFlag.NoItemFlags
+        # Autolabel children: selectable only (not draggable, not editable)
+        if node.is_item() and node.parent and node.parent.is_item():
+            return QtCore.Qt.ItemFlag.ItemIsEnabled | QtCore.Qt.ItemFlag.ItemIsSelectable
         flags = (
             QtCore.Qt.ItemFlag.ItemIsEnabled
             | QtCore.Qt.ItemFlag.ItemIsSelectable
@@ -324,7 +334,6 @@ class LayerItemModel(QtCore.QAbstractItemModel):
         if node.is_group():
             flags |= QtCore.Qt.ItemFlag.ItemIsDropEnabled | QtCore.Qt.ItemFlag.ItemIsEditable
         else:
-            # Allow editing item names via double-click
             flags |= QtCore.Qt.ItemFlag.ItemIsEditable
         return flags
 
@@ -423,7 +432,7 @@ class LayerItemModel(QtCore.QAbstractItemModel):
 
     def _prune_orphan_items(self) -> None:
         """Remove item nodes from LayerTreeState that have no matching scene item."""
-        if not self._layer_state:
+        if not self._layer_state or not self._scene:
             return
         all_item_uuids = self._layer_state.get_all_items_in_order()
         orphans = [uid for uid in all_item_uuids if uid not in self._uuid_to_item]
@@ -476,9 +485,8 @@ class LayerItemModel(QtCore.QAbstractItemModel):
                 if item := self._get_live_item(n.uuid):
                     effective = layer_state.is_effectively_visible(n.uuid)
                     item.setVisible(effective)
-            else:
-                for child in n.children:
-                    apply_to_node(child)
+            for child in n.children:
+                apply_to_node(child)
 
         apply_to_node(node)
 
@@ -499,6 +507,8 @@ class LayerItemModel(QtCore.QAbstractItemModel):
                     if hasattr(item, "set_locked"):
                         effective = layer_state.is_effectively_locked(n.uuid)
                         item.set_locked(effective)
+                for child in n.children:
+                    apply_to_node(child)
             else:
                 if n.is_linked() and n.link_metadata and not n.link_metadata.editing:
                     return

@@ -175,6 +175,25 @@ class ItemDragHandler:
             # No item under mouse — let Qt handle (rubber band selection)
             return False
 
+        # ---- TextNoteItem: pass through if already in text-editing mode ----
+        # Once a TextNoteItem is being edited, clicks must reach it for cursor
+        # positioning and text selection instead of starting a drag.
+        if isinstance(draggable_item, TextNoteItem):
+            if draggable_item.textInteractionFlags() != QtCore.Qt.TextInteractionFlag.NoTextInteraction:
+                return False
+
+        # ---- Exit text-editing on any other focused TextNoteItem ----
+        # The event filter consumes presses so focusOutEvent would never fire
+        # on a TextNoteItem that's in edit mode; we must clear it explicitly.
+        focus_item = self.scene.focusItem()
+        if (
+            focus_item is not None
+            and focus_item is not draggable_item
+            and isinstance(focus_item, TextNoteItem)
+            and focus_item.textInteractionFlags() != QtCore.Qt.TextInteractionFlag.NoTextInteraction
+        ):
+            focus_item.clearFocus()
+
         # ---- RulerItem endpoint check ----
         # If clicking near a ruler endpoint, let RulerItem handle its own grab mode
         if isinstance(draggable_item, RulerItem):

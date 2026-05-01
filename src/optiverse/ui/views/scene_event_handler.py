@@ -156,7 +156,11 @@ class SceneEventHandler(QtCore.QObject):
         # our custom handler, eliminates rubber band during drag (via ev.accept()),
         # and gives consistent undo behavior for single and group moves.
         #
+        # Double-click passes through to items (TextNoteItem uses it for edit mode).
         # Ctrl+click rotation passes through to BaseObj — we just track for undo.
+        if et == QtCore.QEvent.Type.GraphicsSceneMouseDoubleClick:
+            return None
+
         if et == QtCore.QEvent.Type.GraphicsSceneMousePress:
             mev = cast(QtWidgets.QGraphicsSceneMouseEvent, ev)
             if mev.button() == QtCore.Qt.MouseButton.LeftButton:

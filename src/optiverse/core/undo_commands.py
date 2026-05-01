@@ -50,6 +50,7 @@ class AddItemCommand(Command):
         scene: QtWidgets.QGraphicsScene,
         item: QtWidgets.QGraphicsItem,
         layer_state: LayerTreeState | None = None,
+        parent_uuid: str | None = None,
     ):
         """
         Initialize AddItemCommand.
@@ -57,10 +58,12 @@ class AddItemCommand(Command):
         Args:
             scene: The graphics scene to add the item to
             item: The graphics item to add
+            parent_uuid: Optional parent node UUID (group or item) for layer nesting
         """
         self.scene = scene
         self.item = item
         self._layer_state = layer_state
+        self._parent_uuid = parent_uuid
         self._executed = False
 
     def execute(self) -> None:
@@ -68,7 +71,9 @@ class AddItemCommand(Command):
         if not self._executed:
             self.scene.addItem(self.item)
             if self._layer_state and hasattr(self.item, "item_uuid"):
-                self._layer_state.add_item(str(self.item.item_uuid), None, 0, emit=True)
+                self._layer_state.add_item(
+                    str(self.item.item_uuid), self._parent_uuid, 0, emit=True
+                )
             self._executed = True
 
     def undo(self) -> None:
@@ -172,8 +177,40 @@ def _restore_empty_ancestor_groups(
             node.locked = bool(snapshot.get("locked", False))
 
 
+def _find_autolabels(
+    scene: QtWidgets.QGraphicsScene,
+    owner_uuid: str,
+) -> list:
+    """Return all TextNoteItem autolabels in *scene* owned by *owner_uuid*."""
+    from ..objects.annotations.text_note_item import TextNoteItem
+
+    return [
+        it
+        for it in scene.items()
+        if isinstance(it, TextNoteItem) and it.owner_uuid == owner_uuid
+    ]
+
+
+def _disconnect_autolabel(owner, label) -> None:
+    """Safely disconnect the owner's edited signal from the label."""
+    try:
+        owner.edited.disconnect(label.follow_owner)
+    except (TypeError, RuntimeError, AttributeError):
+        pass
+
+
+def _reconnect_autolabel(owner, label) -> None:
+    """Re-connect the owner's edited signal to the label."""
+    if hasattr(owner, "edited"):
+        owner.edited.connect(label.follow_owner)
+
+
 class RemoveItemCommand(Command):
-    """Command to remove an item from the scene."""
+    """Command to remove an item from the scene.
+
+    When the item owns autolabels (TextNoteItems with matching ``owner_uuid``),
+    those labels are cascade-removed together and restored on undo.
+    """
 
     def __init__(
         self,
@@ -181,14 +218,6 @@ class RemoveItemCommand(Command):
         item: QtWidgets.QGraphicsItem,
         layer_state: LayerTreeState | None = None,
     ):
-        """
-        Initialize RemoveItemCommand.
-
-        Args:
-            scene: The graphics scene to remove the item from
-            item: The graphics item to remove
-            group_manager: Optional group manager for group membership cleanup
-        """
         self.scene = scene
         self.item = item
         self._layer_state = layer_state
@@ -209,15 +238,51 @@ class RemoveItemCommand(Command):
                     roots = self._layer_state.get_root_nodes()
                     self._old_index = roots.index(node) if node in roots else 0
 
+        # Cascade: collect autolabels owned by this item
+        self._cascade_labels: list = []
+        self._cascade_placements: dict[str, tuple[str | None, int]] = {}
+        if self._item_uuid:
+            self._cascade_labels = _find_autolabels(scene, self._item_uuid)
+            if self._layer_state:
+                for lbl in self._cascade_labels:
+                    lbl_uuid = getattr(lbl, "item_uuid", None)
+                    if not lbl_uuid:
+                        continue
+                    node = self._layer_state.get_node(lbl_uuid)
+                    if node:
+                        if node.parent:
+                            self._cascade_placements[lbl_uuid] = (
+                                node.parent.uuid,
+                                node.parent.children.index(node),
+                            )
+                        else:
+                            roots = self._layer_state.get_root_nodes()
+                            self._cascade_placements[lbl_uuid] = (
+                                None,
+                                roots.index(node) if node in roots else 0,
+                            )
+
     def execute(self) -> None:
         """Remove the item from the scene and its group."""
         if not self._executed:
+            # Disconnect and remove cascade autolabels first
+            for lbl in self._cascade_labels:
+                _disconnect_autolabel(self.item, lbl)
+                lbl_uuid = getattr(lbl, "item_uuid", None)
+                if self._layer_state and lbl_uuid:
+                    self._layer_state.remove_item(lbl_uuid, emit=False)
+                self.scene.removeItem(lbl)
+
             if self._layer_state and self._item_uuid:
                 self._layer_state.remove_item(self._item_uuid, emit=False)
                 # Auto-delete empty ancestor groups
-                if self._old_parent_uuid:
+                parent_uuids = {self._old_parent_uuid} if self._old_parent_uuid else set()
+                parent_uuids |= {
+                    p for p, _ in self._cascade_placements.values() if p is not None
+                }
+                if parent_uuids:
                     self._removed_groups = _collect_empty_ancestor_groups(
-                        self._layer_state, {self._old_parent_uuid}
+                        self._layer_state, parent_uuids
                     )
                 self._layer_state.changed.emit()
             self.scene.removeItem(self.item)
@@ -239,6 +304,18 @@ class RemoveItemCommand(Command):
                     )
                 else:
                     self._layer_state.add_item(self._item_uuid, None, self._old_index, emit=True)
+
+            # Restore cascade autolabels
+            for lbl in self._cascade_labels:
+                self.scene.addItem(lbl)
+                _reconnect_autolabel(self.item, lbl)
+                lbl_uuid = getattr(lbl, "item_uuid", None)
+                if self._layer_state and lbl_uuid:
+                    parent_uuid, idx = self._cascade_placements.get(lbl_uuid, (None, 0))
+                    self._layer_state.add_item(lbl_uuid, parent_uuid, idx, emit=False)
+            if self._layer_state and self._cascade_labels:
+                self._layer_state.changed.emit()
+
             self._executed = False
 
 
@@ -337,7 +414,11 @@ class AddMultipleItemsCommand(Command):
 
 
 class RemoveMultipleItemsCommand(Command):
-    """Command to remove multiple items from the scene in a single operation."""
+    """Command to remove multiple items from the scene in a single operation.
+
+    Autolabels owned by any of the removed items are cascade-removed and
+    restored on undo, analogous to ``RemoveItemCommand``.
+    """
 
     def __init__(
         self,
@@ -345,14 +426,6 @@ class RemoveMultipleItemsCommand(Command):
         items: list[QtWidgets.QGraphicsItem],
         layer_state: LayerTreeState | None = None,
     ):
-        """
-        Initialize RemoveMultipleItemsCommand.
-
-        Args:
-            scene: The graphics scene to remove items from
-            items: The list of graphics items to remove
-            group_manager: Optional group manager for group membership cleanup
-        """
         self.scene = scene
         self.items = items
         self._layer_state = layer_state
@@ -380,9 +453,53 @@ class RemoveMultipleItemsCommand(Command):
                             roots.index(node) if node in roots else 0,
                         )
 
+        # Cascade: collect autolabels owned by any of the items being removed
+        item_uuids = {
+            getattr(it, "item_uuid", None) for it in items
+        } - {None}
+        self._cascade_labels: list = []
+        self._cascade_owners: dict[str, Any] = {}  # label uuid -> owner item
+        self._cascade_placements: dict[str, tuple[str | None, int]] = {}
+        for uid in item_uuids:
+            labels = _find_autolabels(scene, uid)  # type: ignore[arg-type]
+            # Skip labels that are already in the explicit items list
+            labels = [
+                lbl for lbl in labels
+                if getattr(lbl, "item_uuid", None) not in item_uuids
+            ]
+            owner = next((it for it in items if getattr(it, "item_uuid", None) == uid), None)
+            for lbl in labels:
+                self._cascade_labels.append(lbl)
+                self._cascade_owners[lbl.item_uuid] = owner
+                if self._layer_state:
+                    lbl_uuid = lbl.item_uuid
+                    node = self._layer_state.get_node(lbl_uuid)
+                    if node:
+                        if node.parent:
+                            self._cascade_placements[lbl_uuid] = (
+                                node.parent.uuid,
+                                node.parent.children.index(node),
+                            )
+                        else:
+                            roots = self._layer_state.get_root_nodes()
+                            self._cascade_placements[lbl_uuid] = (
+                                None,
+                                roots.index(node) if node in roots else 0,
+                            )
+
     def execute(self) -> None:
         """Remove all items from the scene and their groups."""
         if not self._executed:
+            # Cascade: disconnect and remove autolabels first
+            for lbl in self._cascade_labels:
+                owner = self._cascade_owners.get(lbl.item_uuid)
+                if owner is not None:
+                    _disconnect_autolabel(owner, lbl)
+                lbl_uuid = getattr(lbl, "item_uuid", None)
+                if self._layer_state and lbl_uuid:
+                    self._layer_state.remove_item(lbl_uuid, emit=False)
+                self.scene.removeItem(lbl)
+
             if self._layer_state:
                 for item in self.items:
                     item_uuid = getattr(item, "item_uuid", None)
@@ -391,6 +508,9 @@ class RemoveMultipleItemsCommand(Command):
                 # Auto-delete empty ancestor groups
                 parent_uuids = {
                     p for p, _ in self._placements.values() if p is not None
+                }
+                parent_uuids |= {
+                    p for p, _ in self._cascade_placements.values() if p is not None
                 }
                 if parent_uuids:
                     self._removed_groups = _collect_empty_ancestor_groups(
@@ -418,6 +538,20 @@ class RemoveMultipleItemsCommand(Command):
                     parent_uuid, idx = self._placements.get(item_uuid, (None, 0))
                     self._layer_state.add_item(item_uuid, parent_uuid, idx, emit=False)
                 self._layer_state.changed.emit()
+
+            # Restore cascade autolabels
+            for lbl in self._cascade_labels:
+                self.scene.addItem(lbl)
+                owner = self._cascade_owners.get(lbl.item_uuid)
+                if owner is not None:
+                    _reconnect_autolabel(owner, lbl)
+                lbl_uuid = getattr(lbl, "item_uuid", None)
+                if self._layer_state and lbl_uuid:
+                    parent_uuid, idx = self._cascade_placements.get(lbl_uuid, (None, 0))
+                    self._layer_state.add_item(lbl_uuid, parent_uuid, idx, emit=False)
+            if self._layer_state and self._cascade_labels:
+                self._layer_state.changed.emit()
+
             self._executed = False
 
 

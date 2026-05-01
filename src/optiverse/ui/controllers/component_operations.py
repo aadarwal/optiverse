@@ -172,19 +172,34 @@ class ComponentOperationsHandler:
         self._schedule_retrace()
 
     def copy_selected(self):
-        """Copy selected items to clipboard."""
+        """Copy selected items to clipboard.
+
+        When a ComponentItem with an autolabel is copied, the label is
+        automatically included so paste can re-link it.
+        """
         from ...objects import BaseObj, RectangleItem
         from ...objects.annotations import RulerItem, TextNoteItem
+        from ...objects.generic.component_item import ComponentItem
 
         selected = self.scene.selectedItems()
         self._clipboard = []
+        copied_uuids: set[str] = set()
 
         for item in selected:
-            # Only copy items that have a clone method
             if isinstance(item, (BaseObj, RulerItem, TextNoteItem, RectangleItem)):
                 self._clipboard.append(item)
+                uid = getattr(item, "item_uuid", None)
+                if uid:
+                    copied_uuids.add(uid)
 
-        # Enable paste action if we have items
+        # Also include autolabels owned by any copied ComponentItem
+        for item in list(self._clipboard):
+            if isinstance(item, ComponentItem):
+                label = item._find_autolabel()
+                if label is not None and label.item_uuid not in copied_uuids:
+                    self._clipboard.append(label)
+                    copied_uuids.add(label.item_uuid)
+
         self._set_paste_enabled(len(self._clipboard) > 0)
 
         if len(self._clipboard) > 0:
@@ -201,6 +216,8 @@ class ComponentOperationsHandler:
                        If None, items are pasted with a fixed offset from original position.
         """
         from ...core.undo_commands import PasteItemsCommand
+        from ...objects.annotations import TextNoteItem
+        from ...objects.generic.component_item import ComponentItem
 
         if not self._clipboard:
             self.log_service.warning("Cannot paste - clipboard is empty", LogCategory.COPY_PASTE)
@@ -208,7 +225,6 @@ class ComponentOperationsHandler:
 
         # Calculate offset based on target position or use fixed offset
         if target_pos is not None:
-            # Calculate centroid of clipboard items
             centroid_x = 0.0
             centroid_y = 0.0
             count = 0
@@ -223,7 +239,6 @@ class ComponentOperationsHandler:
                 centroid_x /= count
                 centroid_y /= count
 
-            # Calculate offset to move centroid to target position
             paste_offset = (target_pos.x() - centroid_x, target_pos.y() - centroid_y)
         else:
             from ...core import preferences
@@ -231,16 +246,18 @@ class ComponentOperationsHandler:
             paste_offset = (preferences.clone_offset_x_mm, preferences.clone_offset_y_mm)
 
         pasted_items = []
+        # Maps old owner UUID -> new cloned ComponentItem (for autolabel re-linking)
+        owner_map: dict[str, ComponentItem] = {}
 
         for item in self._clipboard:
             try:
-                # Use clone() to create a proper deep copy
                 cloned_item = item.clone(paste_offset)
-
-                # Connect signals
                 self._connect_item_signals(cloned_item)
-
                 pasted_items.append(cloned_item)
+
+                # Track UUID mapping for ComponentItem owners
+                if isinstance(item, ComponentItem):
+                    owner_map[item.item_uuid] = cloned_item
 
             except Exception as e:
                 import traceback
@@ -250,16 +267,33 @@ class ComponentOperationsHandler:
                     LogCategory.COPY_PASTE,
                 )
 
+        # Re-link cloned autolabels to their new owners
+        for cloned in pasted_items:
+            if not isinstance(cloned, TextNoteItem):
+                continue
+            # Find the original item this was cloned from
+            orig = next(
+                (it for it in self._clipboard
+                 if isinstance(it, TextNoteItem) and it.owner_uuid is not None
+                 and cloned.toPlainText() == it.toPlainText()),
+                None,
+            )
+            if orig is None or orig.owner_uuid is None:
+                continue
+            new_owner = owner_map.get(orig.owner_uuid)
+            if new_owner is not None:
+                cloned.owner_uuid = new_owner.item_uuid
+                cloned._owner_offset = QtCore.QPointF(orig._owner_offset)
+                new_owner.edited.connect(cloned.follow_owner)
+
         if pasted_items:
             self.log_service.info(
                 f"Successfully pasted {len(pasted_items)} item(s)", LogCategory.COPY_PASTE
             )
 
-            # Use undo command to add all pasted items at once
             cmd = PasteItemsCommand(self.scene, pasted_items, self._layer_state)
             self.undo_stack.push(cmd)
 
-            # Clear current selection and select pasted items
             self.scene.clearSelection()
             for item in pasted_items:
                 item.setSelected(True)

@@ -7,11 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Autolabel**: Right-click a component and toggle "Autolabel" to display its key optical property (e.g. "f = 100 mm" for a lens, "QWP @ 45°" for a waveplate) as a text label. Labels follow their owner when moved, are cascade-deleted when the owner is removed, and are fully undoable. Repositioning a label manually is preserved across subsequent owner moves
+- **Layer panel nesting for autolabels**: Autolabel items appear as collapsible children of their owner component in the layer panel, with dimmed italic styling. They cannot be independently dragged or deleted from the panel
+
 ### Fixed
 
 - **Component Editor shortcuts**: Keyboard shortcuts (Save, Undo, Redo, Copy, Paste) now correctly target the Component Editor when it is the active window instead of routing to the main window. Fixed undo/redo leaking across windows via `ApplicationShortcut`, and enabled the native menu bar on macOS so the editor's menus appear at the screen top when active
 - **Save dialog shows previous files**: The Save As dialog now opens in the directory of the last saved file and automatically appends `.json` when the user omits the extension, ensuring previously saved assemblies are visible in the file browser
 - **Auto-delete empty groups**: Groups are now automatically removed when all their members are deleted. Nested groups cascade correctly, linked assembly groups are excluded, and the cleanup is fully undoable/redoable
+- **Text note color**: Text notes now use theme-aware colors (white in dark mode, black in light mode) instead of hardcoded dark blue that was difficult to read on dark backgrounds
+- **Text note editing UX**: Double-click reliably enters edit mode with all text selected; Escape exits edit mode and deselects; text selection highlighting is properly cleared when exiting edit mode; clicking elsewhere while editing correctly exits edit mode
+- **Autolabel positioning**: Labels now appear centered horizontally above the component sprite instead of overlapping it
 
 ## [0.3.4] - 2026-04-28
 
