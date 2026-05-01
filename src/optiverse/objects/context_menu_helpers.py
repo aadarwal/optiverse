@@ -24,6 +24,6 @@ def _trigger_export(scene: QtWidgets.QGraphicsScene | None) -> None:
         return
     for view in scene.views():
         mw = view.window()
-        if hasattr(mw, "file_controller"):
+        if mw is not None and hasattr(mw, "file_controller"):
             mw.file_controller.export_selected_as_assembly()
             return

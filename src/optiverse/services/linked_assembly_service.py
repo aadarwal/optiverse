@@ -349,7 +349,7 @@ class LinkedAssemblyService(QtCore.QObject):
     ) -> dict[str, Any] | None:
         try:
             with open(abs_path, encoding="utf-8") as f:
-                return json.load(f)
+                return json.load(f)  # type: ignore[no-any-return]
         except (OSError, json.JSONDecodeError) as e:
             _logger.warning("Failed to load linked source %s: %s", abs_path, e)
             cached = self._link_caches.get(link_uuid)

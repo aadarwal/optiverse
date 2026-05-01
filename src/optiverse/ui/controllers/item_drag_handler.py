@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 if TYPE_CHECKING:
-    from ...core.layer_tree_state import LayerTreeState
+    from ...core.layer_tree_state import LayerNode, LayerTreeState
     from ...core.undo_stack import UndoStack
 
 
@@ -266,7 +266,7 @@ class ItemDragHandler:
             and hasattr(draggable_item, "item_uuid")
             and getattr(draggable_item, "_locked", False)
         ):
-            group_uuid = self._layer_state.get_group_for_item(draggable_item.item_uuid)
+            group_uuid = self._layer_state.get_group_for_item(draggable_item.item_uuid)  # type: ignore[assignment]
             if group_uuid and not self._layer_state.is_effectively_locked(group_uuid):
                 existing = {
                     it.item_uuid for it in selected_items if hasattr(it, "item_uuid")
@@ -275,7 +275,7 @@ class ItemDragHandler:
                     if child_uuid not in existing:
                         child_item = self._find_scene_item(child_uuid)
                         if child_item is not None:
-                            selected_items.append(child_item)
+                            selected_items.append(child_item)  # type: ignore[arg-type]
                             existing.add(child_uuid)
                 # Set override on all locked items in the expanded set
                 for it in selected_items:
@@ -589,7 +589,7 @@ class ItemDragHandler:
 
     def _find_linked_group(
         self, item: QtWidgets.QGraphicsItem,
-    ) -> tuple[str, object] | None:
+    ) -> tuple[str, LayerNode] | None:
         """If *item* belongs to a linked assembly group, return (group_uuid, node)."""
         if not self._layer_state:
             return None
