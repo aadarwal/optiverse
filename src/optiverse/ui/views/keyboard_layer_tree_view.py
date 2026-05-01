@@ -14,7 +14,8 @@ class KeyboardLayerTreeView(QtWidgets.QTreeView):
 
     This subclass of QTreeView provides:
     - Delete/Backspace key handling for removing selected items/groups
-    - Extensibility point for future keyboard shortcuts (e.g., Ctrl+G for grouping)
+    - Suppresses expand/collapse indicators for non-group items (e.g.
+      component rows that only host autolabel children)
 
     The class emits signals rather than performing actions directly,
     allowing the parent LayerPanel to handle the actual operations
@@ -26,6 +27,19 @@ class KeyboardLayerTreeView(QtWidgets.QTreeView):
     """
 
     deleteKeyPressed = QtCore.pyqtSignal()
+
+    def drawBranches(
+        self,
+        painter: QtGui.QPainter,
+        rect: QtCore.QRect,
+        index: QtCore.QModelIndex,
+    ) -> None:
+        """Skip the expand/collapse arrow for non-group items."""
+        from ..models.layer_item_model import IS_GROUP_ROLE
+
+        if index.isValid() and not bool(index.data(IS_GROUP_ROLE)):
+            return
+        super().drawBranches(painter, rect, index)
 
     def keyPressEvent(self, event: QtGui.QKeyEvent | None) -> None:
         """Handle key press events with layer-specific shortcuts.

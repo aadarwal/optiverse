@@ -188,24 +188,33 @@ class LayerPanel(QtWidgets.QWidget):
                 continue
             row_count = self._model.rowCount(idx)
             if row_count > 0:
-                uuid = None
-                if bool(idx.data(IS_GROUP_ROLE)):
+                is_group = bool(idx.data(IS_GROUP_ROLE))
+                if is_group:
                     uuid = cast(str, idx.data(GROUP_UUID_ROLE))
                 else:
                     uuid = cast(str, idx.data(ITEM_UUID_ROLE))
-                node = (
-                    self._layer_state.get_node(uuid)
-                    if uuid and self._layer_state
-                    else None
-                )
-                collapsed = bool(getattr(node, "collapsed", False)) if node else False
-                self._tree.setExpanded(idx, not collapsed)
+                if is_group:
+                    node = (
+                        self._layer_state.get_node(uuid)
+                        if uuid and self._layer_state
+                        else None
+                    )
+                    collapsed = bool(getattr(node, "collapsed", False)) if node else False
+                    self._tree.setExpanded(idx, not collapsed)
+                else:
+                    self._tree.setExpanded(idx, True)
                 self._walk_and_apply_collapsed(idx)
 
     def _set_node_collapsed(self, idx: QtCore.QModelIndex, collapsed: bool) -> None:
         if not self._layer_state or not idx.isValid():
             return
-        node_uuid = idx.data(GROUP_UUID_ROLE) if bool(idx.data(IS_GROUP_ROLE)) else idx.data(ITEM_UUID_ROLE)
+        is_group = bool(idx.data(IS_GROUP_ROLE))
+        if not is_group and collapsed:
+            self._tree.blockSignals(True)
+            self._tree.setExpanded(idx, True)
+            self._tree.blockSignals(False)
+            return
+        node_uuid = idx.data(GROUP_UUID_ROLE) if is_group else idx.data(ITEM_UUID_ROLE)
         if node_uuid:
             self._layer_state.set_node_collapsed(str(node_uuid), collapsed, emit=True)
 
@@ -392,15 +401,13 @@ class LayerPanel(QtWidgets.QWidget):
         if linked_groups:
             self._prompt_linked_delete(linked_groups)
 
-        # Skip items that belong to a linked group or are autolabel children
+        # Skip items that belong to a linked group
         if self._layer_state:
             for uid in list(item_uuids):
                 node = self._layer_state.get_node(uid)
                 if not node:
                     continue
                 if node.parent and node.parent.is_linked():
-                    item_uuids.discard(uid)
-                elif node.parent and node.parent.is_item():
                     item_uuids.discard(uid)
 
         for uid in item_uuids:

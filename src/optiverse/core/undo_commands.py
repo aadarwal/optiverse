@@ -238,6 +238,16 @@ class RemoveItemCommand(Command):
                     roots = self._layer_state.get_root_nodes()
                     self._old_index = roots.index(node) if node in roots else 0
 
+        # If the item IS an autolabel, store a reference to its owner so we
+        # can disconnect/reconnect the edited signal on execute/undo.
+        self._autolabel_owner: Any | None = None
+        owner_uuid = getattr(item, "owner_uuid", None)
+        if owner_uuid:
+            for it in scene.items():
+                if getattr(it, "item_uuid", None) == owner_uuid:
+                    self._autolabel_owner = it
+                    break
+
         # Cascade: collect autolabels owned by this item
         self._cascade_labels: list = []
         self._cascade_placements: dict[str, tuple[str | None, int]] = {}
@@ -265,6 +275,10 @@ class RemoveItemCommand(Command):
     def execute(self) -> None:
         """Remove the item from the scene and its group."""
         if not self._executed:
+            # Disconnect autolabel from its owner (when deleting the label itself)
+            if self._autolabel_owner is not None:
+                _disconnect_autolabel(self._autolabel_owner, self.item)
+
             # Disconnect and remove cascade autolabels first
             for lbl in self._cascade_labels:
                 _disconnect_autolabel(self.item, lbl)
@@ -304,6 +318,10 @@ class RemoveItemCommand(Command):
                     )
                 else:
                     self._layer_state.add_item(self._item_uuid, None, self._old_index, emit=True)
+
+            # Reconnect autolabel to its owner (when undoing label deletion)
+            if self._autolabel_owner is not None:
+                _reconnect_autolabel(self._autolabel_owner, self.item)
 
             # Restore cascade autolabels
             for lbl in self._cascade_labels:
@@ -460,6 +478,17 @@ class RemoveMultipleItemsCommand(Command):
         self._cascade_labels: list = []
         self._cascade_owners: dict[str, Any] = {}  # label uuid -> owner item
         self._cascade_placements: dict[str, tuple[str | None, int]] = {}
+
+        # Track items that ARE autolabels so we can disconnect from their owners
+        self._autolabel_owners: dict[str, Any] = {}  # item uuid -> owner item
+        for it in items:
+            owner_uuid = getattr(it, "owner_uuid", None)
+            if owner_uuid and owner_uuid not in item_uuids:
+                for scene_it in scene.items():
+                    if getattr(scene_it, "item_uuid", None) == owner_uuid:
+                        self._autolabel_owners[it.item_uuid] = scene_it
+                        break
+
         for uid in item_uuids:
             labels = _find_autolabels(scene, uid)  # type: ignore[arg-type]
             # Skip labels that are already in the explicit items list
@@ -490,6 +519,15 @@ class RemoveMultipleItemsCommand(Command):
     def execute(self) -> None:
         """Remove all items from the scene and their groups."""
         if not self._executed:
+            # Disconnect items that are autolabels from their owners
+            for item_uuid, owner in self._autolabel_owners.items():
+                label = next(
+                    (it for it in self.items if getattr(it, "item_uuid", None) == item_uuid),
+                    None,
+                )
+                if label is not None:
+                    _disconnect_autolabel(owner, label)
+
             # Cascade: disconnect and remove autolabels first
             for lbl in self._cascade_labels:
                 owner = self._cascade_owners.get(lbl.item_uuid)
@@ -538,6 +576,15 @@ class RemoveMultipleItemsCommand(Command):
                     parent_uuid, idx = self._placements.get(item_uuid, (None, 0))
                     self._layer_state.add_item(item_uuid, parent_uuid, idx, emit=False)
                 self._layer_state.changed.emit()
+
+            # Reconnect items that are autolabels to their owners
+            for item_uuid, owner in self._autolabel_owners.items():
+                label = next(
+                    (it for it in self.items if getattr(it, "item_uuid", None) == item_uuid),
+                    None,
+                )
+                if label is not None:
+                    _reconnect_autolabel(owner, label)
 
             # Restore cascade autolabels
             for lbl in self._cascade_labels:
