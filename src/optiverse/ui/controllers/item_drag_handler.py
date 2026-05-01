@@ -179,7 +179,8 @@ class ItemDragHandler:
         # Once a TextNoteItem is being edited, clicks must reach it for cursor
         # positioning and text selection instead of starting a drag.
         if isinstance(draggable_item, TextNoteItem):
-            if draggable_item.textInteractionFlags() != QtCore.Qt.TextInteractionFlag.NoTextInteraction:
+            no_interaction = QtCore.Qt.TextInteractionFlag.NoTextInteraction
+            if draggable_item.textInteractionFlags() != no_interaction:
                 return False
 
         # ---- Exit text-editing on any other focused TextNoteItem ----

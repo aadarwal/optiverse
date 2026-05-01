@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import uuid
 from pathlib import Path
 
@@ -16,7 +15,6 @@ from optiverse.platform.paths import (
     resolve_assembly_relative_path,
     set_current_assembly_dir,
 )
-
 
 # ---------------------------------------------------------------------------
 # LinkMetadata

@@ -18,11 +18,8 @@ from typing import TYPE_CHECKING, Any
 from PyQt6 import QtCore, QtWidgets
 
 from ..core.exceptions import CircularLinkError, LinkedAssemblyLoadError
-from ..core.layer_tree_state import LayerTreeState, LinkMetadata
-from ..platform.paths import (
-    make_assembly_relative,
-    resolve_assembly_relative_path,
-)
+from ..core.layer_tree_state import LinkMetadata
+from ..platform.paths import resolve_assembly_relative_path
 
 if TYPE_CHECKING:
     from ..core.layer_tree_state import LayerTreeState as LayerTreeStateType
@@ -268,7 +265,6 @@ class LinkedAssemblyService(QtCore.QObject):
         """Return the ``linked_assembly_cache`` dict for the main assembly file."""
         cache: dict[str, Any] = {}
         for gid, snap in self._link_caches.items():
-            abs_path = self._link_source_paths.get(gid, "")
             cache[gid] = {
                 "source_hash": snap.get("_hash", ""),
                 "snapshot": snap,
@@ -388,7 +384,7 @@ class LinkedAssemblyService(QtCore.QObject):
         connect_item_signals: Any | None = None,
     ) -> list[QtWidgets.QGraphicsItem]:
         """Deserialize items from data and add them to the scene as locked."""
-        from ..objects import BaseObj, RectangleItem
+        from ..objects import RectangleItem
         from ..objects.annotations import RulerItem, TextNoteItem
         from ..objects.type_registry import deserialize_item
 
@@ -548,9 +544,9 @@ class LinkedAssemblyService(QtCore.QObject):
 
     def _write_back_to_source(self, link_uuid: str, meta: LinkMetadata) -> bool:
         """Serialize current link items back to the source file."""
+        from ..core.protocols import Serializable
         from ..objects import BaseObj, RectangleItem
         from ..objects.annotations import RulerItem, TextNoteItem
-        from ..core.protocols import Serializable
 
         abs_path = self._link_source_paths.get(link_uuid)
         if not abs_path:
