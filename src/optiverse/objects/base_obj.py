@@ -54,6 +54,8 @@ class BaseObj(QtWidgets.QGraphicsObject):
 
         # Lock state (prevents movement, rotation, and deletion)
         self._locked = False
+        # Temporary override allowing setPos during group drags even when locked
+        self._group_drag_override = False
 
         # Mouse is over item shape (hitbox) — used for lighter blue hover tint
         self._hovered = False
@@ -82,8 +84,8 @@ class BaseObj(QtWidgets.QGraphicsObject):
 
         # Handle position changes: locked check and magnetic snap
         if change == QtWidgets.QGraphicsItem.GraphicsItemChange.ItemPositionChange:
-            # Block position changes if locked
-            if self._locked:
+            # Block position changes if locked (unless group-drag override is active)
+            if self._locked and not self._group_drag_override:
                 return self.pos()
 
             # Skip snap if item not ready or not in scene
@@ -193,20 +195,16 @@ class BaseObj(QtWidgets.QGraphicsObject):
         return self._locked
 
     def set_locked(self, locked: bool):
-        """Set lock state (prevents movement, rotation, deletion, and selection)."""
+        """Set lock state (prevents movement, rotation, and deletion).
+
+        Locked items remain selectable so they can initiate group drags.
+        """
         self._locked = locked
-        # Sync to LayerNode so layer panel refresh doesn't overwrite the lock
         self._sync_lock_to_layer_node(locked)
-        # Update cursor to indicate locked state
         if locked:
             self.setCursor(QtCore.Qt.CursorShape.ForbiddenCursor)
-            # Remove selectable flag so locked objects can't be selected
-            self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, False)
         else:
             self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
-            # Restore selectable flag when unlocked
-            self.setFlag(QtWidgets.QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
-        # Update visual appearance
         self.update()
 
     def _sync_lock_to_layer_node(self, locked: bool):
@@ -297,9 +295,12 @@ class BaseObj(QtWidgets.QGraphicsObject):
         """Handle mouse press for rotation mode (Ctrl+drag) or normal drag."""
         if ev is None:
             return
-        # If locked, ignore event so rubber band selection can work
+        # If locked, allow click for selection/group-drag but block Ctrl+rotation
         if self._locked:
-            ev.ignore()
+            if ev.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier:
+                ev.ignore()
+                return
+            super().mousePressEvent(ev)
             return
 
         if self.isSelected() and (ev.modifiers() & QtCore.Qt.KeyboardModifier.ControlModifier):
@@ -452,6 +453,10 @@ class BaseObj(QtWidgets.QGraphicsObject):
         act_bring_forward = m.addAction("Bring Forward")
         act_send_backward = m.addAction("Send Backward")
         act_send_to_back = m.addAction("Send to Back")
+
+        from .context_menu_helpers import add_export_selected_action
+
+        add_export_selected_action(m, self.scene())
 
         a = m.exec(ev.screenPos())
         if a == act_edit:

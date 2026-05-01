@@ -9,11 +9,21 @@ from __future__ import annotations
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from ..models.layer_item_model import (
+    IS_AUTOLABEL_ROLE,
     IS_GROUP_ROLE,
+    IS_LINKED_ROLE,
     LOCKED_ROLE,
     VISIBLE_ROLE,
 )
-from ..widgets.constants import LAYER_ITEM_MARGIN, LAYER_ITEM_SPACING, TOGGLE_BUTTON_SIZE, Icons
+from ..widgets.constants import LAYER_ITEM_MARGIN, LAYER_ITEM_SPACING, TOGGLE_BUTTON_SIZE
+from .layer_icons import (
+    draw_eye_icon,
+    draw_folder_icon,
+    draw_hidden_icon,
+    draw_link_icon,
+    draw_lock_icon,
+    draw_unlock_icon,
+)
 
 
 class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
@@ -51,26 +61,42 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
 
             rect = opt.rect.adjusted(LAYER_ITEM_MARGIN, 0, -LAYER_ITEM_MARGIN, 0)
             is_group = bool(index.data(IS_GROUP_ROLE))
+            is_autolabel = bool(index.data(IS_AUTOLABEL_ROLE))
 
             # Icon rects
             vis_rect, lock_rect, folder_rect, text_rect = self._layout_rects(rect, is_group)
 
-            # Determine icon states
+            # Dimmed opacity for autolabel rows
+            if is_autolabel and not is_selected:
+                painter.setOpacity(0.55)
+
+            # Determine icon states and draw vector icons
             visible = bool(index.data(VISIBLE_ROLE))
             locked = bool(index.data(LOCKED_ROLE))
-            vis_text = Icons.VISIBLE if visible else Icons.HIDDEN
-            lock_text = Icons.LOCKED if locked else Icons.UNLOCKED
 
-            # Draw icons with appropriate color for selection state
-            self._draw_centered_text(painter, vis_rect, vis_text, opt.palette, text_color_role)
-            self._draw_centered_text(painter, lock_rect, lock_text, opt.palette, text_color_role)
+            if visible:
+                draw_eye_icon(painter, vis_rect, opt.palette, text_color_role)
+            else:
+                draw_hidden_icon(painter, vis_rect, opt.palette, text_color_role)
+
+            if locked:
+                draw_lock_icon(painter, lock_rect, opt.palette, text_color_role)
+            else:
+                draw_unlock_icon(painter, lock_rect, opt.palette, text_color_role)
+
             if is_group:
-                self._draw_centered_text(
-                    painter, folder_rect, Icons.FOLDER, opt.palette, text_color_role
-                )
+                is_linked = bool(index.data(IS_LINKED_ROLE))
+                if is_linked:
+                    draw_link_icon(painter, folder_rect, opt.palette, text_color_role)
+                else:
+                    draw_folder_icon(painter, folder_rect, opt.palette, text_color_role)
 
-            # Draw label
+            # Draw label (italic for autolabels)
             label = str(index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")
+            if is_autolabel:
+                font = painter.font()
+                font.setItalic(True)
+                painter.setFont(font)
             painter.setPen(opt.palette.color(text_color_role))
             painter.drawText(
                 text_rect,
@@ -187,16 +213,4 @@ class LayerItemDelegate(QtWidgets.QStyledItemDelegate):
             x = folder_rect.right() + 1 + LAYER_ITEM_SPACING
         text_rect = QtCore.QRect(x + 4, rect.y(), rect.right() - x - 4, rect.height())
         return vis_rect, lock_rect, folder_rect, text_rect
-
-    def _draw_centered_text(
-        self,
-        painter: QtGui.QPainter,
-        rect: QtCore.QRect,
-        text: str,
-        palette: QtGui.QPalette,
-        color_role: QtGui.QPalette.ColorRole = QtGui.QPalette.ColorRole.Text,
-    ) -> None:
-        painter.setPen(palette.color(color_role))
-        painter.drawText(rect, int(QtCore.Qt.AlignmentFlag.AlignCenter), text)
-
 

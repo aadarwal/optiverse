@@ -5,15 +5,39 @@ All notable changes to Optiverse will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.4] - 2026-04-30
 
 ### Added
 
+- **Group relative locking**: Locked items inside an unlocked group now move together as a unit when any locked member is dragged, preserving relative positions. Locking an individual element means "only movable as part of the group, not independently." A locked group still blocks all movement
+- **Rectangle & Text Note locking**: `RectangleItem` and `TextNoteItem` now support the full lock workflow — context-menu toggle, blocked movement/rotation/deletion, forbidden cursor, and lock state persisted in save files
+- **Linked Assemblies**: Reference external assembly files instead of copying their content (File > 🔗 Link Assembly… or Ctrl+Shift+L). Linked sub-assemblies appear as locked groups marked with 🔗 in the layer panel, with the following capabilities:
+  - **File watching with user-confirmed updates**: When a linked source file changes on disk, you are notified and can choose to update
+  - **Multiple instances**: The same source file can be linked multiple times with independent position/rotation
+  - **Edit in Context** (SolidWorks-style): Right-click a linked group > "Edit in Context" to unlock items for editing; changes write back to the source file on "Finish Editing"
+  - **Unlink (Embed)**: Convert a linked group to a regular group, breaking the external reference
+  - **Refresh from Source**: Manually reload linked content from the source file
+  - **Offline resilience**: Cached snapshots allow assemblies to open even if source files are temporarily unavailable
+  - **Deterministic UUIDs**: Linked item UUIDs are stable across reloads, preserving undo history and references
+  - **Circular link detection**: Prevents A→B→C→A reference cycles (up to depth 5)
+  - **Portable paths**: Uses `@assembly/` relative paths so linked assemblies work when project directories are moved
+- **Export Selected as Assembly**: Right-click selected items in the layer panel or on the canvas and choose "Export Selected as Assembly…" to save them as a new `.json` assembly file, preserving group hierarchy
 - **Ruler Edit dialog**: Right-click or layer-panel "Edit..." opens a dialog with display name and per-segment length/angle controls
 - **Angle Measure Edit dialog**: Right-click or layer-panel "Edit..." opens a dialog with display name, inner angle, and arm length controls
 - **Ruler / Angle Measure locking**: Lock toggle in context menu and layer panel; blocks movement, point dragging, editing, and deletion; persisted in save files
 - **Multi-element lock**: Locking an item via context menu now applies to the entire selection
 - **Marimo demo**: Interactive ray-tracing demo notebook under `examples/`
+- **Autolabel**: Right-click a component and toggle "Autolabel" to display its key optical property (e.g. "f = 100 mm" for a lens, "QWP @ 45°" for a waveplate) as a text label. Labels follow their owner when moved, are cascade-deleted when the owner is removed, and are fully undoable. Repositioning a label manually is preserved across subsequent owner moves
+- **Layer panel nesting for autolabels**: Autolabel items appear as collapsible children of their owner component in the layer panel, with dimmed italic styling. They cannot be independently dragged or deleted from the panel
+
+### Removed
+
+- **Dead code cleanup**: Removed ~1,176 lines of unused code left behind from past restructurings — 3 entire modules (`BaseMeasureItem`, `ray_layer`, `beamsplitter_cube_factory`), 7 unused classes, 6 unused functions, and 12 speculative exception subclasses that were never raised
+
+### Changed
+
+- **Locked items remain selectable**: Locked items now stay selectable (clickable) on the canvas; previously locking removed `ItemIsSelectable`, making locked items completely inert. This enables group-relative-lock dragging and aligns with Photoshop/Figma-style lock behavior
+- **Layer panel icons**: Image-based layer-type icons were removed in favor of programmatically drawn shapes so the layer panel renders consistently across environments (including WSL and mixed-DPI setups)
 
 ### Fixed
 
@@ -22,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Snap guide persistence**: Purple dotted magnetic-snap guide lines no longer remain on the canvas after releasing a drag; `clear_snap_guides` is now called after all `setPos` calls in `handle_drag_end`, added to `handle_rotation_end`, and a safety-net clear in `BaseObj.mouseReleaseEvent`
 - **Gaussian beam rendering**: Detect mid-segment beam waist for proper subsampling; use per-segment intensity for brightness
 - **Component resolve order**: User library roots are resolved before built-in paths for `@component` lookups
+- **Component Editor shortcuts**: Keyboard shortcuts (Save, Undo, Redo, Copy, Paste) now correctly target the Component Editor when it is the active window instead of routing to the main window. Fixed undo/redo leaking across windows via `ApplicationShortcut`, and enabled the native menu bar on macOS so the editor's menus appear at the screen top when active
+- **Save dialog shows previous files**: The Save As dialog now opens in the directory of the last saved file and automatically appends `.json` when the user omits the extension, ensuring previously saved assemblies are visible in the file browser
+- **Auto-delete empty groups**: Groups are now automatically removed when all their members are deleted. Nested groups cascade correctly, linked assembly groups are excluded, and the cleanup is fully undoable/redoable
+- **Text note color**: Text notes now use theme-aware colors (white in dark mode, black in light mode) instead of hardcoded dark blue that was difficult to read on dark backgrounds
+- **Text note editing UX**: Double-click reliably enters edit mode with all text selected; Escape exits edit mode and deselects; text selection highlighting is properly cleared when exiting edit mode; clicking elsewhere while editing correctly exits edit mode
+
 
 ## [0.3.3] - 2026-03-28
 

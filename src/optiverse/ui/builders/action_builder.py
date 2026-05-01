@@ -119,6 +119,11 @@ class ActionBuilder:
         w.act_import_as_layer.setShortcutContext(QtCore.Qt.ShortcutContext.WindowShortcut)
         w.act_import_as_layer.triggered.connect(w.import_assembly_as_layer)
 
+        w.act_link_assembly = QtGui.QAction("\U0001f517 Add Assembly as Link…", w)
+        w.act_link_assembly.setShortcut(QtGui.QKeySequence("Ctrl+Shift+L"))
+        w.act_link_assembly.setShortcutContext(QtCore.Qt.ShortcutContext.WindowShortcut)
+        w.act_link_assembly.triggered.connect(w.link_assembly)
+
         w.act_export_image = QtGui.QAction("Export Image…", w)
         w.act_export_image.triggered.connect(w.export_image)
 
@@ -134,13 +139,13 @@ class ActionBuilder:
         # --- Edit Actions ---
         w.act_undo = QtGui.QAction("Undo", w)
         w.act_undo.setShortcut(QtGui.QKeySequence("Ctrl+Z"))
-        w.act_undo.setShortcutContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
+        w.act_undo.setShortcutContext(QtCore.Qt.ShortcutContext.WindowShortcut)
         w.act_undo.triggered.connect(w._do_undo)
         w.act_undo.setEnabled(False)
 
         w.act_redo = QtGui.QAction("Redo", w)
         w.act_redo.setShortcut(QtGui.QKeySequence("Ctrl+Y"))
-        w.act_redo.setShortcutContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
+        w.act_redo.setShortcutContext(QtCore.Qt.ShortcutContext.WindowShortcut)
         w.act_redo.triggered.connect(w._do_redo)
         w.act_redo.setEnabled(False)
 
@@ -437,6 +442,7 @@ class ActionBuilder:
         mFile.addAction(w.act_save_as)
         mFile.addSeparator()
         mFile.addAction(w.act_import_as_layer)
+        mFile.addAction(w.act_link_assembly)
         mFile.addSeparator()
         mFile.addAction(w.act_export_image)
         mFile.addAction(w.act_export_pdf)
@@ -536,6 +542,7 @@ class ActionBuilder:
         w.addAction(w.act_save)
         w.addAction(w.act_save_as)
         w.addAction(w.act_import_as_layer)
+        w.addAction(w.act_link_assembly)
         w.addAction(w.act_quit)
 
         # Edit actions

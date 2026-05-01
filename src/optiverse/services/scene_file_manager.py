@@ -22,6 +22,7 @@ from ..core.protocols import Serializable
 
 if TYPE_CHECKING:
     from ..core.layer_tree_state import LayerTreeState
+    from .linked_assembly_service import LinkedAssemblyService
     from .log_service import LogService
 
 
@@ -69,10 +70,15 @@ class SceneFileManager:
         self._unsaved_id: str | None = None
         self._is_modified = False
         self._layer_state: LayerTreeState | None = None
+        self._linked_assembly_service: LinkedAssemblyService | None = None
 
     def set_layer_state(self, layer_state: LayerTreeState) -> None:
         """Set the authoritative layer state for saving/loading layer hierarchy/order."""
         self._layer_state = layer_state
+
+    def set_linked_assembly_service(self, service: LinkedAssemblyService) -> None:
+        """Set the linked assembly service for save/load integration."""
+        self._linked_assembly_service = service
 
     @property
     def saved_file_path(self) -> str | None:
@@ -129,6 +135,12 @@ class SceneFileManager:
         from ..objects import BaseObj, RectangleItem
         from ..objects.annotations import RulerItem, TextNoteItem
 
+        linked_uuids = (
+            self._linked_assembly_service.get_all_linked_item_uuids()
+            if self._linked_assembly_service
+            else set()
+        )
+
         data: dict[str, Any] = {
             "version": "2.0",
             "items": [],  # type: ignore[assignment]
@@ -140,6 +152,9 @@ class SceneFileManager:
         }
 
         for it in self.scene.items():
+            uid = getattr(it, "item_uuid", None)
+            if uid and str(uid) in linked_uuids:
+                continue
             if isinstance(it, BaseObj) and isinstance(it, Serializable):
                 data["items"].append(it.to_dict())
             elif isinstance(it, RulerItem):
@@ -151,9 +166,74 @@ class SceneFileManager:
             elif isinstance(it, PathMeasureItem):
                 data["path_measures"].append(it.to_dict())
 
+        # Convert absolute source paths to @assembly/ relative BEFORE to_dict()
+        original_paths: dict[str, str] = {}
+        if self._saved_file_path and self._layer_state:
+            from pathlib import Path
+
+            from ..platform.paths import make_assembly_relative
+
+            assembly_dir = Path(self._saved_file_path).parent
+            for node in self._layer_state.get_linked_groups():
+                meta = node.link_metadata
+                if meta and not meta.source_path.startswith("@assembly/"):
+                    rel = make_assembly_relative(meta.source_path, assembly_dir)
+                    if rel:
+                        original_paths[node.uuid] = meta.source_path
+                        meta.source_path = rel
+
         # Serialize layer state (single source of truth)
         if self._layer_state:
             data["layer_state"] = self._layer_state.to_dict()
+
+        # Restore original absolute paths so in-memory state is unchanged
+        if self._layer_state:
+            for node in self._layer_state.get_linked_groups():
+                if node.uuid in original_paths and node.link_metadata:
+                    node.link_metadata.source_path = original_paths[node.uuid]
+
+        # Include linked assembly cache for offline resilience
+        if self._linked_assembly_service:
+            cache = self._linked_assembly_service.build_linked_assembly_cache()
+            if cache:
+                data["linked_assembly_cache"] = cache
+
+        return data
+
+    def serialize_selected(self, uuids: set[str]) -> dict:
+        """Serialize only the scene items whose *item_uuid* is in *uuids*."""
+        from optiverse.objects.annotations.path_measure_item import PathMeasureItem
+
+        from ..objects import BaseObj, RectangleItem
+        from ..objects.annotations import RulerItem, TextNoteItem
+
+        data: dict[str, Any] = {
+            "version": "2.0",
+            "items": [],
+            "rulers": [],
+            "texts": [],
+            "rectangles": [],
+            "path_measures": [],
+            "layer_state": {},
+        }
+
+        for it in self.scene.items():
+            uid = getattr(it, "item_uuid", None)
+            if uid is None or str(uid) not in uuids:
+                continue
+            if isinstance(it, BaseObj) and isinstance(it, Serializable):
+                data["items"].append(it.to_dict())
+            elif isinstance(it, RulerItem):
+                data["rulers"].append(it.to_dict())
+            elif isinstance(it, TextNoteItem):
+                data["texts"].append(it.to_dict())
+            elif isinstance(it, RectangleItem):
+                data["rectangles"].append(it.to_dict())
+            elif isinstance(it, PathMeasureItem):
+                data["path_measures"].append(it.to_dict())
+
+        if self._layer_state:
+            data["layer_state"] = self._layer_state.pruned_to_dict(uuids)
 
         return data
 
@@ -277,6 +357,13 @@ class SceneFileManager:
                 # KeyError: missing required fields, ValueError/TypeError: invalid data
                 self.log_service.error(f"Error loading path measure: {e}", "Load")
 
+        # Reconnect autolabel signals (owner.edited → label.follow_owner)
+        from ..objects.generic.component_item import ComponentItem
+
+        for it in self.scene.items():
+            if isinstance(it, ComponentItem):
+                it.connect_autolabel()
+
         # Build ordering input for legacy migration from scene z-values
         items_with_z: list[tuple[float, str]] = []
         for it in self.scene.items():
@@ -313,6 +400,49 @@ class SceneFileManager:
                 "The components may belong to a library that is not currently configured. "
                 "You can add library paths in Preferences → Component Libraries.",
             )
+
+        # Load linked assemblies
+        if self._linked_assembly_service and self._layer_state:
+            from pathlib import Path as _Path
+
+            assembly_dir = _Path(self._saved_file_path).parent if self._saved_file_path else None
+            cache_data = data.get("linked_assembly_cache", {})
+
+            for node in self._layer_state.get_linked_groups():
+                meta = node.link_metadata
+                if not meta:
+                    continue
+
+                abs_path = None
+                if meta.source_path.startswith("@assembly/"):
+                    from ..platform.paths import resolve_assembly_relative_path
+                    abs_path = resolve_assembly_relative_path(meta.source_path, assembly_dir)
+                elif _Path(meta.source_path).is_absolute():
+                    abs_path = meta.source_path
+
+                if abs_path:
+                    meta.source_path = abs_path
+
+                cache_entry = cache_data.get(node.uuid, {})
+                if cache_entry:
+                    self._linked_assembly_service.restore_from_cache(
+                        node.uuid, cache_entry, abs_path or meta.source_path,
+                    )
+
+                try:
+                    self._linked_assembly_service.add_link(
+                        abs_path or meta.source_path,
+                        assembly_dir=assembly_dir,
+                        link_uuid=node.uuid,
+                    )
+                    self._linked_assembly_service.load_link_items(
+                        node.uuid, self._connect_item_signals,
+                    )
+                except Exception as e:
+                    self.log_service.error(
+                        f"Failed to load linked assembly '{meta.source_path}': {e}",
+                        "Load",
+                    )
 
         return migrated
 
@@ -432,6 +562,8 @@ class SceneFileManager:
                 json.dump(data, f, indent=2)
 
             self._saved_file_path = path
+            if self._linked_assembly_service:
+                self._linked_assembly_service._current_assembly_path = path
             self.mark_clean()
             self.clear_autosave()
             return True
@@ -455,12 +587,21 @@ class SceneFileManager:
         except (OSError, json.JSONDecodeError) as e:
             raise AssemblyLoadError(path, str(e)) from e
 
+        # Set assembly directory context for @assembly/ path resolution
+        from pathlib import Path as _Path
+
+        from ..platform.paths import set_current_assembly_dir
+
+        set_current_assembly_dir(_Path(path).parent)
+
+        if self._linked_assembly_service:
+            self._linked_assembly_service._current_assembly_path = path
+
+        self._saved_file_path = path
         roots = self._get_library_roots() if self._get_library_roots else None
         migrated = self.load_from_data(data, library_roots=roots)
-        self._saved_file_path = path
         self._unsaved_id = None
         if migrated:
-            # Loaded legacy, migrated in-memory; next save will write new format.
             self.mark_modified()
         else:
             self.mark_clean()

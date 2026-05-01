@@ -157,19 +157,15 @@ class ComponentEditor(QtWidgets.QMainWindow):
         if mb is None:
             return
 
-        # Draw menus inside this window (not the macOS screen-top bar) so the
-        # editor reads as a self-contained tool window.
-        mb.setNativeMenuBar(False)
-
         # --- File menu ---
         file_menu = mb.addMenu("&File")
         if file_menu is None:
             return
 
-        act = file_menu.addAction("&New")
-        if act:
-            act.setShortcut(QtGui.QKeySequence.StandardKey.New)
-            act.triggered.connect(self._new_component)
+        self._act_new = file_menu.addAction("&New")
+        if self._act_new:
+            self._act_new.setShortcut(QtGui.QKeySequence.StandardKey.New)
+            self._act_new.triggered.connect(self._new_component)
 
         act = file_menu.addAction("&Open Image\u2026")
         if act:
@@ -191,11 +187,11 @@ class ComponentEditor(QtWidgets.QMainWindow):
 
         file_menu.addSeparator()
 
-        act = file_menu.addAction("&Save")
-        if act:
-            act.setShortcut(QtGui.QKeySequence.StandardKey.Save)
-            act.setIcon(QtGui.QIcon())
-            act.triggered.connect(self.save_component)
+        self._act_save = file_menu.addAction("&Save")
+        if self._act_save:
+            self._act_save.setShortcut(QtGui.QKeySequence.StandardKey.Save)
+            self._act_save.setIcon(QtGui.QIcon())
+            self._act_save.triggered.connect(self.save_component)
 
         # --- Edit menu ---
         edit_menu = mb.addMenu("&Edit")
@@ -216,15 +212,15 @@ class ComponentEditor(QtWidgets.QMainWindow):
 
         edit_menu.addSeparator()
 
-        act = edit_menu.addAction("Copy Component &JSON")
-        if act:
-            act.setShortcut(QtGui.QKeySequence.StandardKey.Copy)
-            act.triggered.connect(self.copy_component_json)
+        self._act_copy = edit_menu.addAction("Copy Component &JSON")
+        if self._act_copy:
+            self._act_copy.setShortcut(QtGui.QKeySequence.StandardKey.Copy)
+            self._act_copy.triggered.connect(self.copy_component_json)
 
-        act = edit_menu.addAction("&Paste")
-        if act:
-            act.setShortcut(QtGui.QKeySequence.StandardKey.Paste)
-            act.triggered.connect(self._smart_paste)
+        self._act_paste = edit_menu.addAction("&Paste")
+        if self._act_paste:
+            self._act_paste.setShortcut(QtGui.QKeySequence.StandardKey.Paste)
+            self._act_paste.triggered.connect(self._smart_paste)
 
         act = edit_menu.addAction("Paste Component JSON")
         if act:
@@ -257,6 +253,17 @@ class ComponentEditor(QtWidgets.QMainWindow):
         act = canvas_menu.addAction("&Update Canvas Instances\u2026")
         if act:
             act.triggered.connect(self._on_update_canvas_instances)
+
+        # Register shortcut-bearing actions on the window with WindowShortcut
+        # context so they reliably fire when this editor is active.
+        for a in (
+            self._act_new, self._act_save,
+            self._act_undo, self._act_redo,
+            self._act_copy, self._act_paste,
+        ):
+            if a:
+                a.setShortcutContext(QtCore.Qt.ShortcutContext.WindowShortcut)
+                self.addAction(a)
 
     def _mark_modified(self):
         """Mark the component as having unsaved changes."""

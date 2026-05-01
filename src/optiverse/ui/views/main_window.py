@@ -5,7 +5,6 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
 
 from optiverse import __version__
@@ -28,6 +27,7 @@ from ...core.ui_constants import (
 from ...core.undo_stack import UndoStack
 from ...objects import GraphicsView
 from ...services.collaboration_manager import CollaborationManager
+from ...services.linked_assembly_service import LinkedAssemblyService
 from ...services.log_service import get_log_service
 from ...services.settings_service import SettingsService
 from ...services.storage_service import StorageService
@@ -58,11 +58,6 @@ def _get_icon_path(icon_name: str) -> str:
     return str(icons_dir / icon_name)
 
 
-def to_np(p: QtCore.QPointF) -> np.ndarray:
-    """Convert QPointF to numpy array."""
-    return np.array([p.x(), p.y()], float)
-
-
 class MainWindow(QtWidgets.QMainWindow):
     # Action attributes (initialized by ActionBuilder)
     act_new: QtGui.QAction
@@ -73,6 +68,7 @@ class MainWindow(QtWidgets.QMainWindow):
     act_export_image: QtGui.QAction
     act_export_pdf: QtGui.QAction
     act_quit: QtGui.QAction
+    act_link_assembly: QtGui.QAction
     menu_recent: QtWidgets.QMenu
     open_library_menu: QtWidgets.QMenu
     act_undo: QtGui.QAction
@@ -267,6 +263,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.file_controller.traceRequested.connect(self._schedule_retrace)
         self.file_controller.windowTitleChanged.connect(self._on_window_title_changed)
 
+        # Linked assembly service - manages external assembly references
+        self.linked_assembly_service = LinkedAssemblyService(
+            scene=self.scene,
+            layer_state=self.layer_state,
+            log_service=self.log_service,
+            library_service=self.library_service,
+            parent=self,
+        )
+        self.file_controller.set_linked_assembly_service(self.linked_assembly_service)
+        self._linked_update_dialog_open = False
+        self.linked_assembly_service.sourceFileChanged.connect(
+            self._on_linked_source_changed
+        )
+
         # Collaboration controller - handles hosting/joining sessions
         self.collab_controller = CollaborationController(
             collaboration_manager=self.collaboration_manager,
@@ -310,6 +320,7 @@ class MainWindow(QtWidgets.QMainWindow):
             undo_stack=self.undo_stack,
             snap_to_grid_getter=self._get_snap_to_grid,
             schedule_retrace=self._schedule_retrace,
+            layer_state=self.layer_state,
         )
 
         # Component operations handler - copy, paste, delete, drop
@@ -338,6 +349,34 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_window_title_changed(self, subtitle: str) -> None:
         """Handle window title change from file controller."""
         self.setWindowTitle(self._format_window_title(subtitle))
+
+    def _on_linked_source_changed(self, link_uuid: str, path: str) -> None:
+        """Handle notification that a linked assembly's source file changed on disk."""
+        if self._linked_update_dialog_open:
+            return
+
+        import os
+
+        node = self.layer_state.get_node(link_uuid)
+        name = node.name if node else os.path.basename(path)
+
+        from ..theme_manager import question as theme_aware_question
+
+        self._linked_update_dialog_open = True
+        try:
+            reply = theme_aware_question(
+                self,
+                "Linked Assembly Changed",
+                f"{name} has changed on disk.\n\nUpdate now?",
+                QtWidgets.QMessageBox.StandardButton.Yes
+                | QtWidgets.QMessageBox.StandardButton.No,
+                QtWidgets.QMessageBox.StandardButton.Yes,
+            )
+            if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+                self.file_controller.refresh_linked_assembly(link_uuid)
+                self.layer_panel.refresh()
+        finally:
+            self._linked_update_dialog_open = False
 
     def _build_library_dock(self):
         """Build component library dock with categorized tree view and search bar."""
@@ -493,8 +532,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self._refresh_layer_panel()
 
     def delete_selected(self):
-        """Delete selected items (delegated to component_ops)."""
-        self.component_ops.delete_selected()
+        """Delete selected items — routes to layer panel when it has focus."""
+        if self.layer_panel.has_tree_focus():
+            self.layer_panel._delete_selected()
+        else:
+            self.component_ops.delete_selected()
         self._refresh_layer_panel()
 
     def copy_selected(self):
@@ -651,6 +693,18 @@ class MainWindow(QtWidgets.QMainWindow):
     def quit_application(self):
         """Quit the application (triggers close event which handles unsaved changes)."""
         self.close()
+
+    def link_assembly(self):
+        """Link an external assembly file (reference, not copy)."""
+        if self.file_controller.link_assembly():
+            for item in self.scene.items():
+                if isinstance(item, Editable):
+                    try:
+                        item.edited.disconnect(self._maybe_retrace)  # type: ignore[attr-defined]
+                    except TypeError:
+                        pass
+                    item.edited.connect(self._maybe_retrace)  # type: ignore[attr-defined]
+            self.layer_panel.refresh()
 
     def import_assembly_as_layer(self):
         """Import an assembly file as a new layer (grouped items)."""

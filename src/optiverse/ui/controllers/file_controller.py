@@ -88,6 +88,8 @@ class FileController(QtCore.QObject):
         self._autosave_timer.setInterval(AUTOSAVE_DEBOUNCE_MS)
         self._autosave_timer.timeout.connect(self._do_autosave)
 
+        self._linked_assembly_service = None
+
         # Connect undo stack to modification tracking
         self._undo_stack.commandPushed.connect(self._on_command_pushed)
 
@@ -198,12 +200,56 @@ class FileController(QtCore.QObject):
     def save_assembly_as(self):
         """Save As: always prompt for new file location."""
         with ErrorContext("while saving assembly", suppress=True):
+            default_dir = (
+                str(Path(self.saved_file_path).parent)
+                if self.saved_file_path
+                else ""
+            )
             path, _ = QtWidgets.QFileDialog.getSaveFileName(
-                self._parent, "Save Assembly As", "", "Optics Assembly (*.json)"
+                self._parent,
+                "Save Assembly As",
+                default_dir,
+                "Optics Assembly (*.json)",
             )
             if path:
+                if not path.lower().endswith(".json"):
+                    path += ".json"
                 self.file_manager.save_to_file(path)
                 self._add_recent_file(path)
+
+    def export_selected_as_assembly(self) -> None:
+        """Export the currently selected scene items as a new assembly file."""
+        uuids = {
+            str(it.item_uuid)
+            for it in self._scene.selectedItems()
+            if hasattr(it, "item_uuid")
+        }
+        if not uuids:
+            QtWidgets.QMessageBox.information(
+                self._parent,
+                "Export Selected",
+                "No items are selected. Select one or more items first.",
+            )
+            return
+
+        with ErrorContext("while exporting selected items", suppress=True):
+            default_dir = (
+                str(Path(self.saved_file_path).parent)
+                if self.saved_file_path
+                else ""
+            )
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self._parent,
+                "Export Selected as Assembly",
+                default_dir,
+                "Optics Assembly (*.json)",
+            )
+            if path:
+                if not path.lower().endswith(".json"):
+                    path += ".json"
+                data = self.file_manager.serialize_selected(uuids)
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
 
     def new_assembly(self) -> bool:
         """
@@ -220,8 +266,12 @@ class FileController(QtCore.QObject):
                 if reply == QtWidgets.QMessageBox.StandardButton.Cancel:
                     return False
 
-            # Clear the scene
+            # Clear the scene and linked assembly state
             self._clear_scene()
+            if self._linked_assembly_service:
+                self._linked_assembly_service.reset()
+            from ...platform.paths import set_current_assembly_dir
+            set_current_assembly_dir(None)
 
             # Reset file path
             self.file_manager.saved_file_path = None
@@ -239,7 +289,6 @@ class FileController(QtCore.QObject):
             self.traceRequested.emit()
 
             return True
-        return False
 
     def close_assembly(self) -> bool:
         """
@@ -879,6 +928,13 @@ class FileController(QtCore.QObject):
             except (KeyError, ValueError, TypeError) as e:
                 self._log_service.error(f"Error importing rectangle: {e}", "Import")
 
+        # Reconnect autolabel signals for any imported ComponentItems
+        from ...objects.generic.component_item import ComponentItem
+
+        for it in self._scene.items():
+            if isinstance(it, ComponentItem) and it.item_uuid in imported_uuids:
+                it.connect_autolabel()
+
         # Get groups from the file and track which items are grouped
         file_groups = data.get("groups", [])
         grouped_uuids: set[str] = set()
@@ -886,3 +942,130 @@ class FileController(QtCore.QObject):
             grouped_uuids.update(group_data.get("item_uuids", []))
 
         return imported_uuids, file_groups, grouped_uuids
+
+    # ------------------------------------------------------------------
+    # Linked Assembly operations
+    # ------------------------------------------------------------------
+
+    def set_linked_assembly_service(self, service) -> None:
+        """Set the linked assembly service for link operations."""
+        self._linked_assembly_service = service
+        self.file_manager.set_linked_assembly_service(service)
+
+    def link_assembly(self) -> bool:
+        """Link an external assembly file (reference, not copy).
+
+        Returns True if a link was created successfully.
+        """
+        from ...core.layer_tree_state import LinkMetadata
+
+        if not self._linked_assembly_service:
+            self._log_service.error("Linked assembly service not available", "Link")
+            return False
+
+        with ErrorContext("while linking assembly", suppress=True):
+            path, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self._parent, "Link Assembly…", "", "Optics Assembly (*.json)",
+            )
+            if not path:
+                return False
+
+            if self.saved_file_path and os.path.abspath(path) == os.path.abspath(
+                self.saved_file_path
+            ):
+                QtWidgets.QMessageBox.warning(
+                    self._parent,
+                    "Cannot Link",
+                    "Cannot link an assembly to itself.",
+                )
+                return False
+
+            try:
+                assembly_dir = (
+                    Path(self.saved_file_path).parent
+                    if self.saved_file_path
+                    else None
+                )
+
+                link_uuid = self._linked_assembly_service.add_link(
+                    source_path=path,
+                    assembly_dir=assembly_dir,
+                )
+
+                group_name = os.path.splitext(os.path.basename(path))[0]
+
+                meta = LinkMetadata(source_path=path)
+
+                if self._layer_state:
+                    self._layer_state.create_linked_group(
+                        name=group_name,
+                        link_metadata=meta,
+                        parent_group_uuid=None,
+                        index=0,
+                        group_uuid=link_uuid,
+                        emit=False,
+                    )
+
+                items = self._linked_assembly_service.load_link_items(
+                    link_uuid, self._connect_item_signals,
+                )
+
+                self.mark_modified()
+                self.traceRequested.emit()
+
+                self._log_service.info(
+                    f"Linked {len(items)} items from '{os.path.basename(path)}'",
+                    "Link",
+                )
+                return True
+
+            except Exception as e:
+                self._log_service.error(f"Failed to link assembly: {e}", "Link")
+                QtWidgets.QMessageBox.warning(
+                    self._parent,
+                    "Link Failed",
+                    f"Could not link assembly:\n{e}",
+                )
+                return False
+
+    def refresh_linked_assembly(self, link_uuid: str) -> None:
+        """Reload a linked assembly from its source file."""
+        if not self._linked_assembly_service:
+            return
+        self._linked_assembly_service.reload_link(link_uuid, self._connect_item_signals)
+        self.mark_modified()
+        self.traceRequested.emit()
+
+    def edit_linked_in_context(self, link_uuid: str) -> None:
+        """Enter edit-in-context mode for a linked assembly."""
+        if not self._linked_assembly_service:
+            return
+        self._linked_assembly_service.begin_edit_in_context(link_uuid)
+        if self._layer_state:
+            self._layer_state.changed.emit()
+
+    def finish_edit_in_context(self, link_uuid: str) -> None:
+        """Finish editing a linked assembly and write back to source."""
+        if not self._linked_assembly_service:
+            return
+        success = self._linked_assembly_service.end_edit_in_context(link_uuid, save=True)
+        if success:
+            abs_path = self._linked_assembly_service.get_source_path(link_uuid)
+            if abs_path:
+                self._linked_assembly_service.reload_all_for_source(
+                    abs_path, self._connect_item_signals,
+                )
+            self.mark_modified()
+        self.traceRequested.emit()
+        if self._layer_state:
+            self._layer_state.changed.emit()
+
+    def unlink_embed(self, link_uuid: str) -> None:
+        """Convert a linked assembly into a regular (embedded) group."""
+        if not self._linked_assembly_service:
+            return
+        self._linked_assembly_service.unlink_embed(link_uuid)
+        self.mark_modified()
+        if self._layer_state:
+            self._layer_state.changed.emit()
+        self.traceRequested.emit()

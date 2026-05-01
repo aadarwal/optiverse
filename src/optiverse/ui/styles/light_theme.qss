@@ -359,11 +359,6 @@ ClickableLabel {
     margin: 0px;
 }
 
-/* Editable Label */
-EditableLabel QLabel {
-    padding: 2px;
-}
-
 /* Layer Panel Title */
 QLabel#layerPanelTitle {
     font-weight: bold;

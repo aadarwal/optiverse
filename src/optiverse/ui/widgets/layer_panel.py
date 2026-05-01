@@ -9,19 +9,19 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from PyQt6 import QtCore, QtWidgets
+from PyQt6 import QtCore, QtGui, QtWidgets
 
 from ...core.layer_tree_state import LayerTreeState
 from ...core.undo_commands import CreateGroupCommand, DeleteGroupCommand
 from ..delegates import LayerItemDelegate
+from ..delegates.layer_icons import make_folder_add_icon, make_folder_remove_icon
 from ..models import LayerItemModel
 from ..views.keyboard_layer_tree_view import KeyboardLayerTreeView
-from .constants import Icons
 
 if TYPE_CHECKING:
     from ...core.undo_stack import UndoStack
 
-from ..models.layer_item_model import GROUP_UUID_ROLE, IS_GROUP_ROLE, ITEM_UUID_ROLE
+from ..models.layer_item_model import GROUP_UUID_ROLE, IS_GROUP_ROLE, IS_LINKED_ROLE, ITEM_UUID_ROLE
 
 
 class LayerPanel(QtWidgets.QWidget):
@@ -66,12 +66,23 @@ class LayerPanel(QtWidgets.QWidget):
         h_layout.addWidget(title)
         h_layout.addStretch()
 
+        palette = self.palette()
+        text_role = QtGui.QPalette.ColorRole.WindowText
+        icon_size = 20
         for icon, tooltip, callback in [
-            (Icons.FOLDER_ADD, "Group selected items", self._group_selected),
-            (Icons.FOLDER_REMOVE, "Ungroup selected group", self._ungroup_selected),
+            (
+                make_folder_add_icon(icon_size, palette, text_role),
+                "Group selected items",
+                self._group_selected,
+            ),
+            (
+                make_folder_remove_icon(icon_size, palette, text_role),
+                "Ungroup selected group",
+                self._ungroup_selected,
+            ),
         ]:
             btn = QtWidgets.QToolButton()
-            btn.setText(icon)
+            btn.setIcon(icon)
             btn.setToolTip(tooltip)
             btn.clicked.connect(callback)
             h_layout.addWidget(btn)
@@ -99,8 +110,8 @@ class LayerPanel(QtWidgets.QWidget):
         self._tree.deleteKeyPressed.connect(self._delete_selected)
         self._tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self._tree.customContextMenuRequested.connect(self._show_context_menu)
-        self._tree.expanded.connect(lambda idx: self._set_group_collapsed(idx, False))
-        self._tree.collapsed.connect(lambda idx: self._set_group_collapsed(idx, True))
+        self._tree.expanded.connect(lambda idx: self._set_node_collapsed(idx, False))
+        self._tree.collapsed.connect(lambda idx: self._set_node_collapsed(idx, True))
         layout.addWidget(self._tree, 1)
 
         # Z-order buttons
@@ -138,6 +149,10 @@ class LayerPanel(QtWidgets.QWidget):
             return None
         window = views[0].window()
         return cast("UndoStack | None", getattr(window, "undo_stack", None))
+
+    def has_tree_focus(self) -> bool:
+        """True when the layer tree view currently has keyboard focus."""
+        return self._tree.hasFocus()
 
     def cleanup(self) -> None:
         """Clean up before shutdown to prevent accessing deleted objects."""
@@ -179,22 +194,37 @@ class LayerPanel(QtWidgets.QWidget):
             idx = self._model.index(r, 0, parent)
             if not idx.isValid():
                 continue
-            if bool(idx.data(IS_GROUP_ROLE)):
-                group_uuid = cast(str, idx.data(GROUP_UUID_ROLE))
-                node = (
-                    self._layer_state.get_node(group_uuid)
-                    if group_uuid and self._layer_state
-                    else None
-                )
-                collapsed = bool(getattr(node, "collapsed", False)) if node else False
-                self._tree.setExpanded(idx, not collapsed)
-            self._walk_and_apply_collapsed(idx)
+            row_count = self._model.rowCount(idx)
+            if row_count > 0:
+                is_group = bool(idx.data(IS_GROUP_ROLE))
+                if is_group:
+                    uuid = cast(str, idx.data(GROUP_UUID_ROLE))
+                else:
+                    uuid = cast(str, idx.data(ITEM_UUID_ROLE))
+                if is_group:
+                    node = (
+                        self._layer_state.get_node(uuid)
+                        if uuid and self._layer_state
+                        else None
+                    )
+                    collapsed = bool(getattr(node, "collapsed", False)) if node else False
+                    self._tree.setExpanded(idx, not collapsed)
+                else:
+                    self._tree.setExpanded(idx, True)
+                self._walk_and_apply_collapsed(idx)
 
-    def _set_group_collapsed(self, idx: QtCore.QModelIndex, collapsed: bool) -> None:
-        if not self._layer_state or not idx.isValid() or not bool(idx.data(IS_GROUP_ROLE)):
+    def _set_node_collapsed(self, idx: QtCore.QModelIndex, collapsed: bool) -> None:
+        if not self._layer_state or not idx.isValid():
             return
-        if group_uuid := idx.data(GROUP_UUID_ROLE):
-            self._layer_state.set_group_collapsed(str(group_uuid), collapsed, emit=True)
+        is_group = bool(idx.data(IS_GROUP_ROLE))
+        if not is_group and collapsed:
+            self._tree.blockSignals(True)
+            self._tree.setExpanded(idx, True)
+            self._tree.blockSignals(False)
+            return
+        node_uuid = idx.data(GROUP_UUID_ROLE) if is_group else idx.data(ITEM_UUID_ROLE)
+        if node_uuid:
+            self._layer_state.set_node_collapsed(str(node_uuid), collapsed, emit=True)
 
     # --- Z-Order ---
 
@@ -362,13 +392,31 @@ class LayerPanel(QtWidgets.QWidget):
             elif iu := idx.data(ITEM_UUID_ROLE):
                 item_uuids.add(str(iu))
 
-        for gid in group_uuids:
+        linked_groups: list[tuple[str, str]] = []  # (gid, display_name)
+        for gid in list(group_uuids):
             if self._layer_state:
+                node = self._layer_state.get_node(gid)
+                if node and node.is_linked():
+                    linked_groups.append((gid, node.name or gid))
+                    group_uuids.discard(gid)
+                    continue
                 cmd = DeleteGroupCommand(self._layer_state, gid, keep_items=False)
                 if undo:
                     undo.push(cmd)
                 else:
                     cmd.execute()
+
+        if linked_groups:
+            self._prompt_linked_delete(linked_groups)
+
+        # Skip items that belong to a linked group
+        if self._layer_state:
+            for uid in list(item_uuids):
+                node = self._layer_state.get_node(uid)
+                if not node:
+                    continue
+                if node.parent and node.parent.is_linked():
+                    item_uuids.discard(uid)
 
         for uid in item_uuids:
             item = next(
@@ -419,6 +467,12 @@ class LayerPanel(QtWidgets.QWidget):
             if main_window is not None and hasattr(main_window, "open_component_editor_for_item"):
                 main_window.open_component_editor_for_item(item)
 
+    def _export_selected_as_assembly(self) -> None:
+        """Delegate to FileController via the main window."""
+        mw = self.window()
+        if mw is not None and hasattr(mw, "file_controller"):
+            mw.file_controller.export_selected_as_assembly()
+
     def _show_context_menu(self, pos: QtCore.QPoint) -> None:
         idx = self._tree.indexAt(pos)
         menu = QtWidgets.QMenu(self)
@@ -452,8 +506,39 @@ class LayerPanel(QtWidgets.QWidget):
             menu.addSeparator()
 
             if bool(idx.data(IS_GROUP_ROLE)):
-                if act := menu.addAction("Ungroup"):
-                    act.triggered.connect(self._ungroup_selected)
+                is_linked = bool(idx.data(IS_LINKED_ROLE))
+                if is_linked:
+                    group_uuid = str(idx.data(GROUP_UUID_ROLE) or "")
+                    node = self._layer_state.get_node(group_uuid) if self._layer_state else None
+                    is_editing = (
+                        node.link_metadata.editing
+                        if node and node.link_metadata
+                        else False
+                    )
+
+                    if is_editing:
+                        if act := menu.addAction("Finish Editing"):
+                            act.triggered.connect(
+                                lambda _=False, u=group_uuid: self._finish_edit_linked(u)
+                            )
+                    else:
+                        if act := menu.addAction("\U0001f517 Edit in Context"):
+                            act.triggered.connect(
+                                lambda _=False, u=group_uuid: self._edit_linked_in_context(u)
+                            )
+
+                    if act := menu.addAction("Refresh from Source"):
+                        act.triggered.connect(
+                            lambda _=False, u=group_uuid: self._refresh_linked(u)
+                        )
+                    if act := menu.addAction("Unlink (Embed)"):
+                        act.triggered.connect(
+                            lambda _=False, u=group_uuid: self._unlink_embed(u)
+                        )
+                    menu.addSeparator()
+                else:
+                    if act := menu.addAction("Ungroup"):
+                        act.triggered.connect(self._ungroup_selected)
             else:
                 if act := menu.addAction("Group with Selected"):
                     act.triggered.connect(self._group_selected)
@@ -472,8 +557,74 @@ class LayerPanel(QtWidgets.QWidget):
                 if act := z_menu.addAction(label):
                     act.triggered.connect(lambda _, o=op: self._apply_z_order(o))
 
+        menu.addSeparator()
+        has_selection = bool(
+            self._scene and any(
+                hasattr(it, "item_uuid") for it in self._scene.selectedItems()
+            )
+        )
+        if export_act := menu.addAction("Export Selected as Assembly\u2026"):
+            export_act.setEnabled(has_selection)
+            export_act.triggered.connect(self._export_selected_as_assembly)
+
         if vp := self._tree.viewport():
             menu.exec(vp.mapToGlobal(pos))
+
+    # --- Linked Assembly Actions ---
+
+    def _edit_linked_in_context(self, group_uuid: str) -> None:
+        mw = self.window()
+        if mw is not None and hasattr(mw, "file_controller"):
+            mw.file_controller.edit_linked_in_context(group_uuid)
+
+    def _finish_edit_linked(self, group_uuid: str) -> None:
+        mw = self.window()
+        if mw is not None and hasattr(mw, "file_controller"):
+            mw.file_controller.finish_edit_in_context(group_uuid)
+
+    def _refresh_linked(self, group_uuid: str) -> None:
+        mw = self.window()
+        if mw is not None and hasattr(mw, "file_controller"):
+            mw.file_controller.refresh_linked_assembly(group_uuid)
+
+    def _unlink_embed(self, group_uuid: str) -> None:
+        mw = self.window()
+        if mw is not None and hasattr(mw, "file_controller"):
+            mw.file_controller.unlink_embed(group_uuid)
+
+    def _prompt_linked_delete(self, linked_groups: list[tuple[str, str]]) -> None:
+        """Show a dialog for linked assemblies with Unlink / Delete / Cancel."""
+        names = "\n".join(f"  - {name}" for _, name in linked_groups)
+        msg = QtWidgets.QMessageBox(self)
+        msg.setIcon(QtWidgets.QMessageBox.Icon.Question)
+        msg.setWindowTitle("Linked Assembly")
+        msg.setText(
+            f"The following are linked assemblies:\n{names}\n\n"
+            "What would you like to do?"
+        )
+        btn_unlink = msg.addButton("Unlink", QtWidgets.QMessageBox.ButtonRole.AcceptRole)
+        btn_delete = msg.addButton("Delete", QtWidgets.QMessageBox.ButtonRole.DestructiveRole)
+        msg.addButton(QtWidgets.QMessageBox.StandardButton.Cancel)
+        msg.exec()
+
+        clicked = msg.clickedButton()
+        if clicked is btn_unlink:
+            for gid, _ in linked_groups:
+                self._unlink_embed(gid)
+        elif clicked is btn_delete:
+            for gid, _ in linked_groups:
+                self._delete_linked_group(gid)
+
+    def _delete_linked_group(self, group_uuid: str) -> None:
+        """Fully delete a linked assembly: clean up service state and layer tree."""
+        mw = self.window()
+        if mw is not None and hasattr(mw, "linked_assembly_service"):
+            mw.linked_assembly_service.remove_link(group_uuid)
+        if self._layer_state:
+            self._layer_state.delete_group(group_uuid, emit=True)
+        if mw is not None and hasattr(mw, "file_controller"):
+            mw.file_controller.mark_modified()
+            mw.file_controller.traceRequested.emit()
 
     def _toggle_role(self, idx: QtCore.QModelIndex, role: int) -> None:
         from ..models.layer_item_model import LOCKED_ROLE

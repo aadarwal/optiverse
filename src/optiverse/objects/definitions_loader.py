@@ -78,33 +78,6 @@ def load_component_records(
     return records
 
 
-def load_component_records_from_multiple(
-    library_paths: list[str | Path], settings_service=None
-) -> list[ComponentRecord]:
-    """
-    Load components from multiple library paths.
-
-    Args:
-        library_paths: List of library directory paths
-
-    Returns:
-        Combined list of ComponentRecord objects from all libraries
-    """
-    all_records: list[ComponentRecord] = []
-
-    for lib_path in library_paths:
-        try:
-            path = Path(lib_path) if isinstance(lib_path, str) else lib_path
-            if path.exists() and path.is_dir():
-                records = load_component_records(path, settings_service)
-                all_records.extend(records)
-        except OSError as e:
-            _logger.warning("Failed to load library from %s: %s", lib_path, e)
-            continue
-
-    return all_records
-
-
 def load_component_dicts(library_path: Path | None = None) -> list[dict[str, Any]]:
     """
     Load components and return them as JSON-serializable dicts.

@@ -5,7 +5,6 @@ from .interface_properties_widget import InterfacePropertiesWidget
 from .interface_tree_panel import InterfaceTreePanel
 from .interface_widgets import (
     ColoredCircleLabel,
-    EditableLabel,
     InterfaceTreeWidget,
 )
 from .layer_panel import LayerPanel
@@ -28,7 +27,6 @@ __all__ = [
     "InterfacePropertiesWidget",
     # Interface widgets
     "InterfaceTreeWidget",
-    "EditableLabel",
     "ColoredCircleLabel",
     # Layer widgets
     "KeyboardLayerTreeView",

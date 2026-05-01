@@ -316,6 +316,10 @@ def to_absolute_path(image_path: str | None, library_roots: list[Path] | None = 
         return image_path
 
     try:
+        # Handle assembly-relative paths: @assembly/{relative_path}
+        if image_path.startswith("@assembly/"):
+            return resolve_assembly_relative_path(image_path)
+
         # Handle component-relative paths: @component/{component_name}/... (PREFERRED)
         if image_path.startswith("@component/"):
             return resolve_component_path(image_path, library_roots)
@@ -581,4 +585,74 @@ def make_component_relative(abs_path: str, library_roots: list[Path] | None = No
         return None
     except OSError as e:
         _logger.debug("Failed to convert to component path %r: %s", abs_path, e)
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Assembly-relative path helpers (for linked assemblies)
+# ---------------------------------------------------------------------------
+
+# Thread-local (or module-level) assembly directory used during load/save
+_current_assembly_dir: Path | None = None
+
+
+def set_current_assembly_dir(path: Path | None) -> None:
+    """Set the directory of the currently open assembly for @assembly/ resolution."""
+    global _current_assembly_dir
+    _current_assembly_dir = path
+
+
+def get_current_assembly_dir() -> Path | None:
+    """Get the directory of the currently open assembly."""
+    return _current_assembly_dir
+
+
+def resolve_assembly_relative_path(rel_path: str, assembly_dir: Path | None = None) -> str | None:
+    """Resolve an ``@assembly/...`` path to an absolute path.
+
+    Args:
+        rel_path: Path starting with ``@assembly/``.
+        assembly_dir: Directory of the main assembly file. Falls back to the
+            module-level current assembly dir if not provided.
+
+    Returns:
+        Absolute path string, or None if unresolvable.
+    """
+    if not rel_path or not rel_path.startswith("@assembly/"):
+        return None
+
+    base = assembly_dir or _current_assembly_dir
+    if base is None:
+        _logger.debug("Cannot resolve @assembly/ path: no assembly directory set")
+        return None
+
+    relative = rel_path[len("@assembly/"):]
+    resolved = (base / relative).resolve()
+    if not resolved.is_relative_to(base.resolve()):
+        _logger.warning("Blocked path traversal outside assembly dir: %s", rel_path)
+        return None
+    return str(resolved)
+
+
+def make_assembly_relative(abs_path: str, assembly_dir: Path | None = None) -> str | None:
+    """Convert an absolute path to ``@assembly/...`` format if possible.
+
+    Args:
+        abs_path: Absolute path to convert.
+        assembly_dir: Directory of the main assembly file.
+
+    Returns:
+        ``@assembly/...`` path if *abs_path* is under *assembly_dir*, else None.
+    """
+    if not abs_path:
+        return None
+
+    base = assembly_dir or _current_assembly_dir
+    if base is None:
+        return None
+
+    try:
+        rel = Path(abs_path).resolve().relative_to(base.resolve())
+        return f"@assembly/{rel.as_posix()}"
+    except (ValueError, OSError):
         return None

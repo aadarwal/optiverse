@@ -22,6 +22,34 @@ NodeType = Literal["group", "item"]
 
 
 @dataclass
+class LinkMetadata:
+    """Metadata for a linked assembly group (external file reference)."""
+
+    source_path: str
+    offset_x: float = 0.0
+    offset_y: float = 0.0
+    rotation_deg: float = 0.0
+    editing: bool = field(default=False, repr=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_path": self.source_path,
+            "offset_x": self.offset_x,
+            "offset_y": self.offset_y,
+            "rotation_deg": self.rotation_deg,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> LinkMetadata:
+        return cls(
+            source_path=data["source_path"],
+            offset_x=float(data.get("offset_x", 0.0)),
+            offset_y=float(data.get("offset_y", 0.0)),
+            rotation_deg=float(data.get("rotation_deg", 0.0)),
+        )
+
+
+@dataclass
 class LayerNode:
     uuid: str
     node_type: NodeType
@@ -31,12 +59,16 @@ class LayerNode:
     locked: bool = False
     parent: LayerNode | None = field(default=None, repr=False)
     children: list[LayerNode] = field(default_factory=list, repr=False)
+    link_metadata: LinkMetadata | None = field(default=None, repr=False)
 
     def is_group(self) -> bool:
         return self.node_type == "group"
 
     def is_item(self) -> bool:
         return self.node_type == "item"
+
+    def is_linked(self) -> bool:
+        return self.link_metadata is not None
 
 
 class LayerTreeState(QtCore.QObject):
@@ -81,7 +113,7 @@ class LayerTreeState(QtCore.QObject):
             for n in nodes:
                 if n.is_item():
                     out.append(n.uuid)
-                else:
+                if n.children:
                     walk(n.children)
 
         walk(self._roots)
@@ -113,7 +145,7 @@ class LayerTreeState(QtCore.QObject):
     def add_item(
         self,
         item_uuid: str,
-        parent_group_uuid: str | None = None,
+        parent_uuid: str | None = None,
         index: int = 0,
         emit: bool = True,
     ) -> None:
@@ -121,7 +153,7 @@ class LayerTreeState(QtCore.QObject):
             return
         node = LayerNode(uuid=item_uuid, node_type="item")
         self._uuid_to_node[item_uuid] = node
-        self._insert_node(node, parent_group_uuid, index)
+        self._insert_node(node, parent_uuid, index)
         if emit:
             self._emit_changed()
 
@@ -183,6 +215,15 @@ class LayerTreeState(QtCore.QObject):
     def set_group_collapsed(self, group_uuid: str, collapsed: bool, emit: bool = True) -> None:
         node = self._uuid_to_node.get(group_uuid)
         if not node or not node.is_group():
+            return
+        node.collapsed = collapsed
+        if emit:
+            self._emit_changed()
+
+    def set_node_collapsed(self, uuid: str, collapsed: bool, emit: bool = True) -> None:
+        """Set collapsed state on any node type (groups or items with children)."""
+        node = self._uuid_to_node.get(uuid)
+        if not node:
             return
         node.collapsed = collapsed
         if emit:
@@ -332,11 +373,37 @@ class LayerTreeState(QtCore.QObject):
             for c in n.children:
                 if c.is_item():
                     out.append(c.uuid)
-                else:
+                if c.children:
                     walk(c)
 
         walk(node)
         return out
+
+    def get_linked_groups(self) -> list[LayerNode]:
+        """Return all group nodes that have link_metadata (linked assemblies)."""
+        return [n for n in self._uuid_to_node.values() if n.is_group() and n.is_linked()]
+
+    def create_linked_group(
+        self,
+        name: str,
+        link_metadata: LinkMetadata,
+        parent_group_uuid: str | None = None,
+        index: int = 0,
+        group_uuid: str | None = None,
+        emit: bool = True,
+    ) -> str:
+        """Create a group node with linked assembly metadata."""
+        gid = group_uuid or str(uuid_module.uuid4())
+        if gid in self._uuid_to_node:
+            return gid
+        node = LayerNode(
+            uuid=gid, node_type="group", name=name, link_metadata=link_metadata,
+        )
+        self._uuid_to_node[gid] = node
+        self._insert_node(node, parent_group_uuid, index)
+        if emit:
+            self._emit_changed()
+        return gid
 
     def is_effectively_visible(self, uuid: str) -> bool:
         """Returns True if node AND all ancestors are visible (Photoshop-style)."""
@@ -376,20 +443,64 @@ class LayerTreeState(QtCore.QObject):
 
     def to_dict(self) -> dict[str, Any]:
         def node_to_dict(n: LayerNode) -> dict[str, Any]:
-            d: dict[str, Any] = {"uuid": n.uuid, "type": n.node_type}
-            if n.name is not None:
-                d["name"] = n.name
-            if n.collapsed:
-                d["collapsed"] = True
-            if not n.visible:
-                d["visible"] = False
-            if n.locked:
-                d["locked"] = True
+            d = self._node_to_export_dict(n)
             if n.children:
                 d["children"] = [node_to_dict(c) for c in n.children]
             return d
 
         return {"version": 1, "nodes": [node_to_dict(n) for n in self._roots]}
+
+    def pruned_to_dict(self, keep_uuids: set[str]) -> dict[str, Any]:
+        """Serialize only the subtree relevant to *keep_uuids*.
+
+        Item nodes whose UUID is NOT in *keep_uuids* are dropped.
+        Group nodes are kept only if they have at least one kept descendant.
+        """
+
+        def _prune(n: LayerNode) -> dict[str, Any] | None:
+            if n.is_item():
+                if n.uuid not in keep_uuids:
+                    return None
+                d = self._node_to_export_dict(n)
+                if n.children:
+                    kept = [_prune(c) for c in n.children]
+                    kept = [k for k in kept if k is not None]
+                    if kept:
+                        d["children"] = kept
+                return d
+            # Group: recurse children, keep group only if any child survives
+            kept_children = []
+            for child in n.children:
+                result = _prune(child)
+                if result is not None:
+                    kept_children.append(result)
+            if not kept_children:
+                return None
+            d = self._node_to_export_dict(n)
+            d["children"] = kept_children
+            return d
+
+        nodes = []
+        for root in self._roots:
+            result = _prune(root)
+            if result is not None:
+                nodes.append(result)
+        return {"version": 1, "nodes": nodes}
+
+    @staticmethod
+    def _node_to_export_dict(n: LayerNode) -> dict[str, Any]:
+        d: dict[str, Any] = {"uuid": n.uuid, "type": n.node_type}
+        if n.name is not None:
+            d["name"] = n.name
+        if n.collapsed:
+            d["collapsed"] = True
+        if not n.visible:
+            d["visible"] = False
+        if n.locked:
+            d["locked"] = True
+        if n.link_metadata is not None:
+            d["link_metadata"] = n.link_metadata.to_dict()
+        return d
 
     @classmethod
     def from_dict(cls, data: dict, parent: QtCore.QObject | None = None) -> LayerTreeState:
@@ -398,6 +509,9 @@ class LayerTreeState(QtCore.QObject):
             return st
 
         def dict_to_node(d: dict, parent_node: LayerNode | None) -> LayerNode:
+            link_meta = None
+            if "link_metadata" in d:
+                link_meta = LinkMetadata.from_dict(d["link_metadata"])
             node = LayerNode(
                 uuid=d["uuid"],
                 node_type=d["type"],
@@ -406,6 +520,7 @@ class LayerTreeState(QtCore.QObject):
                 visible=bool(d.get("visible", True)),
                 locked=bool(d.get("locked", False)),
                 parent=parent_node,
+                link_metadata=link_meta,
             )
             st._uuid_to_node[node.uuid] = node
             for child_d in d.get("children", []) or []:
@@ -526,11 +641,11 @@ class LayerTreeState(QtCore.QObject):
                 self._roots.remove(node)
         node.parent = None
 
-    def _insert_node(self, node: LayerNode, parent_group_uuid: str | None, index: int) -> None:
+    def _insert_node(self, node: LayerNode, parent_uuid: str | None, index: int) -> None:
         parent_node: LayerNode | None = None
-        if parent_group_uuid:
-            pn = self._uuid_to_node.get(parent_group_uuid)
-            if pn and pn.is_group():
+        if parent_uuid:
+            pn = self._uuid_to_node.get(parent_uuid)
+            if pn:
                 parent_node = pn
         siblings = parent_node.children if parent_node else self._roots
         node.parent = parent_node
