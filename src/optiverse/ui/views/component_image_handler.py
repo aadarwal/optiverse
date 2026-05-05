@@ -62,9 +62,14 @@ class ComponentImageHandler:
         Returns:
             True if image was loaded successfully, False otherwise
         """
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self.parent, "Open Image", "", "Images (*.png *.jpg *.jpeg *.tif *.tiff *.svg)"
-        )
+        dlg = QtWidgets.QFileDialog(self.parent, "Open Image", "")
+        dlg.setFileMode(QtWidgets.QFileDialog.FileMode.ExistingFile)
+        dlg.setNameFilter("Images (*.png *.jpg *.jpeg *.tif *.tiff *.svg)")
+        dlg.setAttribute(QtCore.Qt.WidgetAttribute.WA_QuitOnClose, False)
+        if dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return False
+        files = dlg.selectedFiles()
+        path = files[0] if files else ""
         if not path:
             return False
 

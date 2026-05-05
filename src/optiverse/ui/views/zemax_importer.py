@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PyQt6 import QtWidgets
+from PyQt6 import QtCore, QtWidgets
 
 if TYPE_CHECKING:
     from ...core.models import ComponentRecord
@@ -42,10 +42,14 @@ class ZemaxImporter:
         from ...services.zemax_converter import ZemaxToInterfaceConverter
         from ...services.zemax_parser import ZemaxParser
 
-        # Open file dialog
-        filepath, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self.parent, "Import Zemax File", "", "Zemax Files (*.zmx *.ZMX);;All Files (*.*)"
-        )
+        dlg = QtWidgets.QFileDialog(self.parent, "Import Zemax File", "")
+        dlg.setFileMode(QtWidgets.QFileDialog.FileMode.ExistingFile)
+        dlg.setNameFilter("Zemax Files (*.zmx *.ZMX);;All Files (*.*)")
+        dlg.setAttribute(QtCore.Qt.WidgetAttribute.WA_QuitOnClose, False)
+        if dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return None
+        files = dlg.selectedFiles()
+        filepath = files[0] if files else ""
 
         if not filepath:
             return None
