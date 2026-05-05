@@ -830,8 +830,9 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.critical(self, "Import error", str(e))
             return
         self._comp_editor = ComponentEditorDialog(
-            self.storage_service, self, library_service=self.library_service,
+            self.storage_service, parent=None, library_service=self.library_service,
         )
+        self._comp_editor._main_window = self
         self._comp_editor.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
         # Connect saved signal to reload library (saved is always a signal on ComponentEditorDialog)
         self._comp_editor.saved.connect(self.populate_library)
