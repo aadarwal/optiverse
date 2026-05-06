@@ -25,26 +25,10 @@ _logger = logging.getLogger(__name__)
 
 
 def _rotation_from_gl_view(gl_widget) -> np.ndarray:
-    """Extract the 3x3 rotation matrix from a pyqtgraph GLViewWidget camera."""
-    opts = gl_widget.cameraParams()
-    elev = math.radians(opts["elevation"])
-    azim = math.radians(opts["azimuth"])
-
-    # Build rotation: first azimuth around Y, then elevation around X
-    cos_a, sin_a = math.cos(azim), math.sin(azim)
-    cos_e, sin_e = math.cos(elev), math.sin(elev)
-
-    Ry = np.array([
-        [cos_a, 0, sin_a],
-        [0, 1, 0],
-        [-sin_a, 0, cos_a],
-    ])
-    Rx = np.array([
-        [1, 0, 0],
-        [0, cos_e, -sin_e],
-        [0, sin_e, cos_e],
-    ])
-    return (Rx @ Ry).astype(np.float64)
+    """Extract the 3x3 rotation matrix directly from pyqtgraph's view matrix."""
+    vm = gl_widget.viewMatrix()
+    data = np.array(vm.data(), dtype=np.float64).reshape(4, 4).T
+    return data[:3, :3].copy()
 
 
 class StepPreviewDialog(QtWidgets.QDialog):
@@ -113,7 +97,10 @@ class StepPreviewDialog(QtWidgets.QDialog):
             self._gl_widget = gl.GLViewWidget()
             self._gl_widget.setMinimumSize(400, 380)
             self._gl_widget.setBackgroundColor((80, 80, 80))
-            self._gl_widget.setCameraPosition(distance=self._auto_height_mm * 2.5)
+            elev, azim = self._rotation_to_elev_azim(self._current_rotation)
+            self._gl_widget.setCameraPosition(
+                distance=self._auto_height_mm * 2.5, elevation=elev, azimuth=azim,
+            )
 
             from pyqtgraph.opengl import shaders as gl_shaders
 
@@ -262,22 +249,25 @@ class StepPreviewDialog(QtWidgets.QDialog):
         self._update_preview()
 
     def _snap_to_view(self, name: str):
-        rot = PRESET_VIEWS[name]
-        self._current_rotation = rot.copy()
         if self._gl_widget is not None:
-            # Convert rotation matrix to elevation/azimuth for pyqtgraph
-            elev, azim = self._rotation_to_elev_azim(rot)
+            elev, azim = self._rotation_to_elev_azim(PRESET_VIEWS[name])
             self._gl_widget.setCameraPosition(elevation=elev, azimuth=azim)
+            self._current_rotation = _rotation_from_gl_view(self._gl_widget)
+        else:
+            self._current_rotation = PRESET_VIEWS[name].copy()
         self._update_preview()
 
     @staticmethod
     def _rotation_to_elev_azim(rot: np.ndarray) -> tuple[float, float]:
-        """Convert a 3x3 rotation to (elevation, azimuth) in degrees for pyqtgraph."""
-        # Camera looks along -Z in the rotated frame.
-        # The camera direction in world coords is rot^T @ [0,0,-1]
-        cam_dir = rot.T @ np.array([0, 0, -1], dtype=np.float64)
-        elev = math.degrees(math.asin(np.clip(cam_dir[1], -1, 1)))
-        azim = math.degrees(math.atan2(cam_dir[0], -cam_dir[2]))
+        """Convert a 3x3 rotation to (elevation, azimuth) in degrees for pyqtgraph.
+
+        Inverse of _rotation_from_gl_view. Camera position direction in world
+        coords is rot^T @ [0, 0, 1] (positive Z in view = towards viewer).
+        pyqtgraph: pos = (cos(e)*cos(a), cos(e)*sin(a), sin(e)) * dist.
+        """
+        pos_dir = rot.T @ np.array([0, 0, 1], dtype=np.float64)
+        elev = math.degrees(math.asin(np.clip(pos_dir[2], -1, 1)))
+        azim = math.degrees(math.atan2(pos_dir[1], pos_dir[0]))
         return elev, azim
 
     def _update_preview(self):
@@ -288,6 +278,14 @@ class StepPreviewDialog(QtWidgets.QDialog):
             rot[0, :] *= -1  # flip X
         if self._flip_v.isChecked():
             rot[1, :] *= -1  # flip Y
+
+        # Update height from projected Y-extent
+        rotated = (rot @ self._vertices.T).T
+        proj_height_mm = float(rotated[:, 1].max() - rotated[:, 1].min())
+        if proj_height_mm > 0:
+            self._height_spin.blockSignals(True)
+            self._height_spin.setValue(proj_height_mm)
+            self._height_spin.blockSignals(False)
 
         pix = project_mesh_to_2d(
             self._vertices,
@@ -320,6 +318,7 @@ class StepPreviewDialog(QtWidgets.QDialog):
             rot,
             face_colors=self._face_colors,
             height_px=1000,
+            margin_fraction=0.0,
         )
         self.result_rotation = rot
         self.result_height_mm = self._height_spin.value()

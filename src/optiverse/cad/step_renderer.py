@@ -404,45 +404,49 @@ def project_mesh_to_2d(
 
 
 # ---------------------------------------------------------------------------
-# Preset view rotations
+# Preset view rotations (matching pyqtgraph's viewMatrix for Z-up models)
 # ---------------------------------------------------------------------------
 
-# Identity (Front: looking along -Z, X-right, Y-up)
-VIEW_FRONT = np.eye(3, dtype=np.float64)
+# Front: looking along -Y, Z-up (elev=0, azim=90)
+VIEW_FRONT = np.array([
+    [-1, 0, 0],
+    [0, 0, 1],
+    [0, 1, 0],
+], dtype=np.float64)
 
-# Top: looking along -Y, X-right, Z-up (rotate -90° around X)
-VIEW_TOP = np.array([
+# Back: looking along +Y, Z-up (elev=0, azim=-90)
+VIEW_BACK = np.array([
     [1, 0, 0],
     [0, 0, 1],
     [0, -1, 0],
 ], dtype=np.float64)
 
-# Right side: looking along -X, Z-right, Y-up (rotate +90° around Y)
-VIEW_RIGHT = np.array([
-    [0, 0, -1],
+# Top: looking along -Z (elev=90, azim=0)
+VIEW_TOP = np.array([
     [0, 1, 0],
-    [1, 0, 0],
-], dtype=np.float64)
-
-# Back: looking along +Z (rotate 180° around Y)
-VIEW_BACK = np.array([
     [-1, 0, 0],
-    [0, 1, 0],
-    [0, 0, -1],
-], dtype=np.float64)
-
-# Bottom: looking along +Y (rotate +90° around X)
-VIEW_BOTTOM = np.array([
-    [1, 0, 0],
-    [0, 0, -1],
-    [0, 1, 0],
-], dtype=np.float64)
-
-# Left side: looking along +X (rotate -90° around Y)
-VIEW_LEFT = np.array([
     [0, 0, 1],
+], dtype=np.float64)
+
+# Bottom: looking along +Z (elev=-90, azim=0)
+VIEW_BOTTOM = np.array([
     [0, 1, 0],
+    [1, 0, 0],
+    [0, 0, -1],
+], dtype=np.float64)
+
+# Left: looking along +X, Z-up (elev=0, azim=180)
+VIEW_LEFT = np.array([
+    [0, -1, 0],
+    [0, 0, 1],
     [-1, 0, 0],
+], dtype=np.float64)
+
+# Right: looking along -X, Z-up (elev=0, azim=0)
+VIEW_RIGHT = np.array([
+    [0, 1, 0],
+    [0, 0, 1],
+    [1, 0, 0],
 ], dtype=np.float64)
 
 PRESET_VIEWS: dict[str, np.ndarray] = {
