@@ -108,6 +108,10 @@ def load_component_dicts(library_path: Path | None = None) -> list[dict[str, Any
             if rec.category:
                 component_dict["category"] = rec.category
 
+            # Include STEP file path if present
+            if rec.step_file_path:
+                component_dict["step_file_path"] = rec.step_file_path
+
             # Serialize interfaces
             if rec.interfaces:
                 component_dict["interfaces"] = [iface.to_dict() for iface in rec.interfaces]

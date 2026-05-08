@@ -690,6 +690,10 @@ class MainWindow(QtWidgets.QMainWindow):
         """Export scene to PDF (delegated to file controller)."""
         self.file_controller.export_pdf()
 
+    def export_pyopticl(self):
+        """Export scene to PyOpticL script (delegated to file controller)."""
+        self.file_controller.export_pyopticl()
+
     def quit_application(self):
         """Quit the application (triggers close event which handles unsaved changes)."""
         self.close()

@@ -651,6 +651,50 @@ class FileController(QtCore.QObject):
 
         return False
 
+    def export_pyopticl(self) -> bool:
+        """Export the scene to a PyOpticL v2 Python script.
+
+        Shows dialogs for missing STEP warnings and baseplate configuration,
+        then writes the script and copies referenced STEP files.
+
+        Returns:
+            True if export was successful
+        """
+        from ...export.pyopticl_dialogs import BaseplateOptionsDialog, MissingStepWarningDialog
+        from ...export.pyopticl_exporter import BaseplateOptions, analyse_scene, export_scene
+
+        with ErrorContext("while exporting PyOpticL script", suppress=True):
+            scene_data = self.file_manager.serialize_scene()
+            items, warnings = analyse_scene(scene_data)
+
+            if warnings:
+                dlg = MissingStepWarningDialog(warnings, parent=self._parent)
+                if dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+                    return False
+
+            opts_dlg = BaseplateOptionsDialog(BaseplateOptions(), parent=self._parent)
+            if opts_dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+                return False
+            options = opts_dlg.get_options()
+
+            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                self._parent,
+                "Export PyOpticL Script",
+                "",
+                "Python Script (*.py)",
+            )
+            if not path:
+                return False
+            if not path.lower().endswith(".py"):
+                path += ".py"
+
+            success, skipped = export_scene(scene_data, path, options)
+            if success:
+                self._log_service.info(f"PyOpticL script exported to {path}")
+            return success
+
+        return False
+
     def import_as_layer(self) -> bool:
         """
         Import an assembly file as a new layer (group).

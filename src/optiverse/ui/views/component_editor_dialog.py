@@ -110,6 +110,9 @@ class ComponentEditor(QtWidgets.QMainWindow):
         self._original_name: str | None = None
         self._component_source: str | None = None  # "builtin", "user", or None (new)
 
+        # STEP file attached during STEP import (persisted in component folder on save)
+        self._step_file_path: str | None = None
+
         # Library I/O handler (initialized after UI setup in _build_library_dock)
         self._library_io: ComponentLibraryIO | None = None
 
@@ -568,6 +571,7 @@ class ComponentEditor(QtWidgets.QMainWindow):
         # Reset editing context
         self._original_name = None
         self._component_source = None
+        self._step_file_path = None
 
         # Status message
         status_bar = self.statusBar()
@@ -771,6 +775,7 @@ class ComponentEditor(QtWidgets.QMainWindow):
 
         if dlg.result_pixmap and not dlg.result_pixmap.isNull():
             self._set_image(dlg.result_pixmap, path)
+            self._step_file_path = path
             if dlg.result_height_mm > 0:
                 self.object_height_mm.setValue(dlg.result_height_mm)
             status_bar = self.statusBar()
@@ -884,6 +889,7 @@ class ComponentEditor(QtWidgets.QMainWindow):
             interfaces=interfaces,
             category=category,
             notes=self.notes.toPlainText().strip(),
+            step_file_path=self._step_file_path or "",
         )
 
     def copy_component_json(self):
@@ -983,6 +989,9 @@ class ComponentEditor(QtWidgets.QMainWindow):
         # Track editing context for save guards
         self._original_name = rec.name
         self._component_source = data.get("_source")
+
+        # Restore attached STEP file path
+        self._step_file_path = rec.step_file_path or None
 
         # Load image if available
         if rec.image_path and os.path.exists(rec.image_path):

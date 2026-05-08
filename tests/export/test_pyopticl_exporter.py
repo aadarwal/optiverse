@@ -268,18 +268,15 @@ class TestComponentRecordStepPath:
     def test_step_field_serialization(self):
         from optiverse.core.models import (
             ComponentRecord,
-            deserialize_component,
             serialize_component,
         )
 
         rec = ComponentRecord(
             name="Mirror Mount",
             step_file_path="/tmp/mount.step",
-            step_view_rotation=(1, 0, 0, 0, 1, 0, 0, 0, 1),
         )
         data = serialize_component(rec)
         assert data.get("step_file_path") is not None
-        assert data.get("step_view_rotation") == [1, 0, 0, 0, 1, 0, 0, 0, 1]
 
     def test_step_field_deserialization(self):
         from optiverse.core.models import deserialize_component
@@ -287,9 +284,7 @@ class TestComponentRecordStepPath:
         data = {
             "name": "Mount",
             "step_file_path": "/tmp/mount.step",
-            "step_view_rotation": [1, 0, 0, 0, 1, 0, 0, 0, 1],
         }
         rec = deserialize_component(data)
         assert rec is not None
-        # Path resolution may alter the absolute path, but it should not be empty
-        assert rec.step_view_rotation == (1, 0, 0, 0, 1, 0, 0, 0, 1)
+        assert rec.step_file_path != ""
