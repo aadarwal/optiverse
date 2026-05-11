@@ -342,7 +342,7 @@ class SettingsDialog(QtWidgets.QDialog):
         grp_pdf = QtWidgets.QGroupBox("PDF Export")
         form_pdf = QtWidgets.QFormLayout(grp_pdf)
         self._spin_pdf_dpi = QtWidgets.QSpinBox()
-        self._spin_pdf_dpi.setRange(72, 600)
+        self._spin_pdf_dpi.setRange(72, 1200)
         self._spin_pdf_dpi.setSingleStep(50)
         self._spin_pdf_dpi.setSuffix(" DPI")
         form_pdf.addRow("Default DPI:", self._spin_pdf_dpi)
@@ -492,7 +492,7 @@ class SettingsDialog(QtWidgets.QDialog):
         self._spin_png_scale.setValue(
             s.get_value("export/default_png_scale", 4.0, float)
         )
-        self._spin_pdf_dpi.setValue(s.get_value("export/default_pdf_dpi", 300, int))
+        self._spin_pdf_dpi.setValue(s.get_value("export/default_pdf_dpi", 600, int))
         self._spin_export_margin.setValue(
             s.get_value("export/export_margin_mm", 20, int)
         )
