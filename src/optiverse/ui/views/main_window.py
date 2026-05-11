@@ -128,6 +128,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.view = GraphicsView(self.scene)
         # Connect drop signal instead of circular reference
         self.view.componentDropped.connect(self.on_drop_component)
+        self.view.cursorScenePosChanged.connect(self._update_coord_label)
         self.setCentralWidget(self.view)
 
         # Initialize OpenGL ray overlay for hardware-accelerated rendering
@@ -1133,13 +1134,68 @@ class MainWindow(QtWidgets.QMainWindow):
             return result
         return super().eventFilter(obj, ev)
 
+    _ARROW_KEYS = {
+        QtCore.Qt.Key.Key_Left,
+        QtCore.Qt.Key.Key_Right,
+        QtCore.Qt.Key.Key_Up,
+        QtCore.Qt.Key.Key_Down,
+    }
+
     def keyPressEvent(self, ev):
         """Handle key press events (delegated to SceneEventHandler)."""
         if self.scene_event_handler.handle_key_press(ev):
             ev.accept()
             return
-        # Pass to parent for normal handling (Delete/Backspace handled by act_delete action)
+
+        if ev.key() in self._ARROW_KEYS and self._nudge_selected(ev):
+            ev.accept()
+            return
+
         super().keyPressEvent(ev)
+
+    def _nudge_selected(self, ev: QtGui.QKeyEvent) -> bool:
+        """Move selected items by arrow key. Returns True if handled."""
+        from ...core import preferences
+        from ...core.undo_commands import MoveItemCommand
+        from ...objects import BaseObj
+        from ...objects.annotations import RulerItem
+        from ...objects.annotations.rectangle_item import RectangleItem
+        from ...objects.annotations.text_note_item import TextNoteItem
+
+        selected = [
+            it for it in self.scene.selectedItems()
+            if isinstance(it, (BaseObj, RulerItem, TextNoteItem, RectangleItem))
+        ]
+        if not selected:
+            return False
+
+        shift = ev.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier
+        step = preferences.nudge_large_mm if shift else preferences.nudge_small_mm
+
+        dx, dy = 0.0, 0.0
+        if ev.key() == QtCore.Qt.Key.Key_Left:
+            dx = -step
+        elif ev.key() == QtCore.Qt.Key.Key_Right:
+            dx = step
+        elif ev.key() == QtCore.Qt.Key.Key_Up:
+            dy = step
+        elif ev.key() == QtCore.Qt.Key.Key_Down:
+            dy = -step
+
+        for item in selected:
+            old_pos = item.pos()
+            new_pos = QtCore.QPointF(old_pos.x() + dx, old_pos.y() + dy)
+            cmd = MoveItemCommand(item, old_pos, new_pos)
+            self.undo_stack.push(cmd)
+
+        self._schedule_retrace()
+        return True
+
+    def _update_coord_label(self, pos: QtCore.QPointF) -> None:
+        """Update the status bar coordinate display."""
+        label = getattr(self, "coord_label", None)
+        if label is not None:
+            label.setText(f"X: {pos.x():.2f}  Y: {pos.y():.2f} mm")
 
     def show_log_window(self):
         """Show the application log window."""

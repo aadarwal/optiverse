@@ -37,6 +37,8 @@ wheel_rotation_deg_per_step: float = 2.0
 max_raytracing_events: int = 80
 clone_offset_x_mm: float = 20.0
 clone_offset_y_mm: float = 20.0
+nudge_small_mm: float = 0.1
+nudge_large_mm: float = 1.0
 
 # ── Export Defaults ──────────────────────────────────────────────────
 
@@ -68,6 +70,8 @@ def load_from_settings(s: SettingsService) -> None:
     _self.max_raytracing_events = s.get_value("canvas/max_raytracing_events", 80, int)
     _self.clone_offset_x_mm = s.get_value("canvas/clone_offset_x_mm", 20.0, float)
     _self.clone_offset_y_mm = s.get_value("canvas/clone_offset_y_mm", 20.0, float)
+    _self.nudge_small_mm = s.get_value("canvas/nudge_small_mm", 0.1, float)
+    _self.nudge_large_mm = s.get_value("canvas/nudge_large_mm", 1.0, float)
 
     _self.default_png_scale = s.get_value("export/default_png_scale", 4.0, float)
     _self.default_pdf_dpi = s.get_value("export/default_pdf_dpi", 300, int)

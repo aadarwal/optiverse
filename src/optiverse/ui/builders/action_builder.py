@@ -522,9 +522,14 @@ class ActionBuilder:
         mCollab.addAction(w.act_collaborate)
         mCollab.addAction(w.act_disconnect)
 
+        # Add cursor coordinate display to status bar
+        w.coord_label = QtWidgets.QLabel("X: --  Y: -- mm")
+        status_bar = w.statusBar()
+        if status_bar is not None:
+            status_bar.addPermanentWidget(w.coord_label)
+
         # Add collaboration status to status bar
         w.collab_status_label = QtWidgets.QLabel("Not connected")
-        status_bar = w.statusBar()
         if status_bar is not None:
             status_bar.addPermanentWidget(w.collab_status_label)
 
