@@ -7,14 +7,14 @@ name = "optiverse"
 version = "0.3.4"
 description = "Optiverse: 2D ray-optics sandbox and component editor (PyQt6, modular)"
 readme = "README.md"
-requires-python = ">=3.9"  # 3.9-3.11 recommended for Numba JIT speedup
+requires-python = ">=3.9"  # 3.9-3.12+ fully supported with Numba JIT speedup (Numba 0.60+)
 license = { text = "MIT" }
 authors = [{ name = "QPG-MIT" }]
 dependencies = [
   "PyQt6>=6.5",
   "PyQt6-WebEngine>=6.5",
   "numpy>=1.24",
-  "numba>=0.58",  # JIT compilation for 4-8x raytracing speedup (Python 3.9-3.11)
+  "numba>=0.58",  # JIT compilation for 4-8x raytracing speedup (Python 3.9-3.12+ via Numba 0.60+)
   "PyOpenGL>=3.1.10",  # Hardware-accelerated ray rendering
   "websockets>=12.0",
   "pyobjc-framework-Cocoa>=10.0; sys_platform == 'darwin'",  # macOS menu bar app name
