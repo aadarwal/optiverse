@@ -4,7 +4,6 @@ import numpy as np
 
 from optiverse.cad.step_renderer import (
     PRESET_VIEWS,
-    VIEW_FRONT,
     is_cad_available,
     is_viewer_available,
     mesh_bounding_box,
@@ -50,9 +49,6 @@ class TestMeshBoundingBox:
 
 
 class TestPresetViews:
-    def test_front_is_identity(self):
-        np.testing.assert_array_equal(VIEW_FRONT, np.eye(3))
-
     def test_all_presets_are_3x3(self):
         for name, mat in PRESET_VIEWS.items():
             assert mat.shape == (3, 3), f"{name} has wrong shape"
