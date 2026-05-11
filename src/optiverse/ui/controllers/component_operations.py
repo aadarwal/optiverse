@@ -171,11 +171,14 @@ class ComponentOperationsHandler:
 
         self._schedule_retrace()
 
+    _MIME_TYPE = "application/x-optiverse-items"
+
     def copy_selected(self):
         """Copy selected items to clipboard.
 
         When a ComponentItem with an autolabel is copied, the label is
-        automatically included so paste can re-link it.
+        automatically included so paste can re-link it.  Items are also
+        serialized to the system clipboard for cross-instance paste.
         """
         from ...objects import BaseObj, RectangleItem
         from ...objects.annotations import RulerItem, TextNoteItem
@@ -203,12 +206,46 @@ class ComponentOperationsHandler:
         self._set_paste_enabled(len(self._clipboard) > 0)
 
         if len(self._clipboard) > 0:
+            self._copy_to_system_clipboard()
             self.log_service.info(
                 f"Copied {len(self._clipboard)} item(s) to clipboard", LogCategory.COPY_PASTE
             )
 
+    def _copy_to_system_clipboard(self) -> None:
+        """Serialize clipboard items to the system clipboard for cross-instance paste."""
+        import json
+
+        from PyQt6.QtGui import QGuiApplication
+
+        from ...objects import BaseObj, RectangleItem
+        from ...objects.annotations import RulerItem, TextNoteItem
+        from ...objects.type_registry import serialize_item
+
+        items_data: list[dict] = []
+        for item in self._clipboard:
+            try:
+                if isinstance(item, (RulerItem, TextNoteItem, RectangleItem)):
+                    items_data.append(item.to_dict())
+                elif isinstance(item, BaseObj):
+                    items_data.append(serialize_item(item))
+            except Exception:
+                pass
+
+        if not items_data:
+            return
+
+        payload = json.dumps({"optiverse_clipboard": items_data})
+        clipboard = QGuiApplication.clipboard()
+        if clipboard is not None:
+            mime = QtCore.QMimeData()
+            mime.setData(self._MIME_TYPE, payload.encode("utf-8"))
+            clipboard.setMimeData(mime)
+
     def paste_items(self, target_pos: QtCore.QPointF | None = None):
         """Paste items from clipboard using clone() method.
+
+        If the in-memory clipboard is empty, attempts to read serialized
+        items from the system clipboard (cross-instance paste).
 
         Args:
             target_pos: Optional target position in scene coordinates.
@@ -219,11 +256,16 @@ class ComponentOperationsHandler:
         from ...objects.annotations import TextNoteItem
         from ...objects.generic.component_item import ComponentItem
 
+        # Try cross-instance paste when local clipboard is empty
         if not self._clipboard:
+            cross_items = self._items_from_system_clipboard()
+            if cross_items:
+                self._paste_deserialized_items(cross_items, target_pos)
+                return
             self.log_service.warning("Cannot paste - clipboard is empty", LogCategory.COPY_PASTE)
             return
 
-        # Calculate offset based on target position or use fixed offset
+        # Same-instance paste via clone()
         if target_pos is not None:
             centroid_x = 0.0
             centroid_y = 0.0
@@ -246,7 +288,6 @@ class ComponentOperationsHandler:
             paste_offset = (preferences.clone_offset_x_mm, preferences.clone_offset_y_mm)
 
         pasted_items = []
-        # Maps old owner UUID -> new cloned ComponentItem (for autolabel re-linking)
         owner_map: dict[str, ComponentItem] = {}
 
         for item in self._clipboard:
@@ -255,7 +296,6 @@ class ComponentOperationsHandler:
                 self._connect_item_signals(cloned_item)
                 pasted_items.append(cloned_item)
 
-                # Track UUID mapping for ComponentItem owners
                 if isinstance(item, ComponentItem):
                     owner_map[item.item_uuid] = cloned_item
 
@@ -267,11 +307,9 @@ class ComponentOperationsHandler:
                     LogCategory.COPY_PASTE,
                 )
 
-        # Re-link cloned autolabels to their new owners
         for cloned in pasted_items:
             if not isinstance(cloned, TextNoteItem):
                 continue
-            # Find the original item this was cloned from
             orig = next(
                 (it for it in self._clipboard
                  if isinstance(it, TextNoteItem) and it.owner_uuid is not None
@@ -300,7 +338,114 @@ class ComponentOperationsHandler:
 
             self._schedule_retrace()
 
+    # ---- Cross-instance helpers ----
+
+    def _items_from_system_clipboard(self) -> list:
+        """Deserialize optiverse items from the system clipboard, if present."""
+        import json
+
+        from PyQt6.QtGui import QGuiApplication
+
+        clipboard = QGuiApplication.clipboard()
+        if clipboard is None:
+            return []
+        mime = clipboard.mimeData()
+        if mime is None or not mime.hasFormat(self._MIME_TYPE):
+            return []
+
+        try:
+            raw = mime.data(self._MIME_TYPE).data().decode("utf-8")
+            payload = json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return []
+
+        item_dicts = payload.get("optiverse_clipboard", [])
+        if not isinstance(item_dicts, list):
+            return []
+
+        return self._deserialize_item_dicts(item_dicts)
+
+    def _deserialize_item_dicts(self, item_dicts: list[dict]) -> list:
+        """Reconstruct scene items from a list of serialized dicts."""
+        import uuid as _uuid
+
+        from ...objects import RectangleItem
+        from ...objects.annotations import RulerItem, TextNoteItem
+        from ...objects.type_registry import deserialize_item
+
+        items = []
+        for d in item_dicts:
+            try:
+                item_type = d.get("type", d.get("_type", ""))
+                new_item: object | None = None
+                if item_type == "ruler":
+                    new_item = RulerItem.from_dict(d)
+                elif item_type in ("text_note", "text"):
+                    new_item = TextNoteItem.from_dict(d)
+                elif item_type == "rectangle":
+                    new_item = RectangleItem.from_dict(d)
+                else:
+                    new_item = deserialize_item(d)
+
+                if new_item is not None:
+                    if hasattr(new_item, "item_uuid"):
+                        new_item.item_uuid = str(_uuid.uuid4())  # type: ignore[union-attr]
+                    items.append(new_item)
+            except Exception:
+                pass
+        return items
+
+    def _paste_deserialized_items(
+        self,
+        items: list,
+        target_pos: QtCore.QPointF | None = None,
+    ) -> None:
+        """Add deserialized items to the scene with an optional target offset."""
+        from ...core import preferences
+        from ...core.undo_commands import PasteItemsCommand
+
+        if target_pos is not None:
+            centroid_x = 0.0
+            centroid_y = 0.0
+            for it in items:
+                p = it.pos()
+                centroid_x += p.x()
+                centroid_y += p.y()
+            if items:
+                centroid_x /= len(items)
+                centroid_y /= len(items)
+            dx = target_pos.x() - centroid_x
+            dy = target_pos.y() - centroid_y
+        else:
+            dx = preferences.clone_offset_x_mm
+            dy = preferences.clone_offset_y_mm
+
+        for it in items:
+            it.setPos(it.pos().x() + dx, it.pos().y() + dy)
+            self._connect_item_signals(it)
+
+        cmd = PasteItemsCommand(self.scene, items, self._layer_state)
+        self.undo_stack.push(cmd)
+
+        self.scene.clearSelection()
+        for it in items:
+            it.setSelected(True)
+
+        self._schedule_retrace()
+        self.log_service.info(
+            f"Pasted {len(items)} item(s) from another instance", LogCategory.COPY_PASTE
+        )
+
     @property
     def has_clipboard_items(self) -> bool:
-        """Check if clipboard has items for pasting."""
-        return len(self._clipboard) > 0
+        """Check if clipboard has items for pasting (local or system)."""
+        if self._clipboard:
+            return True
+        from PyQt6.QtGui import QGuiApplication
+
+        cb = QGuiApplication.clipboard()
+        if cb is not None:
+            mime = cb.mimeData()
+            if mime is not None and mime.hasFormat(self._MIME_TYPE):
+                return True
+        return False

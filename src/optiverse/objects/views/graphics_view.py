@@ -41,6 +41,8 @@ except ImportError:
 
 class GraphicsView(QtWidgets.QGraphicsView):
     zoomChanged = QtCore.pyqtSignal()
+    cursorScenePosChanged = QtCore.pyqtSignal(QtCore.QPointF)
+    nudgeRequested = QtCore.pyqtSignal(int, bool)  # key code, shift held
     # Signal emitted when a component is dropped (dict, QPointF)
     componentDropped = QtCore.pyqtSignal(dict, QtCore.QPointF)
 
@@ -104,6 +106,12 @@ class GraphicsView(QtWidgets.QGraphicsView):
                 viewport.setAttribute(QtCore.Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
                 viewport.grabGesture(QtCore.Qt.GestureType.PinchGesture)
                 viewport.grabGesture(QtCore.Qt.GestureType.PanGesture)
+
+        # Enable mouse tracking for live cursor coordinate display
+        self.setMouseTracking(True)
+        viewport = self.viewport()
+        if viewport is not None:
+            viewport.setMouseTracking(True)
 
         # scale bar prefs
         self._show_scale_bar = True
@@ -170,6 +178,40 @@ class GraphicsView(QtWidgets.QGraphicsView):
         viewport = self.viewport()
         if viewport is not None:
             viewport.update()
+
+    _NICE_STEPS = [1, 2, 5]
+    _SB_MIN_PX = 40
+    _SB_MAX_PX = 160
+
+    def _nice_scale_bar(self, px_per_mm: float) -> tuple[float, float, str]:
+        """Pick a nice round value for the scale bar at the current zoom.
+
+        Returns (bar_pixel_width, display_value, unit_string).
+        """
+        import math
+
+        mm_per_px = 1.0 / px_per_mm
+        # mm range that fits _SB_MIN_PX .. _SB_MAX_PX
+        mm_min = self._SB_MIN_PX * mm_per_px
+        mm_max = self._SB_MAX_PX * mm_per_px
+
+        # Walk powers of 10 and pick the largest nice value that fits
+        exp = math.floor(math.log10(max(mm_min, 1e-30)))
+        best_mm = mm_min
+        for e in range(exp - 1, exp + 3):
+            for s in self._NICE_STEPS:
+                val = s * (10.0 ** e)
+                if mm_min <= val <= mm_max:
+                    best_mm = val
+
+        bar_px = best_mm * px_per_mm
+
+        if best_mm >= 1.0:
+            return bar_px, best_mm, "mm"
+        elif best_mm >= 1e-3:
+            return bar_px, best_mm * 1e3, "\u00b5m"
+        else:
+            return bar_px, best_mm * 1e6, "nm"
 
     def _restore_drag_state(self):
         """Restore transformation anchor and reset mouse tracking after drag operations."""
@@ -577,18 +619,26 @@ class GraphicsView(QtWidgets.QGraphicsView):
         if viewport is None:
             return
         vsize = viewport.size()
-        box_w = self._sb_len_px + 70
+
+        px_per_mm = max(1e-12, self.transform().m11())
+        bar_px, display_val, unit = self._nice_scale_bar(px_per_mm)
+
+        # Format label: drop trailing zeros for clean display
+        if display_val == int(display_val):
+            label = f"{int(display_val)} {unit}"
+        else:
+            label = f"{display_val:g} {unit}"
+
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
+        painter.setFont(self._sb_font)
+        fm = QtGui.QFontMetrics(self._sb_font)
+        label_w = fm.horizontalAdvance(label)
+
+        box_w = int(bar_px) + label_w + 36
         box_h = self._sb_height_px + 22
         x0 = self._sb_margin_px
         y0 = vsize.height() - box_h - self._sb_margin_px
 
-        # pixels per unit (assume mm world for now) = m11
-        px_per_mm = max(1e-12, self.transform().m11())
-        mm_value = self._sb_len_px / px_per_mm
-
-        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
-
-        # Scale bar colors based on dark mode
         if self._dark_mode:
             painter.setPen(QtGui.QPen(QtGui.QColor(100, 100, 100, 90)))
             painter.setBrush(QtGui.QColor(40, 40, 45, 200))
@@ -596,7 +646,7 @@ class GraphicsView(QtWidgets.QGraphicsView):
 
             painter.setPen(QtCore.Qt.PenStyle.NoPen)
             painter.setBrush(QtGui.QColor(200, 200, 200))
-            painter.drawRect(x0 + 12, y0 + 11, self._sb_len_px, self._sb_height_px)
+            painter.drawRect(x0 + 12, y0 + 11, int(bar_px), self._sb_height_px)
 
             painter.setPen(QtGui.QColor(220, 220, 220))
         else:
@@ -606,13 +656,12 @@ class GraphicsView(QtWidgets.QGraphicsView):
 
             painter.setPen(QtCore.Qt.PenStyle.NoPen)
             painter.setBrush(QtGui.QColor(30, 30, 30))
-            painter.drawRect(x0 + 12, y0 + 11, self._sb_len_px, self._sb_height_px)
+            painter.drawRect(x0 + 12, y0 + 11, int(bar_px), self._sb_height_px)
 
             painter.setPen(QtGui.QColor(20, 20, 20))
 
         painter.setFont(self._sb_font)
-        label = f"{mm_value:.1f} mm"
-        painter.drawText(x0 + 12 + self._sb_len_px + 8, y0 + 11 + self._sb_height_px, label)
+        painter.drawText(x0 + 12 + int(bar_px) + 8, y0 + 11 + self._sb_height_px, label)
 
         painter.restore()
 
@@ -851,6 +900,17 @@ class GraphicsView(QtWidgets.QGraphicsView):
         self._restore_drag_state()
         e.ignore()
 
+    # ----- Cursor Coordinate Tracking -----
+    def mouseMoveEvent(self, e: QtGui.QMouseEvent | None):
+        super().mouseMoveEvent(e)
+        if e is not None:
+            self.cursorScenePosChanged.emit(self.mapToScene(e.pos()))
+
+    _ARROW_KEYS = frozenset({
+        QtCore.Qt.Key.Key_Left, QtCore.Qt.Key.Key_Right,
+        QtCore.Qt.Key.Key_Up, QtCore.Qt.Key.Key_Down,
+    })
+
     # ----- Pan Controls (Phase 3.1: Space + Middle Button) -----
     def keyPressEvent(self, e: QtGui.QKeyEvent | None):
         """Handle key press for pan mode (Space key).
@@ -860,6 +920,17 @@ class GraphicsView(QtWidgets.QGraphicsView):
         """
         if e is None:
             return
+
+        # Arrow key nudging — must be checked before the modifier guard
+        # so that Shift+Arrow (large nudge) also works.
+        if e.key() in self._ARROW_KEYS:
+            scene = self.scene()
+            if scene is not None and scene.focusItem() is None and scene.selectedItems():
+                shift = bool(e.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier)
+                self.nudgeRequested.emit(e.key(), shift)
+                e.accept()
+                return
+
         # Don't handle key events with modifiers - let them propagate for shortcuts
         if e.modifiers() not in (
             QtCore.Qt.KeyboardModifier.NoModifier,

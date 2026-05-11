@@ -96,9 +96,27 @@ class RulerItem(QtWidgets.QGraphicsObject):
         self._locked = False
         self._group_drag_override = False
 
+        # Label position: "above" (default), "below", "left", or "right"
+        self._label_position: str = "above"
+
         # Interaction state
         self._grab: int | None = None  # index of grabbed point, or None
         self._initial_points: list[QtCore.QPointF] | None = None  # Track for undo
+
+        # Cached inverse view scale for geometry invalidation
+        self._cached_inv_scale: float = 1.0
+
+    # ========== View Scale ==========
+
+    def _view_scale(self) -> float:
+        """Return the current view zoom scale (px per scene-unit)."""
+        scene = self.scene()
+        if scene:
+            views = scene.views()
+            if views:
+                t = views[0].transform()
+                return math.hypot(t.m11(), t.m21()) or 1.0
+        return 1.0
 
     # ========== Locking ==========
 
@@ -205,7 +223,7 @@ class RulerItem(QtWidgets.QGraphicsObject):
             total_length += seg_len
         return segment_lengths, total_length
 
-    def _compute_total_label_position(self) -> QtCore.QPointF:
+    def _compute_total_label_position(self, inv_scale: float = 1.0) -> QtCore.QPointF:
         """Compute position for total length label (multi-segment rulers)."""
         last_start = self._points[-2]
         last_end = self._points[-1]
@@ -213,27 +231,29 @@ class RulerItem(QtWidgets.QGraphicsObject):
         dy = last_end.y() - last_start.y()
         length = math.hypot(dx, dy) or 1.0
 
-        # Perpendicular and along-segment unit vectors
         perp_x, perp_y = -dy / length, dx / length
         along_x, along_y = dx / length, dy / length
 
+        perp_off = RULER_TOTAL_LABEL_PERP_OFFSET * inv_scale
+        along_off = RULER_TOTAL_LABEL_ALONG_OFFSET * inv_scale
+
+        if self._label_position == "below":
+            perp_off = -perp_off
+
         return QtCore.QPointF(
-            last_end.x()
-            + perp_x * RULER_TOTAL_LABEL_PERP_OFFSET
-            + along_x * RULER_TOTAL_LABEL_ALONG_OFFSET,
-            last_end.y()
-            + perp_y * RULER_TOTAL_LABEL_PERP_OFFSET
-            + along_y * RULER_TOTAL_LABEL_ALONG_OFFSET,
+            last_end.x() + perp_x * perp_off + along_x * along_off,
+            last_end.y() + perp_y * perp_off + along_y * along_off,
         )
 
-    def _get_label_bounding_rect(self, pos: QtCore.QPointF, text: str) -> QtCore.QRectF:
+    def _get_label_bounding_rect(
+        self, pos: QtCore.QPointF, text: str, inv_scale: float = 1.0
+    ) -> QtCore.QRectF:
         """Calculate bounding rectangle for a label (for hit testing)."""
         fm = QtGui.QFontMetrics(QtGui.QFont())
-        w = fm.horizontalAdvance(text) + 12
-        h = fm.height() + 6
+        w = (fm.horizontalAdvance(text) + 12) * inv_scale
+        h = (fm.height() + 6) * inv_scale
 
-        # Use larger box to account for rotation
-        padding = RULER_BAR_HEIGHT / 2.0 + RULER_LABEL_PADDING
+        padding = (RULER_BAR_HEIGHT / 2.0 + RULER_LABEL_PADDING) * inv_scale
         max_dim = max(w, h) + padding
         return QtCore.QRectF(
             pos.x() - max_dim / 2.0, pos.y() - max_dim / 2.0 - padding, max_dim, max_dim
@@ -250,7 +270,8 @@ class RulerItem(QtWidgets.QGraphicsObject):
         min_y = min(p.y() for p in self._points)
         max_y = max(p.y() for p in self._points)
         rect = QtCore.QRectF(min_x, min_y, max_x - min_x, max_y - min_y)
-        pad = max(RULER_BOUNDING_PAD_PX, RULER_BAR_HEIGHT * 1.5)
+        inv = 1.0 / self._view_scale()
+        pad = max(RULER_BOUNDING_PAD_PX, RULER_BAR_HEIGHT * 1.5) * inv
         return rect.adjusted(-pad, -pad, pad, pad)
 
     def shape(self) -> QtGui.QPainterPath:
@@ -258,34 +279,33 @@ class RulerItem(QtWidgets.QGraphicsObject):
         if len(self._points) < 2:
             return path
 
+        inv = 1.0 / self._view_scale()
+
         # Add the line path with stroke width for hit testing
         line_path = QtGui.QPainterPath()
         line_path.moveTo(self._points[0])
         for i in range(1, len(self._points)):
             line_path.lineTo(self._points[i])
         stroker = QtGui.QPainterPathStroker()
-        stroker.setWidth(max(RULER_MIN_STROKE_WIDTH_PX, RULER_BAR_HEIGHT))
+        stroker.setWidth(max(RULER_MIN_STROKE_WIDTH_PX, RULER_BAR_HEIGHT) * inv)
         path.addPath(stroker.createStroke(line_path))
 
         # Add label areas for hit testing
         segment_lengths, total_length = self._compute_segment_data()
 
         if len(self._points) > 2:
-            # Multi-segment: add per-segment labels
             for i in range(len(self._points) - 1):
                 seg_mid = (self._points[i] + self._points[i + 1]) * 0.5
                 seg_txt = f"{segment_lengths[i]:.1f} mm"
-                path.addRect(self._get_label_bounding_rect(seg_mid, seg_txt))
+                path.addRect(self._get_label_bounding_rect(seg_mid, seg_txt, inv))
 
-            # Add total label
-            total_pos = self._compute_total_label_position()
+            total_pos = self._compute_total_label_position(inv)
             total_txt = f"Total: {total_length:.1f} mm"
-            path.addRect(self._get_label_bounding_rect(total_pos, total_txt))
+            path.addRect(self._get_label_bounding_rect(total_pos, total_txt, inv))
         else:
-            # Single segment: add centered label
             mid = (self._points[0] + self._points[1]) * 0.5
             total_txt = f"{total_length:.1f} mm"
-            path.addRect(self._get_label_bounding_rect(mid, total_txt))
+            path.addRect(self._get_label_bounding_rect(mid, total_txt, inv))
 
         return path
 
@@ -300,11 +320,12 @@ class RulerItem(QtWidgets.QGraphicsObject):
         perp_x: float,
         perp_y: float,
         color: QtGui.QColor,
+        inv_scale: float = 1.0,
     ) -> None:
         """Draw a bar perpendicular to the line at center point."""
         cx, cy = center.x(), center.y()
-        hw = RULER_BAR_WIDTH / 2.0  # half-width along direction
-        hh = RULER_BAR_HEIGHT / 2.0  # half-height along perpendicular
+        hw = RULER_BAR_WIDTH / 2.0 * inv_scale
+        hh = RULER_BAR_HEIGHT / 2.0 * inv_scale
 
         pts = [
             QtCore.QPointF(cx + (-hw * dir_x + -hh * perp_x), cy + (-hw * dir_y + -hh * perp_y)),
@@ -314,7 +335,9 @@ class RulerItem(QtWidgets.QGraphicsObject):
         ]
 
         painter.save()
-        painter.setPen(QtGui.QPen(color, 1))
+        pen = QtGui.QPen(color, 1)
+        pen.setCosmetic(True)
+        painter.setPen(pen)
         painter.setBrush(color)
         painter.drawPolygon(QtGui.QPolygonF(pts))
         painter.restore()
@@ -328,9 +351,9 @@ class RulerItem(QtWidgets.QGraphicsObject):
         seg_dy: float,
         is_selected: bool,
         dark_mode: bool = False,
+        inv_scale: float = 1.0,
     ) -> None:
         """Draw a text label at the given position with proper rotation."""
-        # Ensure text is always readable (flip direction if needed)
         dx_calc, dy_calc = seg_dx, seg_dy
         if seg_dx < 0:
             dx_calc, dy_calc = -seg_dx, -seg_dy
@@ -339,32 +362,43 @@ class RulerItem(QtWidgets.QGraphicsObject):
         painter.save()
         painter.translate(pos)
         painter.rotate(angle)
-        # Compensate for view's Y-axis inversion
-        painter.scale(1.0, -1.0)
+        painter.scale(inv_scale, -inv_scale)
 
         fm = QtGui.QFontMetrics(painter.font())
         w = fm.horizontalAdvance(text) + 12
         h = fm.height() + 6
-        y_off = -(RULER_BAR_HEIGHT / 2.0 + RULER_LABEL_PADDING + h)
+        bar_hh = RULER_BAR_HEIGHT / 2.0
+        pad = RULER_LABEL_PADDING
 
-        # Background and text colors
+        lp = self._label_position
+        if lp == "below":
+            x_off = -w / 2.0
+            y_off = bar_hh + pad
+        elif lp == "left":
+            x_off = -w - pad
+            y_off = -h / 2.0
+        elif lp == "right":
+            x_off = pad
+            y_off = -h / 2.0
+        else:  # "above" (default)
+            x_off = -w / 2.0
+            y_off = -(bar_hh + pad + h)
+
         if is_selected:
             bg_color = QtGui.QColor(255, 255, 255, RULER_LABEL_BG_ALPHA_SELECTED)
-            text_color = QtGui.QColor(0, 120, 215)  # Selection blue
+            text_color = QtGui.QColor(0, 120, 215)
         elif dark_mode:
-            bg_color = QtGui.QColor(40, 40, 40, RULER_LABEL_BG_ALPHA)  # Dark background
-            text_color = QtGui.QColor(255, 255, 255)  # White text
+            bg_color = QtGui.QColor(40, 40, 40, RULER_LABEL_BG_ALPHA)
+            text_color = QtGui.QColor(255, 255, 255)
         else:
             bg_color = QtGui.QColor(255, 255, 255, RULER_LABEL_BG_ALPHA)
             text_color = QtGui.QColor(20, 20, 20)
 
-        # Draw background
         painter.setPen(QtCore.Qt.PenStyle.NoPen)
         painter.setBrush(bg_color)
-        label_rect = QtCore.QRectF(-w / 2.0, y_off, float(w), float(h))
+        label_rect = QtCore.QRectF(x_off, y_off, float(w), float(h))
         painter.drawRoundedRect(label_rect, RULER_LABEL_CORNER_RADIUS, RULER_LABEL_CORNER_RADIUS)
 
-        # Draw text
         painter.setPen(QtGui.QPen(text_color))
         painter.drawText(label_rect, QtCore.Qt.AlignmentFlag.AlignCenter, text)
 
@@ -379,15 +413,22 @@ class RulerItem(QtWidgets.QGraphicsObject):
         if len(self._points) < 2:
             return
 
+        t = painter.transform()
+        view_scale = math.hypot(t.m11(), t.m21()) or 1.0
+        inv_scale = 1.0 / view_scale
+
+        if abs(inv_scale - self._cached_inv_scale) > 1e-6 * inv_scale:
+            self._cached_inv_scale = inv_scale
+            self.prepareGeometryChange()
+
         is_selected = self.isSelected()
 
-        # Line appearance based on selection and theme
         dark_mode = is_dark_mode()
         if is_selected:
-            base_color = QtGui.QColor(0, 120, 215)  # Blue for selection
+            base_color = QtGui.QColor(0, 120, 215)
             line_width = RULER_LINE_WIDTH_SELECTED
         elif dark_mode:
-            base_color = QtGui.QColor(255, 255, 255)  # White for dark mode
+            base_color = QtGui.QColor(255, 255, 255)
             line_width = RULER_LINE_WIDTH
         else:
             base_color = QtGui.QColor(30, 30, 30)
@@ -400,16 +441,12 @@ class RulerItem(QtWidgets.QGraphicsObject):
         painter.setPen(base_pen)
         painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
 
-        # Calculate segment data once
         segment_lengths, total_length = self._compute_segment_data()
 
-        # Draw lines between consecutive points
         for i in range(len(self._points) - 1):
             painter.drawLine(self._points[i], self._points[i + 1])
 
-        # Draw bars at all points
         for i in range(len(self._points)):
-            # Determine direction for bar orientation
             if i == 0:
                 dx = self._points[1].x() - self._points[0].x()
                 dy = self._points[1].y() - self._points[0].y()
@@ -417,7 +454,6 @@ class RulerItem(QtWidgets.QGraphicsObject):
                 dx = self._points[-1].x() - self._points[-2].x()
                 dy = self._points[-1].y() - self._points[-2].y()
             else:
-                # Middle point: average direction of adjacent segments
                 dx1 = self._points[i].x() - self._points[i - 1].x()
                 dy1 = self._points[i].y() - self._points[i - 1].y()
                 dx2 = self._points[i + 1].x() - self._points[i].x()
@@ -432,42 +468,47 @@ class RulerItem(QtWidgets.QGraphicsObject):
             if is_selected:
                 bar_color = base_color
             elif dark_mode:
-                bar_color = QtGui.QColor(255, 255, 255)  # White for dark mode
+                bar_color = QtGui.QColor(255, 255, 255)
             else:
                 bar_color = QtGui.QColor(QtCore.Qt.GlobalColor.black)
-            self._draw_bar(painter, self._points[i], dir_x, dir_y, perp_x, perp_y, bar_color)
+            self._draw_bar(
+                painter, self._points[i], dir_x, dir_y, perp_x, perp_y, bar_color, inv_scale
+            )
 
-        # Draw labels
         if len(self._points) > 2:
-            # Multi-segment: show label for each segment
             for i in range(len(self._points) - 1):
                 seg_mid = (self._points[i] + self._points[i + 1]) * 0.5
                 seg_dx = self._points[i + 1].x() - self._points[i].x()
                 seg_dy = self._points[i + 1].y() - self._points[i].y()
                 seg_txt = f"{segment_lengths[i]:.1f} mm"
-                self._draw_label(painter, seg_mid, seg_txt, seg_dx, seg_dy, is_selected, dark_mode)
+                self._draw_label(
+                    painter, seg_mid, seg_txt, seg_dx, seg_dy, is_selected, dark_mode, inv_scale
+                )
 
-            # Total length label
-            total_pos = self._compute_total_label_position()
+            total_pos = self._compute_total_label_position(inv_scale)
             total_txt = f"Total: {total_length:.1f} mm"
-            self._draw_label(painter, total_pos, total_txt, 1.0, 0.0, is_selected, dark_mode)
+            self._draw_label(
+                painter, total_pos, total_txt, 1.0, 0.0, is_selected, dark_mode, inv_scale
+            )
         else:
-            # Single segment: show total distance label
             mid = (self._points[0] + self._points[1]) * 0.5
             total_txt = f"{total_length:.1f} mm"
             seg_dx = self._points[1].x() - self._points[0].x()
             seg_dy = self._points[1].y() - self._points[0].y()
-            self._draw_label(painter, mid, total_txt, seg_dx, seg_dy, is_selected, dark_mode)
+            self._draw_label(
+                painter, mid, total_txt, seg_dx, seg_dy, is_selected, dark_mode, inv_scale
+            )
 
     # ========== Mouse Event Handling ==========
 
     def _nearest_point(self, pos: QtCore.QPointF) -> int | None:
         """Check if pos is near any point, return index if found."""
+        hit_radius = RULER_HIT_RADIUS_PX / self._view_scale()
         min_dist = float("inf")
         nearest_idx = None
         for i, point in enumerate(self._points):
             dist = QtCore.QLineF(pos, point).length()
-            if dist <= RULER_HIT_RADIUS_PX and dist < min_dist:
+            if dist <= hit_radius and dist < min_dist:
                 min_dist = dist
                 nearest_idx = i
         return nearest_idx
@@ -686,6 +727,7 @@ class RulerItem(QtWidgets.QGraphicsObject):
             "points": [[float(p.x()), float(p.y())] for p in self._points],
             "pos": {"x": float(self.pos().x()), "y": float(self.pos().y())},
             "display_name": self.display_name,
+            "label_position": self._label_position,
         }
 
     def apply_state(self, state: dict[str, Any]) -> None:
@@ -698,6 +740,8 @@ class RulerItem(QtWidgets.QGraphicsObject):
             self.setPos(QtCore.QPointF(float(state["pos"]["x"]), float(state["pos"]["y"])))
         if "display_name" in state:
             self.display_name = state["display_name"]
+        if "label_position" in state:
+            self._label_position = state["label_position"]
 
     @staticmethod
     def _segment_length_angle_deg(
@@ -746,8 +790,21 @@ class RulerItem(QtWidgets.QGraphicsObject):
 
         name_edit.textChanged.connect(lambda _t: update_display_name())
 
+        _LABEL_POSITIONS = ["Above", "Below", "Left", "Right"]
+        label_pos_combo = QtWidgets.QComboBox()
+        label_pos_combo.addItems(_LABEL_POSITIONS)
+        label_pos_combo.setCurrentText(self._label_position.capitalize())
+
+        def update_label_pos(text: str) -> None:
+            self._label_position = text.lower()
+            self.prepareGeometryChange()
+            self.update()
+
+        label_pos_combo.currentTextChanged.connect(update_label_pos)
+
         form = QtWidgets.QFormLayout()
         form.addRow("Display name", name_edit)
+        form.addRow("Label position", label_pos_combo)
 
         segment_spins: list[tuple[SmartDoubleSpinBox, SmartDoubleSpinBox]] = []
         for i in range(len(self._points) - 1):
@@ -819,6 +876,7 @@ class RulerItem(QtWidgets.QGraphicsObject):
         ]
         new_ruler = RulerItem(points=new_points, item_uuid=str(uuid.uuid4()))
         new_ruler.setZValue(self.zValue())
+        new_ruler._label_position = self._label_position
 
         return new_ruler
 
@@ -834,6 +892,8 @@ class RulerItem(QtWidgets.QGraphicsObject):
         }
         if self._locked:
             d["locked"] = True
+        if self._label_position != "above":
+            d["label_position"] = self._label_position
         return d
 
     @staticmethod
@@ -855,5 +915,7 @@ class RulerItem(QtWidgets.QGraphicsObject):
             item.setZValue(float(d["z_value"]))
         if d.get("locked"):
             item.set_locked(True)
+        if "label_position" in d:
+            item._label_position = d["label_position"]
 
         return item

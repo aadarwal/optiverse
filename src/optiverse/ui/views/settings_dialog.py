@@ -308,6 +308,26 @@ class SettingsDialog(QtWidgets.QDialog):
         form_cl.addRow("Clone offset Y:", self._spin_clone_y)
 
         layout.addWidget(grp_clip)
+
+        # Nudge (arrow key movement)
+        grp_nudge = QtWidgets.QGroupBox("Arrow Key Nudging")
+        form_nu = QtWidgets.QFormLayout(grp_nudge)
+
+        self._spin_nudge_small = QtWidgets.QDoubleSpinBox()
+        self._spin_nudge_small.setRange(0.01, 10.0)
+        self._spin_nudge_small.setSingleStep(0.1)
+        self._spin_nudge_small.setDecimals(2)
+        self._spin_nudge_small.setSuffix(" mm")
+        form_nu.addRow("Small step (Arrow):", self._spin_nudge_small)
+
+        self._spin_nudge_large = QtWidgets.QDoubleSpinBox()
+        self._spin_nudge_large.setRange(0.1, 100.0)
+        self._spin_nudge_large.setSingleStep(0.5)
+        self._spin_nudge_large.setDecimals(1)
+        self._spin_nudge_large.setSuffix(" mm")
+        form_nu.addRow("Large step (Shift+Arrow):", self._spin_nudge_large)
+
+        layout.addWidget(grp_nudge)
         layout.addStretch()
 
         scroll.setWidget(inner)
@@ -486,6 +506,12 @@ class SettingsDialog(QtWidgets.QDialog):
         )
         self._spin_clone_y.setValue(
             s.get_value("canvas/clone_offset_y_mm", 20.0, float)
+        )
+        self._spin_nudge_small.setValue(
+            s.get_value("canvas/nudge_small_mm", 0.1, float)
+        )
+        self._spin_nudge_large.setValue(
+            s.get_value("canvas/nudge_large_mm", 1.0, float)
         )
 
         # Export
@@ -760,6 +786,8 @@ class SettingsDialog(QtWidgets.QDialog):
         s.set_value("canvas/max_raytracing_events", self._spin_max_events.value())
         s.set_value("canvas/clone_offset_x_mm", self._spin_clone_x.value())
         s.set_value("canvas/clone_offset_y_mm", self._spin_clone_y.value())
+        s.set_value("canvas/nudge_small_mm", self._spin_nudge_small.value())
+        s.set_value("canvas/nudge_large_mm", self._spin_nudge_large.value())
 
         # Export
         s.set_value("export/default_png_scale", self._spin_png_scale.value())
