@@ -103,6 +103,21 @@ class RulerItem(QtWidgets.QGraphicsObject):
         self._grab: int | None = None  # index of grabbed point, or None
         self._initial_points: list[QtCore.QPointF] | None = None  # Track for undo
 
+        # Cached inverse view scale for geometry invalidation
+        self._cached_inv_scale: float = 1.0
+
+    # ========== View Scale ==========
+
+    def _view_scale(self) -> float:
+        """Return the current view zoom scale (px per scene-unit)."""
+        scene = self.scene()
+        if scene:
+            views = scene.views()
+            if views:
+                t = views[0].transform()
+                return math.hypot(t.m11(), t.m21()) or 1.0
+        return 1.0
+
     # ========== Locking ==========
 
     def is_locked(self) -> bool:
@@ -230,14 +245,15 @@ class RulerItem(QtWidgets.QGraphicsObject):
             last_end.y() + perp_y * perp_off + along_y * along_off,
         )
 
-    def _get_label_bounding_rect(self, pos: QtCore.QPointF, text: str) -> QtCore.QRectF:
+    def _get_label_bounding_rect(
+        self, pos: QtCore.QPointF, text: str, inv_scale: float = 1.0
+    ) -> QtCore.QRectF:
         """Calculate bounding rectangle for a label (for hit testing)."""
         fm = QtGui.QFontMetrics(QtGui.QFont())
-        w = fm.horizontalAdvance(text) + 12
-        h = fm.height() + 6
+        w = (fm.horizontalAdvance(text) + 12) * inv_scale
+        h = (fm.height() + 6) * inv_scale
 
-        # Use larger box to account for rotation
-        padding = RULER_BAR_HEIGHT / 2.0 + RULER_LABEL_PADDING
+        padding = (RULER_BAR_HEIGHT / 2.0 + RULER_LABEL_PADDING) * inv_scale
         max_dim = max(w, h) + padding
         return QtCore.QRectF(
             pos.x() - max_dim / 2.0, pos.y() - max_dim / 2.0 - padding, max_dim, max_dim
@@ -254,7 +270,8 @@ class RulerItem(QtWidgets.QGraphicsObject):
         min_y = min(p.y() for p in self._points)
         max_y = max(p.y() for p in self._points)
         rect = QtCore.QRectF(min_x, min_y, max_x - min_x, max_y - min_y)
-        pad = max(RULER_BOUNDING_PAD_PX, RULER_BAR_HEIGHT * 1.5)
+        inv = 1.0 / self._view_scale()
+        pad = max(RULER_BOUNDING_PAD_PX, RULER_BAR_HEIGHT * 1.5) * inv
         return rect.adjusted(-pad, -pad, pad, pad)
 
     def shape(self) -> QtGui.QPainterPath:
@@ -262,34 +279,33 @@ class RulerItem(QtWidgets.QGraphicsObject):
         if len(self._points) < 2:
             return path
 
+        inv = 1.0 / self._view_scale()
+
         # Add the line path with stroke width for hit testing
         line_path = QtGui.QPainterPath()
         line_path.moveTo(self._points[0])
         for i in range(1, len(self._points)):
             line_path.lineTo(self._points[i])
         stroker = QtGui.QPainterPathStroker()
-        stroker.setWidth(max(RULER_MIN_STROKE_WIDTH_PX, RULER_BAR_HEIGHT))
+        stroker.setWidth(max(RULER_MIN_STROKE_WIDTH_PX, RULER_BAR_HEIGHT) * inv)
         path.addPath(stroker.createStroke(line_path))
 
         # Add label areas for hit testing
         segment_lengths, total_length = self._compute_segment_data()
 
         if len(self._points) > 2:
-            # Multi-segment: add per-segment labels
             for i in range(len(self._points) - 1):
                 seg_mid = (self._points[i] + self._points[i + 1]) * 0.5
                 seg_txt = f"{segment_lengths[i]:.1f} mm"
-                path.addRect(self._get_label_bounding_rect(seg_mid, seg_txt))
+                path.addRect(self._get_label_bounding_rect(seg_mid, seg_txt, inv))
 
-            # Add total label
-            total_pos = self._compute_total_label_position()
+            total_pos = self._compute_total_label_position(inv)
             total_txt = f"Total: {total_length:.1f} mm"
-            path.addRect(self._get_label_bounding_rect(total_pos, total_txt))
+            path.addRect(self._get_label_bounding_rect(total_pos, total_txt, inv))
         else:
-            # Single segment: add centered label
             mid = (self._points[0] + self._points[1]) * 0.5
             total_txt = f"{total_length:.1f} mm"
-            path.addRect(self._get_label_bounding_rect(mid, total_txt))
+            path.addRect(self._get_label_bounding_rect(mid, total_txt, inv))
 
         return path
 
@@ -401,6 +417,10 @@ class RulerItem(QtWidgets.QGraphicsObject):
         view_scale = math.hypot(t.m11(), t.m21()) or 1.0
         inv_scale = 1.0 / view_scale
 
+        if abs(inv_scale - self._cached_inv_scale) > 1e-6 * inv_scale:
+            self._cached_inv_scale = inv_scale
+            self.prepareGeometryChange()
+
         is_selected = self.isSelected()
 
         dark_mode = is_dark_mode()
@@ -483,11 +503,12 @@ class RulerItem(QtWidgets.QGraphicsObject):
 
     def _nearest_point(self, pos: QtCore.QPointF) -> int | None:
         """Check if pos is near any point, return index if found."""
+        hit_radius = RULER_HIT_RADIUS_PX / self._view_scale()
         min_dist = float("inf")
         nearest_idx = None
         for i, point in enumerate(self._points):
             dist = QtCore.QLineF(pos, point).length()
-            if dist <= RULER_HIT_RADIUS_PX and dist < min_dist:
+            if dist <= hit_radius and dist < min_dist:
                 min_dist = dist
                 nearest_idx = i
         return nearest_idx
