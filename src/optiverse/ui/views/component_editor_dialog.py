@@ -113,6 +113,9 @@ class ComponentEditor(QtWidgets.QMainWindow):
         # STEP file attached during STEP import (persisted in component folder on save)
         self._step_file_path: str | None = None
 
+        # Back-reference to main window (set externally after construction)
+        self._main_window: QtWidgets.QWidget | None = None
+
         # Library I/O handler (initialized after UI setup in _build_library_dock)
         self._library_io: ComponentLibraryIO | None = None
 
@@ -821,7 +824,7 @@ class ComponentEditor(QtWidgets.QMainWindow):
 
     def _on_update_canvas_instances(self):
         """Push the current editor definition to all matching items on the main canvas."""
-        parent = self.parent()
+        parent = self._main_window
         if parent is None or not hasattr(parent, "update_canvas_instances_from_component_editor"):
             QtWidgets.QMessageBox.information(
                 self,

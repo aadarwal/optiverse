@@ -5,6 +5,20 @@ All notable changes to Optiverse will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Live cursor coordinates** (#78): Status bar displays real-time X/Y scene coordinates as the cursor moves over the canvas, with units (mm, µm, nm) adapting automatically to the current zoom level
+- **Dynamic scale bar units** (#79): Scale bar automatically switches between mm, µm, and nm at high zoom levels, with a dynamically sized bar representing a clean round number
+- **Arrow key nudging** (#89): Move selected items with arrow keys (0.1 mm step) or Shift+Arrow (1.0 mm step); both step sizes are configurable in Preferences → Canvas & Editing
+- **Configurable ruler label positioning** (#90): Ruler labels can be placed Above, Below, Left, or Right relative to the segment via the Edit dialog; setting is serialized and fully undoable
+- **Cross-instance copy/paste** (#34): Items copied in one Optiverse window can be pasted into another via the system clipboard (uses custom MIME type for serialization)
+
+### Changed
+
+- **Zoom-invariant ruler rendering** (#80): Ruler endpoint bars, labels, selection bounds, and hit-test areas now maintain constant screen size regardless of zoom level, matching the existing cosmetic-pen line behavior
+
 ## [0.3.4] - 2026-04-30
 
 ### Added
@@ -48,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Component resolve order**: User library roots are resolved before built-in paths for `@component` lookups
 - **Component Editor shortcuts**: Keyboard shortcuts (Save, Undo, Redo, Copy, Paste) now correctly target the Component Editor when it is the active window instead of routing to the main window. Fixed undo/redo leaking across windows via `ApplicationShortcut`, and enabled the native menu bar on macOS so the editor's menus appear at the screen top when active
 - **Save dialog shows previous files**: The Save As dialog now opens in the directory of the last saved file and automatically appends `.json` when the user omits the extension, ensuring previously saved assemblies are visible in the file browser
+- **Component Editor disappears on file dialog cancel**: On macOS, cancelling a file dialog (Open Image, Import Zemax, etc.) caused the Component Editor to fall behind the main window, appearing to close. Fixed by making the editor an independent top-level window so the OS correctly returns focus to it
 - **Auto-delete empty groups**: Groups are now automatically removed when all their members are deleted. Nested groups cascade correctly, linked assembly groups are excluded, and the cleanup is fully undoable/redoable
 - **Text note color**: Text notes now use theme-aware colors (white in dark mode, black in light mode) instead of hardcoded dark blue that was difficult to read on dark backgrounds
 - **Text note editing UX**: Double-click reliably enters edit mode with all text selected; Escape exits edit mode and deselects; text selection highlighting is properly cleared when exiting edit mode; clicking elsewhere while editing correctly exits edit mode

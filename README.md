@@ -21,10 +21,17 @@ Optiverse is a powerful, interactive tool for designing and simulating optical s
 - **Component Editor**: Create custom optical components with multiple interfaces (lenses, mirrors, beamsplitters)
 - **Hardware-Accelerated Rendering**: OpenGL-powered ray display (100x+ faster than software rendering)
 - **Numba JIT Optimization**: 4-8x raytracing speedup on all Python versions (3.9-3.12+)
+- **Linked Assemblies**: Reference external assembly files with file-watching and "Edit in Context" workflow
+- **Locking System**: Lock individual items, groups, rulers, and text notes against movement, rotation, and deletion
+- **Autolabel**: Automatically display key optical properties (e.g. `f = 100 mm`, `QWP @ 45°`) as labels that follow their owner
+- **Measurement Tools**: Rulers and angle-measure tools with zoom-invariant rendering and per-segment editing
+- **Live Cursor Coordinates & Dynamic Scale Bar**: Status bar coordinates and scale bar adapt units (mm/µm/nm) to zoom level
 - **Collaboration Mode**: Real-time multi-user editing via WebSocket server
 - **Zemax Import**: Import optical designs from Zemax (.zmx) files
 - **Polarization Support**: Jones vector formalism for polarization-dependent optics
 - **Platform-Native UI**: macOS trackpad gestures, native menu bars, dark mode support
+
+See [CHANGELOG.md](CHANGELOG.md) for the full list of changes between releases.
 
 ## Installation
 
@@ -157,6 +164,8 @@ python -m optiverse.app.main
 | Copy | `Ctrl+C` | `⌘C` |
 | Paste | `Ctrl+V` | `⌘V` |
 | Delete | `Delete` / `Backspace` | `Delete` / `⌫` |
+| Nudge selected items | `Arrow keys` | `Arrow keys` |
+| Nudge (large step) | `Shift + Arrow keys` | `⇧ + Arrow keys` |
 | Preferences | `Ctrl+,` | `⌘,` |
 | **View** | | |
 | Zoom In | `Ctrl++` | `⌘+` |
@@ -303,18 +312,6 @@ black src/ tests/
 python tools/create_icon.py
 ```
 
-### Testing Platform Features
-```bash
-# Test macOS optimizations
-python tools/test_mac_optimizations.py
-
-# Test collaboration
-python tools/test_collaboration.py
-
-# Manual save/load testing
-python tools/test_save_load_manual.py
-```
-
 ## Project Structure
 
 ```
@@ -337,15 +334,17 @@ optiverse/
 
 ## Feature Requests & Bugs
 
-### Known Bugs
-- colaborative work is broken
-- waveplates do not always rotate the polarization correctly
-- QWP seems to adjust polarisation correctly but PBS does not reflect correctly in the pbs + qwp + backreflector mirror config.
+For the authoritative list of open bugs and feature requests, see [GitHub Issues](https://github.com/QPG-MIT/optiverse/issues).
 
-### Feature Requests
-- zemax black box model
-- isolator
-- distance measure tool across edges
+### Known Bugs
+- Collaborative editing is currently broken
+- Waveplates do not always rotate polarization correctly
+- PBS does not reflect correctly in the PBS + QWP + back-reflector mirror configuration (QWP itself adjusts polarization correctly)
+
+### Notable Feature Requests
+- Zemax black-box model import
+- Optical isolator component
+- Distance-measure tool across edges
 
 
 ## Contributing

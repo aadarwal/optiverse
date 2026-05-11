@@ -109,6 +109,7 @@ class MainWindow(QtWidgets.QMainWindow):
     act_disconnect: QtGui.QAction
     act_import_as_layer: QtGui.QAction
     collab_status_label: QtWidgets.QLabel
+    coord_label: QtWidgets.QLabel
 
     def __init__(self):
         super().__init__()
@@ -128,6 +129,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.view = GraphicsView(self.scene)
         # Connect drop signal instead of circular reference
         self.view.componentDropped.connect(self.on_drop_component)
+        self.view.cursorScenePosChanged.connect(self._update_coord_label)
+        self.view.nudgeRequested.connect(self._nudge_selected)
         self.setCentralWidget(self.view)
 
         # Initialize OpenGL ray overlay for hardware-accelerated rendering
@@ -216,6 +219,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Initialize handlers that need actions (after action_builder creates them)
         self._init_event_handlers()
+
+        # Re-evaluate paste action whenever system clipboard changes
+        QtWidgets.QApplication.clipboard().dataChanged.connect(self._on_clipboard_changed)
 
         # Apply startup-only preferences (autotrace, ray width, autosave, max events)
         self.autotrace = self.settings_service.get_value("canvas/autotrace", True, bool)
@@ -633,6 +639,10 @@ class MainWindow(QtWidgets.QMainWindow):
         """Set paste action enabled state - used by handlers instead of lambda."""
         self.act_paste.setEnabled(enabled)
 
+    def _on_clipboard_changed(self) -> None:
+        """Re-evaluate paste action when the system clipboard changes."""
+        self.act_paste.setEnabled(self.component_ops.has_clipboard_items)
+
     def _on_path_measure_complete(self) -> None:
         """Called when path measure tool completes - used instead of lambda."""
         self.act_measure_path.setChecked(False)
@@ -834,8 +844,9 @@ class MainWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.critical(self, "Import error", str(e))
             return
         self._comp_editor = ComponentEditorDialog(
-            self.storage_service, self, library_service=self.library_service,
+            self.storage_service, parent=None, library_service=self.library_service,
         )
+        self._comp_editor._main_window = self
         self._comp_editor.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
         # Connect saved signal to reload library (saved is always a signal on ComponentEditorDialog)
         self._comp_editor.saved.connect(self.populate_library)
@@ -1141,8 +1152,75 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.scene_event_handler.handle_key_press(ev):
             ev.accept()
             return
-        # Pass to parent for normal handling (Delete/Backspace handled by act_delete action)
+
         super().keyPressEvent(ev)
+
+    def _nudge_selected(self, key: int, shift: bool) -> None:
+        """Move selected items by arrow key (connected to GraphicsView.nudgeRequested)."""
+        from ...core import preferences
+        from ...core.undo_commands import MoveItemCommand
+        from ...objects import BaseObj
+        from ...objects.annotations import RulerItem
+        from ...objects.annotations.rectangle_item import RectangleItem
+        from ...objects.annotations.text_note_item import TextNoteItem
+
+        selected = [
+            it for it in self.scene.selectedItems()
+            if isinstance(it, (BaseObj, RulerItem, TextNoteItem, RectangleItem))
+        ]
+        if not selected:
+            return
+
+        step = preferences.nudge_large_mm if shift else preferences.nudge_small_mm
+
+        dx, dy = 0.0, 0.0
+        if key == QtCore.Qt.Key.Key_Left:
+            dx = -step
+        elif key == QtCore.Qt.Key.Key_Right:
+            dx = step
+        elif key == QtCore.Qt.Key.Key_Up:
+            dy = step
+        elif key == QtCore.Qt.Key.Key_Down:
+            dy = -step
+
+        for item in selected:
+            old_pos = item.pos()
+            new_pos = QtCore.QPointF(old_pos.x() + dx, old_pos.y() + dy)
+            cmd = MoveItemCommand(item, old_pos, new_pos)
+            self.undo_stack.push(cmd)
+
+        self._schedule_retrace()
+
+    @staticmethod
+    def _format_coord(mm_val: float, px_per_mm: float) -> str:
+        """Format a coordinate value with zoom-appropriate units."""
+        mm_per_px = 1.0 / max(px_per_mm, 1e-12)
+        if mm_per_px < 0.001:
+            return f"{mm_val * 1e6:.1f}"
+        elif mm_per_px < 1.0:
+            return f"{mm_val * 1e3:.2f}"
+        else:
+            return f"{mm_val:.2f}"
+
+    @staticmethod
+    def _coord_unit(px_per_mm: float) -> str:
+        mm_per_px = 1.0 / max(px_per_mm, 1e-12)
+        if mm_per_px < 0.001:
+            return "nm"
+        elif mm_per_px < 1.0:
+            return "\u00b5m"
+        return "mm"
+
+    def _update_coord_label(self, pos: QtCore.QPointF) -> None:
+        """Update the status bar coordinate display with zoom-aware units."""
+        label = getattr(self, "coord_label", None)
+        if label is None:
+            return
+        px_per_mm = abs(self.view.transform().m11())
+        unit = self._coord_unit(px_per_mm)
+        x_str = self._format_coord(pos.x(), px_per_mm)
+        y_str = self._format_coord(pos.y(), px_per_mm)
+        label.setText(f"X: {x_str}  Y: {y_str} {unit}")
 
     def show_log_window(self):
         """Show the application log window."""
