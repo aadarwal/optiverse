@@ -380,7 +380,7 @@ class ComponentOperationsHandler:
                 new_item: object | None = None
                 if item_type == "ruler":
                     new_item = RulerItem.from_dict(d)
-                elif item_type == "text_note":
+                elif item_type in ("text_note", "text"):
                     new_item = TextNoteItem.from_dict(d)
                 elif item_type == "rectangle":
                     new_item = RectangleItem.from_dict(d)

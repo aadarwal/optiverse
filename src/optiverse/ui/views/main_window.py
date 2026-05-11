@@ -130,6 +130,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Connect drop signal instead of circular reference
         self.view.componentDropped.connect(self.on_drop_component)
         self.view.cursorScenePosChanged.connect(self._update_coord_label)
+        self.view.nudgeRequested.connect(self._nudge_selected)
         self.setCentralWidget(self.view)
 
         # Initialize OpenGL ray overlay for hardware-accelerated rendering
@@ -218,6 +219,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Initialize handlers that need actions (after action_builder creates them)
         self._init_event_handlers()
+
+        # Re-evaluate paste action whenever system clipboard changes
+        QtWidgets.QApplication.clipboard().dataChanged.connect(self._on_clipboard_changed)
 
         # Apply startup-only preferences (autotrace, ray width, autosave, max events)
         self.autotrace = self.settings_service.get_value("canvas/autotrace", True, bool)
@@ -634,6 +638,10 @@ class MainWindow(QtWidgets.QMainWindow):
     def _set_paste_enabled(self, enabled: bool) -> None:
         """Set paste action enabled state - used by handlers instead of lambda."""
         self.act_paste.setEnabled(enabled)
+
+    def _on_clipboard_changed(self) -> None:
+        """Re-evaluate paste action when the system clipboard changes."""
+        self.act_paste.setEnabled(self.component_ops.has_clipboard_items)
 
     def _on_path_measure_complete(self) -> None:
         """Called when path measure tool completes - used instead of lambda."""
@@ -1135,27 +1143,16 @@ class MainWindow(QtWidgets.QMainWindow):
             return result
         return super().eventFilter(obj, ev)
 
-    _ARROW_KEYS = {
-        QtCore.Qt.Key.Key_Left,
-        QtCore.Qt.Key.Key_Right,
-        QtCore.Qt.Key.Key_Up,
-        QtCore.Qt.Key.Key_Down,
-    }
-
     def keyPressEvent(self, ev):
         """Handle key press events (delegated to SceneEventHandler)."""
         if self.scene_event_handler.handle_key_press(ev):
             ev.accept()
             return
 
-        if ev.key() in self._ARROW_KEYS and self._nudge_selected(ev):
-            ev.accept()
-            return
-
         super().keyPressEvent(ev)
 
-    def _nudge_selected(self, ev: QtGui.QKeyEvent) -> bool:
-        """Move selected items by arrow key. Returns True if handled."""
+    def _nudge_selected(self, key: int, shift: bool) -> None:
+        """Move selected items by arrow key (connected to GraphicsView.nudgeRequested)."""
         from ...core import preferences
         from ...core.undo_commands import MoveItemCommand
         from ...objects import BaseObj
@@ -1168,19 +1165,18 @@ class MainWindow(QtWidgets.QMainWindow):
             if isinstance(it, (BaseObj, RulerItem, TextNoteItem, RectangleItem))
         ]
         if not selected:
-            return False
+            return
 
-        shift = ev.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier
         step = preferences.nudge_large_mm if shift else preferences.nudge_small_mm
 
         dx, dy = 0.0, 0.0
-        if ev.key() == QtCore.Qt.Key.Key_Left:
+        if key == QtCore.Qt.Key.Key_Left:
             dx = -step
-        elif ev.key() == QtCore.Qt.Key.Key_Right:
+        elif key == QtCore.Qt.Key.Key_Right:
             dx = step
-        elif ev.key() == QtCore.Qt.Key.Key_Up:
+        elif key == QtCore.Qt.Key.Key_Up:
             dy = step
-        elif ev.key() == QtCore.Qt.Key.Key_Down:
+        elif key == QtCore.Qt.Key.Key_Down:
             dy = -step
 
         for item in selected:
@@ -1190,7 +1186,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.undo_stack.push(cmd)
 
         self._schedule_retrace()
-        return True
 
     @staticmethod
     def _format_coord(mm_val: float, px_per_mm: float) -> str:

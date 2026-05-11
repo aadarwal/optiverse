@@ -42,6 +42,7 @@ except ImportError:
 class GraphicsView(QtWidgets.QGraphicsView):
     zoomChanged = QtCore.pyqtSignal()
     cursorScenePosChanged = QtCore.pyqtSignal(QtCore.QPointF)
+    nudgeRequested = QtCore.pyqtSignal(int, bool)  # key code, shift held
     # Signal emitted when a component is dropped (dict, QPointF)
     componentDropped = QtCore.pyqtSignal(dict, QtCore.QPointF)
 
@@ -905,6 +906,11 @@ class GraphicsView(QtWidgets.QGraphicsView):
         if e is not None:
             self.cursorScenePosChanged.emit(self.mapToScene(e.pos()))
 
+    _ARROW_KEYS = frozenset({
+        QtCore.Qt.Key.Key_Left, QtCore.Qt.Key.Key_Right,
+        QtCore.Qt.Key.Key_Up, QtCore.Qt.Key.Key_Down,
+    })
+
     # ----- Pan Controls (Phase 3.1: Space + Middle Button) -----
     def keyPressEvent(self, e: QtGui.QKeyEvent | None):
         """Handle key press for pan mode (Space key).
@@ -914,6 +920,17 @@ class GraphicsView(QtWidgets.QGraphicsView):
         """
         if e is None:
             return
+
+        # Arrow key nudging — must be checked before the modifier guard
+        # so that Shift+Arrow (large nudge) also works.
+        if e.key() in self._ARROW_KEYS:
+            scene = self.scene()
+            if scene is not None and scene.focusItem() is None and scene.selectedItems():
+                shift = bool(e.modifiers() & QtCore.Qt.KeyboardModifier.ShiftModifier)
+                self.nudgeRequested.emit(e.key(), shift)
+                e.accept()
+                return
+
         # Don't handle key events with modifiers - let them propagate for shortcuts
         if e.modifiers() not in (
             QtCore.Qt.KeyboardModifier.NoModifier,

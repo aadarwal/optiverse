@@ -397,7 +397,8 @@ class RulerItem(QtWidgets.QGraphicsObject):
         if len(self._points) < 2:
             return
 
-        view_scale = abs(painter.deviceTransform().m11()) or 1.0
+        t = painter.transform()
+        view_scale = math.hypot(t.m11(), t.m21()) or 1.0
         inv_scale = 1.0 / view_scale
 
         is_selected = self.isSelected()
