@@ -1192,11 +1192,36 @@ class MainWindow(QtWidgets.QMainWindow):
         self._schedule_retrace()
         return True
 
+    @staticmethod
+    def _format_coord(mm_val: float, px_per_mm: float) -> str:
+        """Format a coordinate value with zoom-appropriate units."""
+        mm_per_px = 1.0 / max(px_per_mm, 1e-12)
+        if mm_per_px < 0.001:
+            return f"{mm_val * 1e6:.1f}"
+        elif mm_per_px < 1.0:
+            return f"{mm_val * 1e3:.2f}"
+        else:
+            return f"{mm_val:.2f}"
+
+    @staticmethod
+    def _coord_unit(px_per_mm: float) -> str:
+        mm_per_px = 1.0 / max(px_per_mm, 1e-12)
+        if mm_per_px < 0.001:
+            return "nm"
+        elif mm_per_px < 1.0:
+            return "\u00b5m"
+        return "mm"
+
     def _update_coord_label(self, pos: QtCore.QPointF) -> None:
-        """Update the status bar coordinate display."""
+        """Update the status bar coordinate display with zoom-aware units."""
         label = getattr(self, "coord_label", None)
-        if label is not None:
-            label.setText(f"X: {pos.x():.2f}  Y: {pos.y():.2f} mm")
+        if label is None:
+            return
+        px_per_mm = abs(self.view.transform().m11())
+        unit = self._coord_unit(px_per_mm)
+        x_str = self._format_coord(pos.x(), px_per_mm)
+        y_str = self._format_coord(pos.y(), px_per_mm)
+        label.setText(f"X: {x_str}  Y: {y_str} {unit}")
 
     def show_log_window(self):
         """Show the application log window."""
