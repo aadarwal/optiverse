@@ -652,10 +652,12 @@ class FileController(QtCore.QObject):
         return False
 
     def export_pyopticl(self) -> bool:
-        """Export the scene to a PyOpticL v2 Python script.
+        """Export the scene to a PyOpticL v2 layout folder.
 
         Shows dialogs for missing STEP warnings and baseplate configuration,
-        then writes the script and copies referenced STEP files.
+        then writes a folder containing the script plus a ``models/`` tree
+        with one ``.step`` and ``.json`` per referenced component, matching
+        the layout PyOpticL's ``import_model`` expects.
 
         Returns:
             True if export was successful
@@ -663,7 +665,7 @@ class FileController(QtCore.QObject):
         from ...export.pyopticl_dialogs import BaseplateOptionsDialog, MissingStepWarningDialog
         from ...export.pyopticl_exporter import BaseplateOptions, analyse_scene, export_scene
 
-        with ErrorContext("while exporting PyOpticL script", suppress=True):
+        with ErrorContext("while exporting PyOpticL layout", suppress=True):
             scene_data = self.file_manager.serialize_scene()
             items, warnings = analyse_scene(scene_data)
 
@@ -677,20 +679,18 @@ class FileController(QtCore.QObject):
                 return False
             options = opts_dlg.get_options()
 
-            path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            export_dir = QtWidgets.QFileDialog.getExistingDirectory(
                 self._parent,
-                "Export PyOpticL Script",
+                "Choose folder for PyOpticL layout export",
                 "",
-                "Python Script (*.py)",
+                QtWidgets.QFileDialog.Option.ShowDirsOnly,
             )
-            if not path:
+            if not export_dir:
                 return False
-            if not path.lower().endswith(".py"):
-                path += ".py"
 
-            success, skipped = export_scene(scene_data, path, options)
+            success, skipped = export_scene(scene_data, export_dir, options)
             if success:
-                self._log_service.info(f"PyOpticL script exported to {path}")
+                self._log_service.info(f"PyOpticL layout exported to {export_dir}")
             return success
 
         return False

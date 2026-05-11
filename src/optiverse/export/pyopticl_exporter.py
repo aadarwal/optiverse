@@ -1,16 +1,28 @@
 """
-Export an Optiverse scene to a PyOpticL v2 Python script.
+Export an Optiverse scene to a PyOpticL v2 layout folder.
 
-The generated script can be executed in FreeCAD with the PyOpticL workbench
-to produce a 3-D CAD model with a precision-drilled baseplate.
+The generated folder contains a Python script and a ``models/`` directory
+laid out exactly the way PyOpticL's ``import_model`` expects:
+
+    <export>/
+        <export>.py
+        models/
+            <comp_a>/<comp_a>.step
+            <comp_a>/<comp_a>.json
+            <comp_b>/...
+
+The script can be executed in FreeCAD with the PyOpticL workbench to
+produce a 3-D CAD model with a precision-drilled baseplate.
 """
 
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import math
 import os
+import re
 import shutil
 from dataclasses import dataclass
 from typing import Any
@@ -34,6 +46,15 @@ class BaseplateOptions:
     gap_mm: float = 3.175  # 1/8 inch
     metric: bool = False
     label: str = "Optiverse Export"
+
+
+_STEM_SANITIZER = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def _sanitize_stem(s: str) -> str:
+    """Return a string safe to use as both a model name and folder name."""
+    cleaned = _STEM_SANITIZER.sub("_", s) if s else ""
+    return cleaned or "part"
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +278,7 @@ def generate_script(
         class_name = f"component_{class_counter}_def"
         comp_class_map[idx] = class_name
 
-        step_stem = os.path.splitext(item.step_filename or "part")[0]
+        step_stem = _sanitize_stem(os.path.splitext(item.step_filename or "part")[0])
 
         lines.append(f"class {class_name}:")
         lines.append(f'    """Definition for: {item.label}"""')
@@ -348,14 +369,24 @@ def generate_script(
 
 def export_scene(
     scene_data: dict[str, Any],
-    output_path: str,
+    export_dir: str,
     options: BaseplateOptions,
 ) -> tuple[bool, list[str]]:
-    """Export an Optiverse scene to a PyOpticL script.
+    """Export an Optiverse scene to a PyOpticL layout folder.
+
+    Produces the folder layout expected by ``PyOpticL.utils.import_model``:
+
+        <export_dir>/<export_dir_name>.py
+        <export_dir>/models/<stem>/<stem>.step
+        <export_dir>/models/<stem>/<stem>.json
+
+    The per-model ``.json`` file is required by PyOpticL and stores the
+    translation/rotation applied to the imported mesh; Optiverse has no
+    additional STEP orientation data, so identity transforms are written.
 
     Args:
         scene_data: Serialised scene dict (from SceneFileManager.serialize_scene).
-        output_path: Destination ``.py`` file path.
+        export_dir: Destination folder. Created if it doesn't exist.
         options: Baseplate configuration.
 
     Returns:
@@ -366,27 +397,32 @@ def export_scene(
 
     script = generate_script(items, options)
 
-    # Write script
+    folder_name = os.path.basename(os.path.normpath(export_dir)) or "pyopticl_export"
+    script_path = os.path.join(export_dir, f"{_sanitize_stem(folder_name)}.py")
+    models_root = os.path.join(export_dir, "models")
+
     try:
-        with open(output_path, "w", encoding="utf-8") as f:
+        os.makedirs(export_dir, exist_ok=True)
+        with open(script_path, "w", encoding="utf-8") as f:
             f.write(script)
     except OSError:
-        _logger.exception("Failed to write PyOpticL script: %s", output_path)
+        _logger.exception("Failed to write PyOpticL script: %s", script_path)
         return False, warnings
 
-    # Copy referenced STEP files into a models/ directory next to the script
-    models_dir = os.path.join(os.path.dirname(output_path), "models")
     for item in items:
-        if item.step_file_path and os.path.isfile(item.step_file_path):
-            os.makedirs(models_dir, exist_ok=True)
-            stem = os.path.splitext(item.step_filename or "part")[0]
-            dest_dir = os.path.join(models_dir, stem)
-            os.makedirs(dest_dir, exist_ok=True)
-            dest = os.path.join(dest_dir, item.step_filename or "part.step")
-            if not os.path.exists(dest):
-                try:
-                    shutil.copy2(item.step_file_path, dest)
-                except OSError:
-                    _logger.warning("Could not copy STEP file: %s", item.step_file_path)
+        if not item.step_file_path or not os.path.isfile(item.step_file_path):
+            continue
+        stem = _sanitize_stem(os.path.splitext(item.step_filename or "part")[0])
+        model_dir = os.path.join(models_root, stem)
+        try:
+            os.makedirs(model_dir, exist_ok=True)
+            shutil.copy2(item.step_file_path, os.path.join(model_dir, f"{stem}.step"))
+            with open(os.path.join(model_dir, f"{stem}.json"), "w", encoding="utf-8") as f:
+                json.dump(
+                    {"translation": [0.0, 0.0, 0.0], "rotation": [0.0, 0.0, 0.0]},
+                    f,
+                )
+        except OSError:
+            _logger.warning("Could not write model files for: %s", item.step_file_path)
 
     return True, warnings

@@ -130,7 +130,7 @@ class ActionBuilder:
         w.act_export_pdf = QtGui.QAction("Export PDF…", w)
         w.act_export_pdf.triggered.connect(w.export_pdf)
 
-        w.act_export_pyopticl = QtGui.QAction("Export PyOpticL Script\u2026", w)
+        w.act_export_pyopticl = QtGui.QAction("Export PyOpticL Layout\u2026", w)
         w.act_export_pyopticl.triggered.connect(w.export_pyopticl)
 
         w.act_quit = QtGui.QAction("Quit", w)

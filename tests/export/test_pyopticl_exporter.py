@@ -1,5 +1,6 @@
 """Tests for the PyOpticL exporter module."""
 
+import json
 import math
 import os
 
@@ -11,7 +12,9 @@ from optiverse.export.pyopticl_exporter import (
     _compute_baseplate_bounds,
     _interface_to_pyopticl,
     _optiverse_angle_to_pyopticl,
+    _sanitize_stem,
     analyse_scene,
+    export_scene,
     generate_script,
 )
 
@@ -288,3 +291,75 @@ class TestComponentRecordStepPath:
         rec = deserialize_component(data)
         assert rec is not None
         assert rec.step_file_path != ""
+
+
+# ---------------------------------------------------------------------------
+# Folder-based export (matches PyOpticL.utils.import_model layout)
+# ---------------------------------------------------------------------------
+
+
+class TestExportSceneFolderLayout:
+    def _scene_with_one_step(self, step_src: str) -> dict:
+        return {
+            "items": [
+                {
+                    "_type": "source",
+                    "x_mm": 0.0, "y_mm": 0.0, "angle_deg": 0.0,
+                    "wavelength_nm": 633.0,
+                },
+                {
+                    "_type": "component",
+                    "name": "Mirror Mount",
+                    "x_mm": 50.0, "y_mm": 30.0, "angle_deg": 0.0,
+                    "step_file_path": step_src,
+                    "interfaces": [{"element_type": "mirror",
+                                    "x1_mm": 0, "y1_mm": -10,
+                                    "x2_mm": 0, "y2_mm": 10}],
+                },
+            ]
+        }
+
+    def test_writes_script_and_per_model_step_and_json(self, tmp_path):
+        # Create a fake STEP file to be referenced by the scene
+        step_src = tmp_path / "Thorlabs KM05.STEP"
+        step_src.write_bytes(b"ISO-10303-21 fake step content")
+
+        export_dir = tmp_path / "my_layout"
+        success, _ = export_scene(
+            self._scene_with_one_step(str(step_src)),
+            str(export_dir),
+            BaseplateOptions(),
+        )
+        assert success is True
+
+        # Script named after folder
+        assert (export_dir / "my_layout.py").is_file()
+
+        # Stem is sanitised: spaces become underscores, extension dropped
+        stem = "Thorlabs_KM05"
+        model_dir = export_dir / "models" / stem
+        assert model_dir.is_dir()
+        assert (model_dir / f"{stem}.step").is_file()
+        assert (model_dir / f"{stem}.json").is_file()
+
+        # JSON must match what PyOpticL.utils.import_model expects
+        info = json.loads((model_dir / f"{stem}.json").read_text())
+        assert info["translation"] == [0.0, 0.0, 0.0]
+        assert info["rotation"] == [0.0, 0.0, 0.0]
+
+        # Script's import_model name must match the on-disk stem
+        script = (export_dir / "my_layout.py").read_text()
+        assert f'import_model("{stem}"' in script
+
+    def test_missing_step_file_does_not_fail_export(self, tmp_path):
+        scene = self._scene_with_one_step("/nonexistent/file.step")
+        export_dir = tmp_path / "out"
+        success, _ = export_scene(scene, str(export_dir), BaseplateOptions())
+        assert success is True
+        assert (export_dir / "out.py").is_file()
+        assert not (export_dir / "models").exists()
+
+    def test_sanitize_stem_handles_dodgy_names(self):
+        assert _sanitize_stem("foo bar/baz") == "foo_bar_baz"
+        assert _sanitize_stem("") == "part"
+        assert _sanitize_stem("OK-name_1.0") == "OK-name_1.0"
