@@ -5,6 +5,20 @@ All notable changes to Optiverse will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Live cursor coordinates** (#78): Status bar displays real-time X/Y scene coordinates (mm) as the cursor moves over the canvas
+- **Dynamic scale bar units** (#79): Scale bar automatically switches between mm, µm, and nm at high zoom levels, with a dynamically sized bar representing a clean round number
+- **Arrow key nudging** (#89): Move selected items with arrow keys (0.1 mm step) or Shift+Arrow (1.0 mm step); both step sizes are configurable in Preferences → Canvas & Editing
+- **Configurable ruler label positioning** (#90): Ruler labels can be placed Above, Below, Left, or Right relative to the segment via the Edit dialog; setting is serialized and fully undoable
+- **Cross-instance copy/paste** (#34): Items copied in one Optiverse window can be pasted into another via the system clipboard (uses custom MIME type for serialization)
+
+### Changed
+
+- **Zoom-invariant ruler rendering** (#80): Ruler endpoint bars and labels now maintain constant screen size regardless of zoom level, matching the existing cosmetic-pen line behavior
+
 ## [0.3.4] - 2026-04-30
 
 ### Added
