@@ -354,7 +354,7 @@ class ComponentOperationsHandler:
             return []
 
         try:
-            raw = bytes(mime.data(self._MIME_TYPE)).decode("utf-8")
+            raw = mime.data(self._MIME_TYPE).data().decode("utf-8")
             payload = json.loads(raw)
         except (json.JSONDecodeError, UnicodeDecodeError):
             return []
@@ -377,22 +377,20 @@ class ComponentOperationsHandler:
         for d in item_dicts:
             try:
                 item_type = d.get("type", d.get("_type", ""))
+                new_item: object | None = None
                 if item_type == "ruler":
-                    item = RulerItem.from_dict(d)
-                    item.item_uuid = str(_uuid.uuid4())
+                    new_item = RulerItem.from_dict(d)
                 elif item_type == "text_note":
-                    item = TextNoteItem.from_dict(d)
-                    item.item_uuid = str(_uuid.uuid4())
+                    new_item = TextNoteItem.from_dict(d)
                 elif item_type == "rectangle":
-                    item = RectangleItem.from_dict(d)
-                    item.item_uuid = str(_uuid.uuid4())
+                    new_item = RectangleItem.from_dict(d)
                 else:
-                    item = deserialize_item(d)
-                    if item is not None:
-                        item.item_uuid = str(_uuid.uuid4())
+                    new_item = deserialize_item(d)
 
-                if item is not None:
-                    items.append(item)
+                if new_item is not None:
+                    if hasattr(new_item, "item_uuid"):
+                        new_item.item_uuid = str(_uuid.uuid4())  # type: ignore[union-attr]
+                    items.append(new_item)
             except Exception:
                 pass
         return items

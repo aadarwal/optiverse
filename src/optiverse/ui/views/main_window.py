@@ -109,6 +109,7 @@ class MainWindow(QtWidgets.QMainWindow):
     act_disconnect: QtGui.QAction
     act_import_as_layer: QtGui.QAction
     collab_status_label: QtWidgets.QLabel
+    coord_label: QtWidgets.QLabel
 
     def __init__(self):
         super().__init__()
