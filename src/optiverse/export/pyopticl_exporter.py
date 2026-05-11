@@ -84,7 +84,7 @@ def _interface_to_pyopticl(iface_dict: dict[str, Any]) -> str | None:
         efl = iface_dict.get("efl_mm", 100.0)
         return (
             f"Lens(position=(0, 0, 0), rotation=(0, 0, 0), "
-            f"diameter={diameter_expr}, focal_length=dim({efl:.1f}, \"mm\"))"
+            f'diameter={diameter_expr}, focal_length=dim({efl:.1f}, "mm"))'
         )
 
     if etype == "beam_splitter":
@@ -92,8 +92,8 @@ def _interface_to_pyopticl(iface_dict: dict[str, Any]) -> str | None:
         pol = iface_dict.get("pbs_transmission_axis_deg")
         is_pol = iface_dict.get("is_polarizing", False)
         parts = [
-            f"position=(0, 0, 0)",
-            f"rotation=(0, 0, -45)",
+            "position=(0, 0, 0)",
+            "rotation=(0, 0, -45)",
             f'width=dim({length:.1f}, "mm") * 1.414',
             f'height=dim({length:.1f}, "mm") * 1.414',
         ]
@@ -255,7 +255,7 @@ def generate_script(
 
     # Header
     lines.append('"""')
-    lines.append(f"PyOpticL layout exported from Optiverse")
+    lines.append("PyOpticL layout exported from Optiverse")
     lines.append(f"Generated: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}")
     lines.append('"""')
     lines.append("")
@@ -282,10 +282,10 @@ def generate_script(
 
         lines.append(f"class {class_name}:")
         lines.append(f'    """Definition for: {item.label}"""')
-        lines.append(f'    object_group = "optics"')
-        lines.append(f"    object_color = (0.5, 0.5, 0.8)")
+        lines.append('    object_group = "optics"')
+        lines.append("    object_color = (0.5, 0.5, 0.8)")
         lines.append("")
-        lines.append(f"    def shape(self):")
+        lines.append("    def shape(self):")
         lines.append(f'        return import_model("{step_stem}", directory="models")')
         lines.append("")
 
@@ -297,24 +297,24 @@ def generate_script(
                 iface_strs.append(code)
 
         if iface_strs:
-            lines.append(f"    def interfaces(self):")
-            lines.append(f"        return [")
+            lines.append("    def interfaces(self):")
+            lines.append("        return [")
             for s in iface_strs:
                 lines.append(f"            {s},")
-            lines.append(f"        ]")
+            lines.append("        ]")
         lines.append("")
         lines.append("")
 
     # Layout function
-    lines.append(f"def exported_layout(x=0, y=0, angle=0):")
-    lines.append(f"    bp = Component(")
+    lines.append("def exported_layout(x=0, y=0, angle=0):")
+    lines.append("    bp = Component(")
     lines.append(f'        label="{options.label}",')
-    lines.append(f"        definition=baseplate(")
+    lines.append("        definition=baseplate(")
     lines.append(f'            dimensions=(dim({bp_w:.1f}, "mm"), dim({bp_h:.1f}, "mm"), '
                  f'dim({options.thickness_mm:.1f}, "mm")),')
     lines.append(f'            optical_height=dim({options.optical_height_mm:.1f}, "mm"),')
-    lines.append(f"        ),")
-    lines.append(f"    )")
+    lines.append("        ),")
+    lines.append("    )")
     lines.append("")
 
     # Place sources as BeamPaths
@@ -326,11 +326,13 @@ def generate_script(
         bx = item.x_mm - x_off
         by = item.y_mm - y_off
         rot = _optiverse_angle_to_pyopticl(item.angle_deg)
-        lines.append(f'    beam_{beam_counter} = bp.add(')
-        lines.append(f'        BeamPath(label="{item.label}", wavelength={item.wavelength_nm:.0f}),')
+        lines.append(f"    beam_{beam_counter} = bp.add(")
+        lines.append(
+            f'        BeamPath(label="{item.label}", wavelength={item.wavelength_nm:.0f}),'
+        )
         lines.append(f"        position=({bx:.2f}, {by:.2f}, 0),")
         lines.append(f"        rotation={rot:.2f},")
-        lines.append(f"    )")
+        lines.append("    )")
         lines.append("")
 
     # Place components
@@ -342,17 +344,17 @@ def generate_script(
         rot = _optiverse_angle_to_pyopticl(item.angle_deg)
 
         if idx in comp_class_map:
-            lines.append(f'    bp.add(')
+            lines.append("    bp.add(")
             lines.append(f'        Component(label="{item.label}", '
                          f'definition={comp_class_map[idx]}()),')
             lines.append(f"        position=({cx:.2f}, {cy:.2f}, 0),")
             lines.append(f"        rotation={rot:.2f},")
-            lines.append(f"    )")
+            lines.append("    )")
         else:
             lines.append(f"    # SKIPPED: {item.label} (no STEP file attached)")
         lines.append("")
 
-    lines.append(f"    return bp")
+    lines.append("    return bp")
     lines.append("")
     lines.append("")
     lines.append('if __name__ == "__main__":')

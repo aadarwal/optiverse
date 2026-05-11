@@ -1,10 +1,6 @@
 """Tests for the PyOpticL exporter module."""
 
 import json
-import math
-import os
-
-import pytest
 
 from optiverse.export.pyopticl_exporter import (
     BaseplateOptions,
@@ -17,7 +13,6 @@ from optiverse.export.pyopticl_exporter import (
     export_scene,
     generate_script,
 )
-
 
 # ---------------------------------------------------------------------------
 # Interface mapping

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import math
+from typing import cast
 
 import numpy as np
 from PyQt6 import QtCore, QtGui, QtWidgets
@@ -28,7 +29,7 @@ def _rotation_from_gl_view(gl_widget) -> np.ndarray:
     """Extract the 3x3 rotation matrix directly from pyqtgraph's view matrix."""
     vm = gl_widget.viewMatrix()
     data = np.array(vm.data(), dtype=np.float64).reshape(4, 4).T
-    return data[:3, :3].copy()
+    return cast(np.ndarray, data[:3, :3].copy())
 
 
 class StepPreviewDialog(QtWidgets.QDialog):
@@ -61,7 +62,9 @@ class StepPreviewDialog(QtWidgets.QDialog):
         self._faces = faces
         self._face_colors = face_colors
         self._current_rotation = (
-            initial_rotation.copy() if initial_rotation is not None else PRESET_VIEWS["Front"].copy()
+            initial_rotation.copy()
+            if initial_rotation is not None
+            else PRESET_VIEWS["Front"].copy()
         )
 
         # Compute auto height from bounding box (longest XY extent)
@@ -85,6 +88,7 @@ class StepPreviewDialog(QtWidgets.QDialog):
         # Left: 3-D GL viewer
         if is_viewer_available():
             import sys
+
             import pyqtgraph.opengl as gl
 
             if sys.platform == "darwin":
@@ -172,7 +176,9 @@ class StepPreviewDialog(QtWidgets.QDialog):
         self._preview_label = QtWidgets.QLabel()
         self._preview_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self._preview_label.setMinimumSize(300, 380)
-        self._preview_label.setStyleSheet("QLabel { background-color: white; border: 1px solid #ccc; }")
+        self._preview_label.setStyleSheet(
+            "QLabel { background-color: white; border: 1px solid #ccc; }"
+        )
         splitter.addWidget(self._preview_label)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)

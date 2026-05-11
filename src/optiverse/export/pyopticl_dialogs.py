@@ -4,7 +4,7 @@ Dialogs for PyOpticL export: pre-flight warnings and baseplate configuration.
 
 from __future__ import annotations
 
-from PyQt6 import QtCore, QtWidgets
+from PyQt6 import QtWidgets
 
 from .pyopticl_exporter import BaseplateOptions
 
@@ -39,8 +39,8 @@ class MissingStepWarningDialog(QtWidgets.QDialog):
         layout.addWidget(hint)
 
         btn_box = QtWidgets.QDialogButtonBox()
-        btn_export = btn_box.addButton("Export Anyway", QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
-        btn_cancel = btn_box.addButton(QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        btn_box.addButton("Export Anyway", QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
+        btn_box.addButton(QtWidgets.QDialogButtonBox.StandardButton.Cancel)
         btn_box.accepted.connect(self.accept)
         btn_box.rejected.connect(self.reject)
         layout.addWidget(btn_box)

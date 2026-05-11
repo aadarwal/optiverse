@@ -736,8 +736,12 @@ class ComponentEditor(QtWidgets.QMainWindow):
 
     def _import_step(self):
         """Import a STEP file as the component image via 3-D preview."""
-        from ...cad.step_renderer import is_cad_available, load_step_mesh, missing_dependency_message
         from ...cad.step_preview_dialog import StepPreviewDialog
+        from ...cad.step_renderer import (
+            is_cad_available,
+            load_step_mesh,
+            missing_dependency_message,
+        )
 
         if not is_cad_available():
             QtWidgets.QMessageBox.warning(

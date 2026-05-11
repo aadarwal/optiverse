@@ -67,6 +67,7 @@ class MainWindow(QtWidgets.QMainWindow):
     act_close: QtGui.QAction
     act_export_image: QtGui.QAction
     act_export_pdf: QtGui.QAction
+    act_export_pyopticl: QtGui.QAction
     act_quit: QtGui.QAction
     act_link_assembly: QtGui.QAction
     menu_recent: QtWidgets.QMenu

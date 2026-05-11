@@ -1,16 +1,10 @@
 """Tests for the STEP renderer module (parts that don't require OCP)."""
 
 import numpy as np
-import pytest
 
 from optiverse.cad.step_renderer import (
     PRESET_VIEWS,
-    VIEW_BACK,
-    VIEW_BOTTOM,
     VIEW_FRONT,
-    VIEW_LEFT,
-    VIEW_RIGHT,
-    VIEW_TOP,
     is_cad_available,
     is_viewer_available,
     mesh_bounding_box,

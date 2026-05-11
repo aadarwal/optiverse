@@ -10,7 +10,6 @@ Install with:  pip install cadquery pyqtgraph
 from __future__ import annotations
 
 import logging
-import math
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -102,9 +101,9 @@ def load_step_mesh(
         from OCP.BRep import BRep_Tool
         from OCP.BRepMesh import BRepMesh_IncrementalMesh
         from OCP.TopAbs import TopAbs_FACE, TopAbs_SOLID
-        from OCP.TopoDS import TopoDS
         from OCP.TopExp import TopExp_Explorer
         from OCP.TopLoc import TopLoc_Location
+        from OCP.TopoDS import TopoDS
 
         # Try XDE reader for color support
         color_tool = None
@@ -152,7 +151,7 @@ def load_step_mesh(
         solid_colors: dict[int, tuple[float, float, float]] = {}
         if color_tool is not None:
             from OCP.Quantity import Quantity_Color
-            from OCP.XCAFDoc import XCAFDoc_ColorSurf, XCAFDoc_ColorGen
+            from OCP.XCAFDoc import XCAFDoc_ColorGen, XCAFDoc_ColorSurf
 
             solid_explorer = TopExp_Explorer(shape, TopAbs_SOLID)
             while solid_explorer.More():
@@ -182,7 +181,7 @@ def load_step_mesh(
             """Get color for a solid: try XDE lookup, then fallback to palette."""
             if color_tool is not None:
                 from OCP.Quantity import Quantity_Color
-                from OCP.XCAFDoc import XCAFDoc_ColorSurf, XCAFDoc_ColorGen
+                from OCP.XCAFDoc import XCAFDoc_ColorGen, XCAFDoc_ColorSurf
                 c = Quantity_Color()
                 if color_tool.GetColor(solid, XCAFDoc_ColorSurf, c):
                     return (c.Red(), c.Green(), c.Blue())
@@ -201,7 +200,7 @@ def load_step_mesh(
                 face_rgba = fallback_rgba
                 if color_tool is not None:
                     from OCP.Quantity import Quantity_Color
-                    from OCP.XCAFDoc import XCAFDoc_ColorSurf, XCAFDoc_ColorGen
+                    from OCP.XCAFDoc import XCAFDoc_ColorGen, XCAFDoc_ColorSurf
                     c = Quantity_Color()
                     if color_tool.GetColor(face, XCAFDoc_ColorSurf, c) or \
                        color_tool.GetColor(face, XCAFDoc_ColorGen, c):
@@ -220,7 +219,9 @@ def load_step_mesh(
                 for i in range(1, n_nodes + 1):
                     pnt = triangulation.Node(i)
                     pnt_transformed = pnt.Transformed(trsf)
-                    all_verts.append([pnt_transformed.X(), pnt_transformed.Y(), pnt_transformed.Z()])
+                    all_verts.append(
+                        [pnt_transformed.X(), pnt_transformed.Y(), pnt_transformed.Z()]
+                    )
 
                 for i in range(1, n_tris + 1):
                     tri = triangulation.Triangle(i)
@@ -311,7 +312,7 @@ def project_mesh_to_2d(
     """
     try:
         from PyQt6.QtCore import QPointF, Qt
-        from PyQt6.QtGui import QColor, QImage, QPainter, QPixmap, QPolygonF, QBrush
+        from PyQt6.QtGui import QBrush, QColor, QImage, QPainter, QPixmap, QPolygonF
 
         rotated = (rotation @ vertices.T).T  # (N, 3)
 
