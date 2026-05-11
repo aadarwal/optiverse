@@ -157,6 +157,8 @@ python -m optiverse.app.main
 | Copy | `Ctrl+C` | `⌘C` |
 | Paste | `Ctrl+V` | `⌘V` |
 | Delete | `Delete` / `Backspace` | `Delete` / `⌫` |
+| Nudge selected items | `Arrow keys` | `Arrow keys` |
+| Nudge (large step) | `Shift + Arrow keys` | `⇧ + Arrow keys` |
 | Preferences | `Ctrl+,` | `⌘,` |
 | **View** | | |
 | Zoom In | `Ctrl++` | `⌘+` |

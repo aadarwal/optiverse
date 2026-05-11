@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Live cursor coordinates** (#78): Status bar displays real-time X/Y scene coordinates (mm) as the cursor moves over the canvas
+- **Live cursor coordinates** (#78): Status bar displays real-time X/Y scene coordinates as the cursor moves over the canvas, with units (mm, µm, nm) adapting automatically to the current zoom level
 - **Dynamic scale bar units** (#79): Scale bar automatically switches between mm, µm, and nm at high zoom levels, with a dynamically sized bar representing a clean round number
 - **Arrow key nudging** (#89): Move selected items with arrow keys (0.1 mm step) or Shift+Arrow (1.0 mm step); both step sizes are configurable in Preferences → Canvas & Editing
 - **Configurable ruler label positioning** (#90): Ruler labels can be placed Above, Below, Left, or Right relative to the segment via the Edit dialog; setting is serialized and fully undoable
@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Zoom-invariant ruler rendering** (#80): Ruler endpoint bars and labels now maintain constant screen size regardless of zoom level, matching the existing cosmetic-pen line behavior
+- **Zoom-invariant ruler rendering** (#80): Ruler endpoint bars, labels, selection bounds, and hit-test areas now maintain constant screen size regardless of zoom level, matching the existing cosmetic-pen line behavior
 
 ## [0.3.4] - 2026-04-30
 
