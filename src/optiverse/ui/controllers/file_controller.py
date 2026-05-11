@@ -605,7 +605,7 @@ class FileController(QtCore.QObject):
                 "PDF resolution (DPI):",
                 value=self._default_pdf_dpi(),
                 min=72,
-                max=600,
+                max=1200,
                 step=50,
             )
             if not ok:
