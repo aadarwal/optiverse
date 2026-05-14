@@ -9,6 +9,7 @@ from .benchmarks import (
 )
 from .catalog import catalog_summary, load_builtin_catalog
 from .compiler import compile_elements
+from .experiments import evaluate_planner_output, make_prompt
 from .scene_writer import build_scene_data, write_json
 from .schema import ConstraintSpec, GoalSpec, Placement, RunResult, SourceSpec, TargetSpec
 from .scorer import score_paths
@@ -29,8 +30,10 @@ __all__ = [
     "benchmark_specs",
     "catalog_summary",
     "compile_elements",
+    "evaluate_planner_output",
     "get_benchmark",
     "load_builtin_catalog",
+    "make_prompt",
     "run_all_benchmarks",
     "run_benchmark",
     "score_paths",

@@ -11,6 +11,8 @@ from optiverse.raytracing.engine import trace_rays_polymorphic
 from .benchmarks import export_benchmark_fixtures, run_all_benchmarks, run_benchmark
 from .catalog import catalog_summary, load_builtin_catalog
 from .compiler import compile_elements
+from .experiments import evaluate_planner_output, make_prompt
+from .llm_client import LLMProviderError, call_provider
 from .scene_writer import build_scene_data, write_json
 from .schema import demo_goal_spec
 from .scorer import score_paths
@@ -144,6 +146,60 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Directory for benchmark fixture JSON files.",
     )
 
+    make_prompt_parser = subparsers.add_parser(
+        "make-prompt", help="Print a planner prompt for a benchmark."
+    )
+    make_prompt_parser.add_argument("--benchmark", required=True, help="Benchmark ID.")
+    make_prompt_parser.add_argument(
+        "--mode",
+        choices=["direct-placement", "topology"],
+        required=True,
+        help="Planner prompt mode.",
+    )
+
+    evaluate_parser = subparsers.add_parser(
+        "evaluate-planner-output", help="Evaluate or archive saved planner output JSON."
+    )
+    evaluate_parser.add_argument("--benchmark", required=True, help="Benchmark ID.")
+    evaluate_parser.add_argument(
+        "--mode",
+        choices=["direct-placement", "topology"],
+        required=True,
+        help="Planner output mode.",
+    )
+    evaluate_parser.add_argument(
+        "--planner-output",
+        type=Path,
+        required=True,
+        help="Path to saved planner output JSON.",
+    )
+    evaluate_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("examples/output/experiments"),
+        help="Directory for generated experiment reports.",
+    )
+
+    llm_parser = subparsers.add_parser(
+        "run-llm-benchmark", help="Run one benchmark through an optional LLM provider."
+    )
+    llm_parser.add_argument("--benchmark", required=True, help="Benchmark ID.")
+    llm_parser.add_argument(
+        "--mode",
+        choices=["direct-placement", "topology"],
+        required=True,
+        help="Planner prompt mode.",
+    )
+    llm_parser.add_argument("--provider", default="anthropic", help="LLM provider name.")
+    llm_parser.add_argument("--model", default=None, help="Provider model name.")
+    llm_parser.add_argument("--max-tokens", type=int, default=4000, help="Maximum response tokens.")
+    llm_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("examples/output/experiments"),
+        help="Directory for generated experiment reports.",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "demo":
@@ -175,6 +231,61 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"benchmarks: {len(summary['benchmarks'])}")
         print(f"fixtures: {args.output_dir}")
         return 0
+
+    if args.command == "make-prompt":
+        print(make_prompt(args.benchmark, args.mode))
+        return 0
+
+    if args.command == "evaluate-planner-output":
+        report = evaluate_planner_output(
+            benchmark_id=args.benchmark,
+            mode=args.mode,
+            planner_output_path=args.planner_output,
+            output_dir=args.output_dir,
+        )
+        print(f"benchmark: {report['benchmark_id']}")
+        print(f"mode: {report['mode']}")
+        print(f"passed: {report['passed']}")
+        print(f"failure_stage: {report.get('failure_stage')}")
+        return 0 if report["passed"] else 1
+
+    if args.command == "run-llm-benchmark":
+        prompt = make_prompt(args.benchmark, args.mode)
+        input_dir = Path("examples/agentic_experiments") / args.benchmark / args.mode
+        input_dir.mkdir(parents=True, exist_ok=True)
+        prompt_path = input_dir / "prompt.txt"
+        raw_response_path = input_dir / "raw_response.txt"
+        model_output_path = input_dir / "model_output.json"
+        prompt_path.write_text(prompt, encoding="utf-8")
+        try:
+            response = call_provider(
+                args.provider,
+                prompt,
+                model=args.model,
+                max_tokens=args.max_tokens,
+            )
+        except LLMProviderError as exc:
+            print(f"provider_error: {exc}")
+            return 1
+        raw_response_path.write_text(response.raw_text, encoding="utf-8")
+        write_json(input_dir / "provider_response.json", response.to_dict())
+        if response.parsed_json is None:
+            print("passed: False")
+            print("failure_stage: schema")
+            print(f"raw_response: {raw_response_path}")
+            return 1
+        write_json(model_output_path, response.parsed_json)
+        report = evaluate_planner_output(
+            benchmark_id=args.benchmark,
+            mode=args.mode,
+            planner_output_path=model_output_path,
+            output_dir=args.output_dir,
+        )
+        print(f"benchmark: {report['benchmark_id']}")
+        print(f"mode: {report['mode']}")
+        print(f"passed: {report['passed']}")
+        print(f"report: {args.output_dir / args.benchmark / args.mode / 'report.json'}")
+        return 0 if report["passed"] else 1
 
     parser.error(f"Unknown command: {args.command}")
     return 2
