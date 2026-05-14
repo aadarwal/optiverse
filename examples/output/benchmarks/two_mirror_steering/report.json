@@ -1,0 +1,111 @@
+{
+  "benchmark_id": "two_mirror_steering",
+  "description": "Two mirrors steer a single horizontal beam around a 90 degree corner.",
+  "expected_limitations": [],
+  "validation": {
+    "passed": true,
+    "error_count": 0,
+    "warning_count": 0,
+    "issues": []
+  },
+  "path_count": 1,
+  "score": {
+    "target_scores": {
+      "D_corner": {
+        "hit": true,
+        "closest_distance_mm": 8.526512829121202e-14,
+        "closest_point_mm": [
+          200.0,
+          99.99999999999991
+        ],
+        "power_fraction": 1.0,
+        "expected_power_fraction": 1.0,
+        "power_error": 0.0,
+        "polarization": "horizontal",
+        "polarization_overlap": 1.0,
+        "path_index": 0
+      }
+    },
+    "constraint_scores": [
+      {
+        "name": "branch_count",
+        "kind": "branch_count",
+        "passed": true,
+        "diagnostic": true,
+        "branch_count": 1,
+        "expected": 1
+      },
+      {
+        "name": "path_contains_elements",
+        "kind": "path_contains_elements",
+        "passed": true,
+        "elements": [
+          "M1:iface0",
+          "M2:iface0"
+        ],
+        "ordered": true,
+        "mode": "any_path",
+        "matched_paths": 1,
+        "checked_paths": 1
+      },
+      {
+        "name": "path_avoids_elements",
+        "kind": "path_avoids_elements",
+        "passed": true,
+        "elements": [
+          "BLOCK:iface0"
+        ],
+        "checked_paths": 1
+      }
+    ],
+    "passed": true,
+    "ray_paths": [
+      {
+        "points_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            50.00000000000001,
+            0.0
+          ],
+          [
+            50.00000000000003,
+            100.00000000000001
+          ],
+          [
+            200.002,
+            99.99999999999991
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "path_element_ids": [
+          "M1:iface0",
+          "M2:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            0.0
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      }
+    ]
+  },
+  "output_files": {
+    "goal": "examples/output/benchmarks/two_mirror_steering/goal.json",
+    "placements": "examples/output/benchmarks/two_mirror_steering/explicit_placements.json",
+    "scene": "examples/output/benchmarks/two_mirror_steering/scene.json",
+    "report": "examples/output/benchmarks/two_mirror_steering/report.json"
+  }
+}

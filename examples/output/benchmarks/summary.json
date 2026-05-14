@@ -1,0 +1,50 @@
+{
+  "passed": true,
+  "benchmarks": [
+    {
+      "benchmark_id": "four_f_telescope",
+      "passed": true,
+      "validation_passed": true,
+      "path_count": 7,
+      "expected_limitations": [
+        "Confirms geometric relay size and centroid, not wave-optics imaging quality.",
+        "Does not yet score output angle collimation explicitly."
+      ]
+    },
+    {
+      "benchmark_id": "hwp_pbs_splitter",
+      "passed": true,
+      "validation_passed": true,
+      "path_count": 2,
+      "expected_limitations": []
+    },
+    {
+      "benchmark_id": "mach_zehnder_skeleton",
+      "passed": true,
+      "validation_passed": true,
+      "path_count": 2,
+      "expected_limitations": [
+        "Does not model phase or interference at recombination.",
+        "Minimal path_element_ids distinguish arms, but no transmitted/reflected labels exist.",
+        "No optical path length equality constraint is scored yet."
+      ]
+    },
+    {
+      "benchmark_id": "single_lens_focus",
+      "passed": true,
+      "validation_passed": true,
+      "path_count": 7,
+      "expected_limitations": [
+        "Uses geometric bundle crossing, not diffraction-limited Gaussian focus.",
+        "Spot RMS is measured at a plane from ray intersections."
+      ]
+    },
+    {
+      "benchmark_id": "two_mirror_steering",
+      "passed": true,
+      "validation_passed": true,
+      "path_count": 1,
+      "expected_limitations": []
+    }
+  ]
+}

@@ -1,0 +1,86 @@
+{
+  "benchmark_id": "four_f_telescope",
+  "goal": {
+    "goal_id": "four_f_telescope",
+    "description": "Two f=100 mm lenses are separated by f1+f2 and relay a finite-height parallel bundle with inversion.",
+    "source": {
+      "x_mm": 0.0,
+      "y_mm": 0.0,
+      "angle_deg": 0.0,
+      "size_mm": 12.0,
+      "n_rays": 7,
+      "ray_length_mm": 500.0,
+      "spread_deg": 0.0,
+      "color_hex": "#DC143C",
+      "wavelength_nm": 780.0,
+      "polarization_type": "horizontal",
+      "polarization_angle_deg": 0.0,
+      "custom_jones_ex_real": 1.0,
+      "custom_jones_ex_imag": 0.0,
+      "custom_jones_ey_real": 0.0,
+      "custom_jones_ey_imag": 0.0,
+      "use_custom_jones": false,
+      "source_type": "ray",
+      "beam_waist_mm": 0.5
+    },
+    "placements": [
+      {
+        "label": "L1",
+        "catalog_id": "lens_standard_1in",
+        "x_mm": 100.0,
+        "y_mm": 0.0,
+        "angle_deg": 0.0,
+        "interface_overrides": null
+      },
+      {
+        "label": "L2",
+        "catalog_id": "lens_standard_1in",
+        "x_mm": 300.0,
+        "y_mm": 0.0,
+        "angle_deg": 0.0,
+        "interface_overrides": null
+      }
+    ],
+    "targets": [],
+    "constraints": [
+      {
+        "kind": "path_contains_elements",
+        "params": {
+          "elements": [
+            "L1:iface0",
+            "L2:iface0"
+          ],
+          "mode": "all_paths"
+        },
+        "name": null
+      },
+      {
+        "kind": "spot_centroid_at_plane",
+        "params": {
+          "axis": "x",
+          "value_mm": 450.0,
+          "expected_x_mm": 450.0,
+          "expected_y_mm": 0.0,
+          "tolerance_mm": 0.1
+        },
+        "name": null
+      },
+      {
+        "kind": "spot_rms_radius_at_plane",
+        "params": {
+          "axis": "x",
+          "value_mm": 450.0,
+          "expected_mm": 4.0,
+          "tolerance_mm": 0.1
+        },
+        "name": null
+      }
+    ],
+    "topology": "parallel bundle -> L1 -> shared focus -> L2 -> collimated output"
+  },
+  "expected_limitations": [
+    "Confirms geometric relay size and centroid, not wave-optics imaging quality.",
+    "Does not yet score output angle collimation explicitly."
+  ],
+  "notes": ""
+}

@@ -1,0 +1,21 @@
+{
+  "benchmark_id": "two_mirror_steering",
+  "placements": [
+    {
+      "label": "M1",
+      "catalog_id": "mirror_standard_1in",
+      "x_mm": 63.081475451951135,
+      "y_mm": -13.081475451951128,
+      "angle_deg": 45.0,
+      "interface_overrides": null
+    },
+    {
+      "label": "M2",
+      "catalog_id": "mirror_standard_1in",
+      "x_mm": 63.081475451951135,
+      "y_mm": 86.91852454804888,
+      "angle_deg": 45.0,
+      "interface_overrides": null
+    }
+  ]
+}

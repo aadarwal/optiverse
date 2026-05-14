@@ -1,0 +1,87 @@
+{
+  "benchmark_id": "two_mirror_steering",
+  "goal": {
+    "goal_id": "two_mirror_steering",
+    "description": "Two mirrors steer a single horizontal beam around a 90 degree corner.",
+    "source": {
+      "x_mm": 0.0,
+      "y_mm": 0.0,
+      "angle_deg": 0.0,
+      "size_mm": 0.0,
+      "n_rays": 1,
+      "ray_length_mm": 300.0,
+      "spread_deg": 0.0,
+      "color_hex": "#DC143C",
+      "wavelength_nm": 780.0,
+      "polarization_type": "horizontal",
+      "polarization_angle_deg": 0.0,
+      "custom_jones_ex_real": 1.0,
+      "custom_jones_ex_imag": 0.0,
+      "custom_jones_ey_real": 0.0,
+      "custom_jones_ey_imag": 0.0,
+      "use_custom_jones": false,
+      "source_type": "ray",
+      "beam_waist_mm": 0.5
+    },
+    "placements": [
+      {
+        "label": "M1",
+        "catalog_id": "mirror_standard_1in",
+        "x_mm": 63.081475451951135,
+        "y_mm": -13.081475451951128,
+        "angle_deg": 45.0,
+        "interface_overrides": null
+      },
+      {
+        "label": "M2",
+        "catalog_id": "mirror_standard_1in",
+        "x_mm": 63.081475451951135,
+        "y_mm": 86.91852454804888,
+        "angle_deg": 45.0,
+        "interface_overrides": null
+      }
+    ],
+    "targets": [
+      {
+        "name": "D_corner",
+        "x_mm": 200.0,
+        "y_mm": 100.0,
+        "radius_mm": 2.0,
+        "polarization": "horizontal",
+        "expected_power_fraction": 1.0
+      }
+    ],
+    "constraints": [
+      {
+        "kind": "branch_count",
+        "params": {
+          "expected": 1
+        },
+        "name": null
+      },
+      {
+        "kind": "path_contains_elements",
+        "params": {
+          "target": "D_corner",
+          "elements": [
+            "M1:iface0",
+            "M2:iface0"
+          ]
+        },
+        "name": null
+      },
+      {
+        "kind": "path_avoids_elements",
+        "params": {
+          "elements": [
+            "BLOCK:iface0"
+          ]
+        },
+        "name": null
+      }
+    ],
+    "topology": "source -> M1 -> M2 -> D_corner"
+  },
+  "expected_limitations": [],
+  "notes": "Routing benchmark with no branching and no Gaussian propagation."
+}

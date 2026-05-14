@@ -1,0 +1,90 @@
+{
+  "benchmark_id": "mach_zehnder_skeleton",
+  "goal": {
+    "goal_id": "mach_zehnder_skeleton",
+    "description": "A 50/50 beamsplitter creates two arms with one mirror in each arm. This is a routing skeleton, not a recombining interferometer.",
+    "source": {
+      "x_mm": 0.0,
+      "y_mm": 0.0,
+      "angle_deg": 0.0,
+      "size_mm": 0.0,
+      "n_rays": 1,
+      "ray_length_mm": 400.0,
+      "spread_deg": 0.0,
+      "color_hex": "#DC143C",
+      "wavelength_nm": 780.0,
+      "polarization_type": "horizontal",
+      "polarization_angle_deg": 0.0,
+      "custom_jones_ex_real": 1.0,
+      "custom_jones_ex_imag": 0.0,
+      "custom_jones_ey_real": 0.0,
+      "custom_jones_ey_imag": 0.0,
+      "use_custom_jones": false,
+      "source_type": "ray",
+      "beam_waist_mm": 0.5
+    },
+    "placements": [
+      {
+        "label": "BS1",
+        "catalog_id": "beamsplitter_50_50_1in",
+        "x_mm": 100.0,
+        "y_mm": 0.0,
+        "angle_deg": 90.0,
+        "interface_overrides": null
+      },
+      {
+        "label": "MT",
+        "catalog_id": "mirror_standard_1in",
+        "x_mm": 213.08147545195112,
+        "y_mm": -13.081475451951128,
+        "angle_deg": 45.0,
+        "interface_overrides": null
+      },
+      {
+        "label": "MR",
+        "catalog_id": "mirror_standard_1in",
+        "x_mm": 113.08147545195114,
+        "y_mm": 86.91852454804888,
+        "angle_deg": 45.0,
+        "interface_overrides": null
+      }
+    ],
+    "targets": [],
+    "constraints": [
+      {
+        "kind": "branch_count",
+        "params": {
+          "expected": 2
+        },
+        "name": null
+      },
+      {
+        "kind": "path_contains_elements",
+        "params": {
+          "elements": [
+            "BS1:iface0",
+            "MT:iface0"
+          ]
+        },
+        "name": null
+      },
+      {
+        "kind": "path_contains_elements",
+        "params": {
+          "elements": [
+            "BS1:iface0",
+            "MR:iface0"
+          ]
+        },
+        "name": null
+      }
+    ],
+    "topology": "source -> BS1 -> {transmitted: MT, reflected: MR}"
+  },
+  "expected_limitations": [
+    "Does not model phase or interference at recombination.",
+    "Minimal path_element_ids distinguish arms, but no transmitted/reflected labels exist.",
+    "No optical path length equality constraint is scored yet."
+  ],
+  "notes": ""
+}

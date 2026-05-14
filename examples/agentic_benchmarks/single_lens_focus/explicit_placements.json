@@ -1,0 +1,13 @@
+{
+  "benchmark_id": "single_lens_focus",
+  "placements": [
+    {
+      "label": "L1",
+      "catalog_id": "lens_standard_1in",
+      "x_mm": 100.0,
+      "y_mm": 0.0,
+      "angle_deg": 0.0,
+      "interface_overrides": null
+    }
+  ]
+}

@@ -1,0 +1,306 @@
+{
+  "benchmark_id": "single_lens_focus",
+  "description": "A seven-ray parallel bundle crosses the optical axis at a lens focal plane.",
+  "expected_limitations": [
+    "Uses geometric bundle crossing, not diffraction-limited Gaussian focus.",
+    "Spot RMS is measured at a plane from ray intersections."
+  ],
+  "validation": {
+    "passed": true,
+    "error_count": 0,
+    "warning_count": 0,
+    "issues": []
+  },
+  "path_count": 7,
+  "score": {
+    "target_scores": {},
+    "constraint_scores": [
+      {
+        "name": "path_contains_elements",
+        "kind": "path_contains_elements",
+        "passed": true,
+        "elements": [
+          "L1:iface0"
+        ],
+        "ordered": true,
+        "mode": "all_paths",
+        "matched_paths": 7,
+        "checked_paths": 7
+      },
+      {
+        "name": "spot_centroid_at_plane",
+        "kind": "spot_centroid_at_plane",
+        "passed": true,
+        "axis": "x",
+        "value_mm": 200.0,
+        "sample_count": 7,
+        "centroid_mm": [
+          200.0,
+          0.0
+        ],
+        "centroid_error_mm": 0.0,
+        "tolerance_mm": 0.1
+      },
+      {
+        "name": "spot_rms_radius_at_plane",
+        "kind": "spot_rms_radius_at_plane",
+        "passed": true,
+        "axis": "x",
+        "value_mm": 200.0,
+        "sample_count": 7,
+        "centroid_mm": [
+          200.0,
+          0.0
+        ],
+        "spot_rms_radius_mm": 4.893624750040534e-16
+      }
+    ],
+    "passed": true,
+    "ray_paths": [
+      {
+        "points_mm": [
+          [
+            0.0,
+            -6.0
+          ],
+          [
+            100.0,
+            -6.0
+          ],
+          [
+            249.73172502471226,
+            2.983903501482737
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "path_element_ids": [
+          "L1:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            0.0
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "points_mm": [
+          [
+            0.0,
+            -4.0
+          ],
+          [
+            100.0,
+            -4.0
+          ],
+          [
+            249.88114300922715,
+            1.9952457203690872
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "path_element_ids": [
+          "L1:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            0.0
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "points_mm": [
+          [
+            0.0,
+            -2.0
+          ],
+          [
+            100.0,
+            -2.0
+          ],
+          [
+            249.97100879706105,
+            0.9994201759412202
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "path_element_ids": [
+          "L1:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            0.0
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "points_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            100.0,
+            0.0
+          ],
+          [
+            250.001,
+            0.0
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "path_element_ids": [
+          "L1:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            0.0
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "points_mm": [
+          [
+            0.0,
+            2.0
+          ],
+          [
+            100.0,
+            2.0
+          ],
+          [
+            249.97100879706105,
+            -0.9994201759412202
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "path_element_ids": [
+          "L1:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            0.0
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "points_mm": [
+          [
+            0.0,
+            4.0
+          ],
+          [
+            100.0,
+            4.0
+          ],
+          [
+            249.88114300922715,
+            -1.9952457203690872
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "path_element_ids": [
+          "L1:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            0.0
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "points_mm": [
+          [
+            0.0,
+            6.0
+          ],
+          [
+            100.0,
+            6.0
+          ],
+          [
+            249.73172502471226,
+            -2.983903501482737
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "path_element_ids": [
+          "L1:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            0.0
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      }
+    ]
+  },
+  "output_files": {
+    "goal": "examples/output/benchmarks/single_lens_focus/goal.json",
+    "placements": "examples/output/benchmarks/single_lens_focus/explicit_placements.json",
+    "scene": "examples/output/benchmarks/single_lens_focus/scene.json",
+    "report": "examples/output/benchmarks/single_lens_focus/report.json"
+  }
+}

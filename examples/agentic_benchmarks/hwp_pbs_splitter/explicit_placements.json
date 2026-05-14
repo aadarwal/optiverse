@@ -1,0 +1,25 @@
+{
+  "benchmark_id": "hwp_pbs_splitter",
+  "placements": [
+    {
+      "label": "HWP1",
+      "catalog_id": "waveplate_hwp",
+      "x_mm": 60.0,
+      "y_mm": 0.0,
+      "angle_deg": 0.0,
+      "interface_overrides": {
+        "0": {
+          "fast_axis_deg": 22.5
+        }
+      }
+    },
+    {
+      "label": "PBS1",
+      "catalog_id": "pbs_2in",
+      "x_mm": 145.0,
+      "y_mm": 0.0,
+      "angle_deg": 0.0,
+      "interface_overrides": null
+    }
+  ]
+}

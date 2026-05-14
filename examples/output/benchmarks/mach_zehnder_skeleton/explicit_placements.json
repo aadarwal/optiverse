@@ -1,0 +1,29 @@
+{
+  "benchmark_id": "mach_zehnder_skeleton",
+  "placements": [
+    {
+      "label": "BS1",
+      "catalog_id": "beamsplitter_50_50_1in",
+      "x_mm": 100.0,
+      "y_mm": 0.0,
+      "angle_deg": 90.0,
+      "interface_overrides": null
+    },
+    {
+      "label": "MT",
+      "catalog_id": "mirror_standard_1in",
+      "x_mm": 213.08147545195112,
+      "y_mm": -13.081475451951128,
+      "angle_deg": 45.0,
+      "interface_overrides": null
+    },
+    {
+      "label": "MR",
+      "catalog_id": "mirror_standard_1in",
+      "x_mm": 113.08147545195114,
+      "y_mm": 86.91852454804888,
+      "angle_deg": 45.0,
+      "interface_overrides": null
+    }
+  ]
+}

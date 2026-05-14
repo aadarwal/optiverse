@@ -1,0 +1,101 @@
+{
+  "benchmark_id": "hwp_pbs_splitter",
+  "goal": {
+    "goal_id": "hwp_pbs_splitter",
+    "description": "Horizontally polarized 780 nm beam is rotated by an HWP at 22.5 degrees and split by a PBS into horizontal and vertical detector arms.",
+    "source": {
+      "x_mm": 0.0,
+      "y_mm": 0.0,
+      "angle_deg": 0.0,
+      "size_mm": 0.0,
+      "n_rays": 1,
+      "ray_length_mm": 500.0,
+      "spread_deg": 0.0,
+      "color_hex": "#DC143C",
+      "wavelength_nm": 780.0,
+      "polarization_type": "horizontal",
+      "polarization_angle_deg": 0.0,
+      "custom_jones_ex_real": 1.0,
+      "custom_jones_ex_imag": 0.0,
+      "custom_jones_ey_real": 0.0,
+      "custom_jones_ey_imag": 0.0,
+      "use_custom_jones": false,
+      "source_type": "ray",
+      "beam_waist_mm": 0.5
+    },
+    "placements": [
+      {
+        "label": "HWP1",
+        "catalog_id": "waveplate_hwp",
+        "x_mm": 60.0,
+        "y_mm": 0.0,
+        "angle_deg": 0.0,
+        "interface_overrides": {
+          "0": {
+            "fast_axis_deg": 22.5
+          }
+        }
+      },
+      {
+        "label": "PBS1",
+        "catalog_id": "pbs_2in",
+        "x_mm": 145.0,
+        "y_mm": 0.0,
+        "angle_deg": 0.0,
+        "interface_overrides": null
+      }
+    ],
+    "targets": [
+      {
+        "name": "D1_transmitted_H",
+        "x_mm": 300.0,
+        "y_mm": 0.0,
+        "radius_mm": 2.0,
+        "polarization": "horizontal",
+        "expected_power_fraction": 0.5
+      },
+      {
+        "name": "D2_reflected_V",
+        "x_mm": 145.0,
+        "y_mm": -250.0,
+        "radius_mm": 2.0,
+        "polarization": "vertical",
+        "expected_power_fraction": 0.5
+      }
+    ],
+    "constraints": [
+      {
+        "kind": "branch_count",
+        "params": {
+          "expected": 2
+        },
+        "name": null
+      },
+      {
+        "kind": "path_contains_elements",
+        "params": {
+          "target": "D1_transmitted_H",
+          "elements": [
+            "HWP1:iface0",
+            "PBS1:iface0"
+          ]
+        },
+        "name": null
+      },
+      {
+        "kind": "path_contains_elements",
+        "params": {
+          "target": "D2_reflected_V",
+          "elements": [
+            "HWP1:iface0",
+            "PBS1:iface0"
+          ]
+        },
+        "name": null
+      }
+    ],
+    "topology": "source -> HWP1 -> PBS1 -> {transmitted: D1, reflected: D2}"
+  },
+  "expected_limitations": [],
+  "notes": "Polarization/routing benchmark; a single geometric ray is sufficient."
+}

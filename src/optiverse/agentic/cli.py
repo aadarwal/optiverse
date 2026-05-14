@@ -8,6 +8,7 @@ from pathlib import Path
 
 from optiverse.raytracing.engine import trace_rays_polymorphic
 
+from .benchmarks import export_benchmark_fixtures, run_all_benchmarks, run_benchmark
 from .catalog import catalog_summary, load_builtin_catalog
 from .compiler import compile_elements
 from .scene_writer import build_scene_data, write_json
@@ -112,6 +113,37 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Path to write the catalog summary JSON.",
     )
 
+    run_benchmark_parser = subparsers.add_parser(
+        "run-benchmark", help="Run one built-in explicit-placement benchmark."
+    )
+    run_benchmark_parser.add_argument("benchmark", help="Benchmark ID to run.")
+    run_benchmark_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("examples/output/benchmarks"),
+        help="Directory for generated benchmark outputs.",
+    )
+
+    run_all_parser = subparsers.add_parser(
+        "run-all-benchmarks", help="Run all built-in explicit-placement benchmarks."
+    )
+    run_all_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("examples/output/benchmarks"),
+        help="Directory for generated benchmark outputs.",
+    )
+
+    export_fixtures_parser = subparsers.add_parser(
+        "export-benchmark-fixtures", help="Write benchmark goal and placement fixtures."
+    )
+    export_fixtures_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("examples/agentic_benchmarks"),
+        help="Directory for benchmark fixture JSON files.",
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "demo":
@@ -122,6 +154,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "catalog":
         write_json(args.output, catalog_summary(load_builtin_catalog()))
         print(f"catalog: {args.output}")
+        return 0
+
+    if args.command == "run-benchmark":
+        report = run_benchmark(args.benchmark, output_dir=args.output_dir)
+        print(f"benchmark: {report['benchmark_id']}")
+        print(f"passed: {report['score']['passed']}")
+        print(f"report: {report['output_files']['report']}")
+        return 0 if report["score"]["passed"] and report["validation"]["passed"] else 1
+
+    if args.command == "run-all-benchmarks":
+        summary = run_all_benchmarks(output_dir=args.output_dir)
+        print(f"benchmarks: {len(summary['benchmarks'])}")
+        print(f"passed: {summary['passed']}")
+        print(f"summary: {args.output_dir / 'summary.json'}")
+        return 0 if summary["passed"] else 1
+
+    if args.command == "export-benchmark-fixtures":
+        summary = export_benchmark_fixtures(output_dir=args.output_dir)
+        print(f"benchmarks: {len(summary['benchmarks'])}")
+        print(f"fixtures: {args.output_dir}")
         return 0
 
     parser.error(f"Unknown command: {args.command}")

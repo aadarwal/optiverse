@@ -1,0 +1,169 @@
+{
+  "benchmark_id": "hwp_pbs_splitter",
+  "description": "Horizontally polarized 780 nm beam is rotated by an HWP at 22.5 degrees and split by a PBS into horizontal and vertical detector arms.",
+  "expected_limitations": [],
+  "validation": {
+    "passed": true,
+    "error_count": 0,
+    "warning_count": 0,
+    "issues": []
+  },
+  "path_count": 2,
+  "score": {
+    "target_scores": {
+      "D1_transmitted_H": {
+        "hit": true,
+        "closest_distance_mm": 0.0,
+        "closest_point_mm": [
+          300.0,
+          0.0
+        ],
+        "power_fraction": 0.4999999999999999,
+        "expected_power_fraction": 0.5,
+        "power_error": 1.1102230246251565e-16,
+        "polarization": "horizontal",
+        "polarization_overlap": 1.0,
+        "path_index": 1
+      },
+      "D2_reflected_V": {
+        "hit": true,
+        "closest_distance_mm": 5.684341886080802e-14,
+        "closest_point_mm": [
+          145.00000000000006,
+          -250.0
+        ],
+        "power_fraction": 0.5000000000000001,
+        "expected_power_fraction": 0.5,
+        "power_error": 1.1102230246251565e-16,
+        "polarization": "vertical",
+        "polarization_overlap": 1.0,
+        "path_index": 0
+      }
+    },
+    "constraint_scores": [
+      {
+        "name": "branch_count",
+        "kind": "branch_count",
+        "passed": true,
+        "diagnostic": true,
+        "branch_count": 2,
+        "expected": 2
+      },
+      {
+        "name": "path_contains_elements",
+        "kind": "path_contains_elements",
+        "passed": true,
+        "elements": [
+          "HWP1:iface0",
+          "PBS1:iface0"
+        ],
+        "ordered": true,
+        "mode": "any_path",
+        "matched_paths": 1,
+        "checked_paths": 1
+      },
+      {
+        "name": "path_contains_elements",
+        "kind": "path_contains_elements",
+        "passed": true,
+        "elements": [
+          "HWP1:iface0",
+          "PBS1:iface0"
+        ],
+        "ordered": true,
+        "mode": "any_path",
+        "matched_paths": 1,
+        "checked_paths": 1
+      }
+    ],
+    "passed": true,
+    "ray_paths": [
+      {
+        "points_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            60.0,
+            0.0
+          ],
+          [
+            145.0,
+            0.0
+          ],
+          [
+            145.00000000000009,
+            -355.00199999999995
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          0.5000000000000001,
+          0.5000000000000001
+        ],
+        "path_element_ids": [
+          "HWP1:iface0",
+          "PBS1:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            0.0,
+            -0.0
+          ],
+          "Ey": [
+            -1.0,
+            6.123233995736765e-17
+          ]
+        }
+      },
+      {
+        "points_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            60.0,
+            0.0
+          ],
+          [
+            145.0,
+            0.0
+          ],
+          [
+            500.00199999999995,
+            0.0
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          0.4999999999999999,
+          0.4999999999999999
+        ],
+        "path_element_ids": [
+          "HWP1:iface0",
+          "PBS1:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            2.536326566618167e-17
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      }
+    ]
+  },
+  "output_files": {
+    "goal": "examples/output/benchmarks/hwp_pbs_splitter/goal.json",
+    "placements": "examples/output/benchmarks/hwp_pbs_splitter/explicit_placements.json",
+    "scene": "examples/output/benchmarks/hwp_pbs_splitter/scene.json",
+    "report": "examples/output/benchmarks/hwp_pbs_splitter/report.json"
+  }
+}

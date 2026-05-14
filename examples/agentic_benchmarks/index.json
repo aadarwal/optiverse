@@ -1,0 +1,29 @@
+{
+  "benchmarks": [
+    {
+      "benchmark_id": "four_f_telescope",
+      "goal": "examples/agentic_benchmarks/four_f_telescope/goal.json",
+      "placements": "examples/agentic_benchmarks/four_f_telescope/explicit_placements.json"
+    },
+    {
+      "benchmark_id": "hwp_pbs_splitter",
+      "goal": "examples/agentic_benchmarks/hwp_pbs_splitter/goal.json",
+      "placements": "examples/agentic_benchmarks/hwp_pbs_splitter/explicit_placements.json"
+    },
+    {
+      "benchmark_id": "mach_zehnder_skeleton",
+      "goal": "examples/agentic_benchmarks/mach_zehnder_skeleton/goal.json",
+      "placements": "examples/agentic_benchmarks/mach_zehnder_skeleton/explicit_placements.json"
+    },
+    {
+      "benchmark_id": "single_lens_focus",
+      "goal": "examples/agentic_benchmarks/single_lens_focus/goal.json",
+      "placements": "examples/agentic_benchmarks/single_lens_focus/explicit_placements.json"
+    },
+    {
+      "benchmark_id": "two_mirror_steering",
+      "goal": "examples/agentic_benchmarks/two_mirror_steering/goal.json",
+      "placements": "examples/agentic_benchmarks/two_mirror_steering/explicit_placements.json"
+    }
+  ]
+}
