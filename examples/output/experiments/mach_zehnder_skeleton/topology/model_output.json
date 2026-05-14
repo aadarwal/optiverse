@@ -1,0 +1,33 @@
+{
+  "metadata": {
+    "producer": "Codex GPT-5 coding agent manual path",
+    "date": "2026-05-14",
+    "note": "Seed planner outputs generated during the implementation run; no external provider credentials were used."
+  },
+  "topology": "source -> BS1 -> two arms, each with one mirror",
+  "components": [
+    {
+      "label": "BS1",
+      "catalog_id": "beamsplitter_50_50_1in",
+      "role": "split into two arms"
+    },
+    {
+      "label": "MT",
+      "catalog_id": "mirror_standard_1in",
+      "role": "transmitted arm mirror"
+    },
+    {
+      "label": "MR",
+      "catalog_id": "mirror_standard_1in",
+      "role": "reflected arm mirror"
+    }
+  ],
+  "parameters": {
+    "split_ratio": "50/50"
+  },
+  "constraints": [
+    "two branches",
+    "one mirror per arm",
+    "future scorer should add arm length equality"
+  ]
+}

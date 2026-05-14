@@ -1,0 +1,174 @@
+{
+  "benchmark_id": "mach_zehnder_skeleton",
+  "mode": "direct-placement",
+  "passed": true,
+  "failure_stage": null,
+  "validation": {
+    "passed": true,
+    "error_count": 0,
+    "warning_count": 0,
+    "issues": []
+  },
+  "score": {
+    "target_scores": {},
+    "constraint_scores": [
+      {
+        "name": "branch_count",
+        "kind": "branch_count",
+        "passed": true,
+        "diagnostic": true,
+        "branch_count": 2,
+        "expected": 2
+      },
+      {
+        "name": "path_contains_elements",
+        "kind": "path_contains_elements",
+        "passed": true,
+        "elements": [
+          "BS1:iface0",
+          "MT:iface0"
+        ],
+        "ordered": true,
+        "mode": "any_path",
+        "matched_paths": 1,
+        "checked_paths": 2
+      },
+      {
+        "name": "path_contains_elements",
+        "kind": "path_contains_elements",
+        "passed": true,
+        "elements": [
+          "BS1:iface0",
+          "MR:iface0"
+        ],
+        "ordered": true,
+        "mode": "any_path",
+        "matched_paths": 1,
+        "checked_paths": 2
+      }
+    ],
+    "passed": true,
+    "ray_paths": [
+      {
+        "points_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            99.99999999999999,
+            0.0
+          ],
+          [
+            100.00000000000001,
+            99.99999999999999
+          ],
+          [
+            300.00200000000007,
+            99.99999999999999
+          ]
+        ],
+        "intensities": [
+          1.0,
+          0.5,
+          0.5,
+          0.5
+        ],
+        "path_element_ids": [
+          "BS1:iface0",
+          "MR:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            0.0
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "points_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            99.99999999999999,
+            0.0
+          ],
+          [
+            200.0,
+            0.0
+          ],
+          [
+            200.00000000000014,
+            200.00199999999998
+          ]
+        ],
+        "intensities": [
+          1.0,
+          0.5,
+          0.5,
+          0.5
+        ],
+        "path_element_ids": [
+          "BS1:iface0",
+          "MT:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            -1.0,
+            -0.0
+          ],
+          "Ey": [
+            -0.0,
+            -0.0
+          ]
+        }
+      }
+    ]
+  },
+  "unsupported_checks": [],
+  "planner_output": {
+    "metadata": {
+      "producer": "Codex GPT-5 coding agent manual path",
+      "date": "2026-05-14",
+      "note": "Seed planner outputs generated during the implementation run; no external provider credentials were used."
+    },
+    "placements": [
+      {
+        "label": "BS1",
+        "catalog_id": "beamsplitter_50_50_1in",
+        "x_mm": 100.0,
+        "y_mm": 0.0,
+        "angle_deg": 90.0,
+        "interface_overrides": null
+      },
+      {
+        "label": "MT",
+        "catalog_id": "mirror_standard_1in",
+        "x_mm": 213.08147545195112,
+        "y_mm": -13.081475451951128,
+        "angle_deg": 45.0,
+        "interface_overrides": null
+      },
+      {
+        "label": "MR",
+        "catalog_id": "mirror_standard_1in",
+        "x_mm": 113.08147545195114,
+        "y_mm": 86.91852454804888,
+        "angle_deg": 45.0,
+        "interface_overrides": null
+      }
+    ]
+  },
+  "output_files": {
+    "prompt": "examples/output/experiments/mach_zehnder_skeleton/direct-placement/prompt.txt",
+    "model_output": "examples/output/experiments/mach_zehnder_skeleton/direct-placement/model_output.json",
+    "scene": "examples/output/experiments/mach_zehnder_skeleton/direct-placement/scene.json",
+    "report": "examples/output/experiments/mach_zehnder_skeleton/direct-placement/report.json"
+  }
+}

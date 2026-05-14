@@ -1,0 +1,28 @@
+{
+  "metadata": {
+    "producer": "Codex GPT-5 coding agent manual path",
+    "date": "2026-05-14",
+    "note": "Seed planner outputs generated during the implementation run; no external provider credentials were used."
+  },
+  "topology": "parallel bundle -> L1 -> shared focus -> L2 -> collimated relay output",
+  "components": [
+    {
+      "label": "L1",
+      "catalog_id": "lens_standard_1in",
+      "role": "first f=100 lens"
+    },
+    {
+      "label": "L2",
+      "catalog_id": "lens_standard_1in",
+      "role": "second f=100 lens"
+    }
+  ],
+  "parameters": {
+    "lens_spacing_mm": "f1 + f2 = 200"
+  },
+  "constraints": [
+    "all rays hit both lenses",
+    "centroid remains on axis",
+    "relay spot size preserved"
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "benchmark_id": "two_mirror_steering",
+  "mode": "topology",
+  "passed": true,
+  "failure_stage": null,
+  "archived_only": true,
+  "warnings": [],
+  "planner_output": {
+    "metadata": {
+      "producer": "Codex GPT-5 coding agent manual path",
+      "date": "2026-05-14",
+      "note": "Seed planner outputs generated during the implementation run; no external provider credentials were used."
+    },
+    "topology": "source -> M1 -> M2 -> detector around a 90 degree corner",
+    "components": [
+      {
+        "label": "M1",
+        "catalog_id": "mirror_standard_1in",
+        "role": "turn beam upward"
+      },
+      {
+        "label": "M2",
+        "catalog_id": "mirror_standard_1in",
+        "role": "turn beam right"
+      }
+    ],
+    "parameters": {
+      "mirror_angles": "45 degree folds"
+    },
+    "constraints": [
+      "single branch",
+      "hit D_corner",
+      "path hits M1 then M2"
+    ]
+  },
+  "output_files": {
+    "prompt": "examples/output/experiments/two_mirror_steering/topology/prompt.txt",
+    "model_output": "examples/output/experiments/two_mirror_steering/topology/model_output.json",
+    "report": "examples/output/experiments/two_mirror_steering/topology/report.json"
+  }
+}

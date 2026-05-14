@@ -1,0 +1,24 @@
+{
+  "metadata": {
+    "producer": "Codex GPT-5 coding agent manual path",
+    "date": "2026-05-14",
+    "note": "Seed planner outputs generated during the implementation run; no external provider credentials were used.",
+    "expected_behavior": "naive placement uses intended hit points as component origins"
+  },
+  "placements": [
+    {
+      "label": "M1",
+      "catalog_id": "mirror_standard_1in",
+      "x_mm": 50.0,
+      "y_mm": 0.0,
+      "angle_deg": 45.0
+    },
+    {
+      "label": "M2",
+      "catalog_id": "mirror_standard_1in",
+      "x_mm": 50.0,
+      "y_mm": 100.0,
+      "angle_deg": 45.0
+    }
+  ]
+}

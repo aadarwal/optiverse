@@ -1,0 +1,90 @@
+{
+  "producer": {
+    "producer": "Codex GPT-5 coding agent manual path",
+    "date": "2026-05-14",
+    "note": "Seed planner outputs generated during the implementation run; no external provider credentials were used."
+  },
+  "passed": false,
+  "reports": [
+    {
+      "benchmark_id": "four_f_telescope",
+      "mode": "direct-placement",
+      "passed": false,
+      "failure_stage": "score",
+      "archived_only": false,
+      "unsupported_checks": []
+    },
+    {
+      "benchmark_id": "four_f_telescope",
+      "mode": "topology",
+      "passed": true,
+      "failure_stage": null,
+      "archived_only": true,
+      "unsupported_checks": []
+    },
+    {
+      "benchmark_id": "hwp_pbs_splitter",
+      "mode": "direct-placement",
+      "passed": true,
+      "failure_stage": null,
+      "archived_only": false,
+      "unsupported_checks": []
+    },
+    {
+      "benchmark_id": "hwp_pbs_splitter",
+      "mode": "topology",
+      "passed": true,
+      "failure_stage": null,
+      "archived_only": true,
+      "unsupported_checks": []
+    },
+    {
+      "benchmark_id": "mach_zehnder_skeleton",
+      "mode": "direct-placement",
+      "passed": true,
+      "failure_stage": null,
+      "archived_only": false,
+      "unsupported_checks": []
+    },
+    {
+      "benchmark_id": "mach_zehnder_skeleton",
+      "mode": "topology",
+      "passed": true,
+      "failure_stage": null,
+      "archived_only": true,
+      "unsupported_checks": []
+    },
+    {
+      "benchmark_id": "single_lens_focus",
+      "mode": "direct-placement",
+      "passed": true,
+      "failure_stage": null,
+      "archived_only": false,
+      "unsupported_checks": []
+    },
+    {
+      "benchmark_id": "single_lens_focus",
+      "mode": "topology",
+      "passed": true,
+      "failure_stage": null,
+      "archived_only": true,
+      "unsupported_checks": []
+    },
+    {
+      "benchmark_id": "two_mirror_steering",
+      "mode": "direct-placement",
+      "passed": false,
+      "failure_stage": "score",
+      "archived_only": false,
+      "unsupported_checks": []
+    },
+    {
+      "benchmark_id": "two_mirror_steering",
+      "mode": "topology",
+      "passed": true,
+      "failure_stage": null,
+      "archived_only": true,
+      "unsupported_checks": []
+    }
+  ]
+}

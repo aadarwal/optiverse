@@ -1,0 +1,17 @@
+{
+  "metadata": {
+    "producer": "Codex GPT-5 coding agent manual path",
+    "date": "2026-05-14",
+    "note": "Seed planner outputs generated during the implementation run; no external provider credentials were used."
+  },
+  "placements": [
+    {
+      "label": "L1",
+      "catalog_id": "lens_standard_1in",
+      "x_mm": 100.0,
+      "y_mm": 0.0,
+      "angle_deg": 0.0,
+      "interface_overrides": null
+    }
+  ]
+}

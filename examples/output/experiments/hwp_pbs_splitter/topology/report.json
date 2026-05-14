@@ -1,0 +1,41 @@
+{
+  "benchmark_id": "hwp_pbs_splitter",
+  "mode": "topology",
+  "passed": true,
+  "failure_stage": null,
+  "archived_only": true,
+  "warnings": [],
+  "planner_output": {
+    "metadata": {
+      "producer": "Codex GPT-5 coding agent manual path",
+      "date": "2026-05-14",
+      "note": "Seed planner outputs generated during the implementation run; no external provider credentials were used."
+    },
+    "topology": "source -> HWP1 -> PBS1 -> transmitted H arm to D1 and reflected V arm to D2",
+    "components": [
+      {
+        "label": "HWP1",
+        "catalog_id": "waveplate_hwp",
+        "role": "rotate H to 45 degrees"
+      },
+      {
+        "label": "PBS1",
+        "catalog_id": "pbs_2in",
+        "role": "split H/V"
+      }
+    ],
+    "parameters": {
+      "HWP1.fast_axis_deg": 22.5
+    },
+    "constraints": [
+      "50/50 power",
+      "D1 horizontal",
+      "D2 vertical"
+    ]
+  },
+  "output_files": {
+    "prompt": "examples/output/experiments/hwp_pbs_splitter/topology/prompt.txt",
+    "model_output": "examples/output/experiments/hwp_pbs_splitter/topology/model_output.json",
+    "report": "examples/output/experiments/hwp_pbs_splitter/topology/report.json"
+  }
+}

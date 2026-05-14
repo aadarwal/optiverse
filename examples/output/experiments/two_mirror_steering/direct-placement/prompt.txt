@@ -1,0 +1,367 @@
+You are planning a headless Optiverse optical layout benchmark.
+
+Emit explicit Optiverse component placements for the benchmark. Use only catalog_id values from the catalog. Return JSON only with this shape:
+{
+  "placements": [
+    {
+      "label": "HWP1",
+      "catalog_id": "waveplate_hwp",
+      "x_mm": 60.0,
+      "y_mm": 0.0,
+      "angle_deg": 0.0,
+      "interface_overrides": {"0": {"fast_axis_deg": 22.5}}
+    }
+  ]
+}
+Do not include prose or markdown fences.
+
+Benchmark goal JSON:
+
+{
+  "benchmark_id": "two_mirror_steering",
+  "expected_limitations": [],
+  "goal": {
+    "constraints": [
+      {
+        "kind": "branch_count",
+        "name": null,
+        "params": {
+          "expected": 1
+        }
+      },
+      {
+        "kind": "path_contains_elements",
+        "name": null,
+        "params": {
+          "elements": [
+            "M1:iface0",
+            "M2:iface0"
+          ],
+          "target": "D_corner"
+        }
+      },
+      {
+        "kind": "path_avoids_elements",
+        "name": null,
+        "params": {
+          "elements": [
+            "BLOCK:iface0"
+          ]
+        }
+      }
+    ],
+    "description": "Two mirrors steer a single horizontal beam around a 90 degree corner.",
+    "goal_id": "two_mirror_steering",
+    "source": {
+      "angle_deg": 0.0,
+      "beam_waist_mm": 0.5,
+      "color_hex": "#DC143C",
+      "custom_jones_ex_imag": 0.0,
+      "custom_jones_ex_real": 1.0,
+      "custom_jones_ey_imag": 0.0,
+      "custom_jones_ey_real": 0.0,
+      "n_rays": 1,
+      "polarization_angle_deg": 0.0,
+      "polarization_type": "horizontal",
+      "ray_length_mm": 300.0,
+      "size_mm": 0.0,
+      "source_type": "ray",
+      "spread_deg": 0.0,
+      "use_custom_jones": false,
+      "wavelength_nm": 780.0,
+      "x_mm": 0.0,
+      "y_mm": 0.0
+    },
+    "targets": [
+      {
+        "expected_power_fraction": 1.0,
+        "name": "D_corner",
+        "polarization": "horizontal",
+        "radius_mm": 2.0,
+        "x_mm": 200.0,
+        "y_mm": 100.0
+      }
+    ],
+    "topology": "source -> M1 -> M2 -> D_corner"
+  }
+}
+
+Available component catalog summary:
+
+[
+  {
+    "capabilities": [
+      "absorbs"
+    ],
+    "catalog_id": "beam_block",
+    "category": "misc",
+    "interfaces": [
+      {
+        "element_type": "beam_block",
+        "subtype": null
+      },
+      {
+        "element_type": "beam_block",
+        "subtype": null
+      }
+    ],
+    "name": "Beam Block",
+    "object_height_mm": 22.9
+  },
+  {
+    "capabilities": [
+      "pass_through",
+      "reflects",
+      "splits"
+    ],
+    "catalog_id": "beamsplitter_50_50_1in",
+    "category": "beamsplitters",
+    "interfaces": [
+      {
+        "element_type": "beam_splitter",
+        "split_R": 50.0,
+        "split_T": 50.0,
+        "subtype": null
+      }
+    ],
+    "name": "Standard Beamsplitter (50/50 1\")",
+    "object_height_mm": 25.4
+  },
+  {
+    "capabilities": [],
+    "catalog_id": "breadboard_mbh24",
+    "category": "background",
+    "interfaces": [],
+    "name": "MBH24 Breadboard",
+    "object_height_mm": 609.6
+  },
+  {
+    "capabilities": [
+      "pass_through",
+      "reflects",
+      "splits"
+    ],
+    "catalog_id": "dichroic_550nm",
+    "category": "dichroics",
+    "interfaces": [
+      {
+        "cutoff_wavelength_nm": 550.0,
+        "element_type": "dichroic",
+        "pass_type": "longpass",
+        "subtype": null,
+        "transition_width_nm": 50.0
+      }
+    ],
+    "name": "Dichroic Mirror (550nm cutoff)",
+    "object_height_mm": 25.4
+  },
+  {
+    "capabilities": [
+      "pass_through",
+      "polarization_control"
+    ],
+    "catalog_id": "faraday_rotator",
+    "category": "waveplates",
+    "interfaces": [
+      {
+        "element_type": "polarizing_interface",
+        "rotation_angle_deg": 45.0,
+        "subtype": "faraday_rotator"
+      }
+    ],
+    "name": "Faraday Rotator (45\u00b0)",
+    "object_height_mm": 30.5
+  },
+  {
+    "capabilities": [],
+    "catalog_id": "laser_table",
+    "category": "background",
+    "interfaces": [],
+    "name": "Laser Table",
+    "object_height_mm": 1500.0
+  },
+  {
+    "capabilities": [
+      "focuses",
+      "pass_through"
+    ],
+    "catalog_id": "lens_standard_1in",
+    "category": "lenses",
+    "interfaces": [
+      {
+        "clear_aperture_mm": 25.4,
+        "efl_mm": 100.0,
+        "element_type": "lens",
+        "subtype": null
+      }
+    ],
+    "name": "Standard Lens (1\" mounted)",
+    "object_height_mm": 30.5
+  },
+  {
+    "capabilities": [
+      "focuses",
+      "pass_through"
+    ],
+    "catalog_id": "lens_standard_2in",
+    "category": "lenses",
+    "interfaces": [
+      {
+        "clear_aperture_mm": 50.8,
+        "efl_mm": 100.0,
+        "element_type": "lens",
+        "subtype": null
+      }
+    ],
+    "name": "Standard Lens (2\" mounted)",
+    "object_height_mm": 55.9
+  },
+  {
+    "capabilities": [
+      "pass_through",
+      "polarization_control"
+    ],
+    "catalog_id": "linear_polarizer",
+    "category": "waveplates",
+    "interfaces": [
+      {
+        "element_type": "polarizing_interface",
+        "extinction_ratio_db": 40.0,
+        "subtype": "linear_polarizer",
+        "transmission_axis_deg": 0.0
+      }
+    ],
+    "name": "Linear Polarizer",
+    "object_height_mm": 30.5
+  },
+  {
+    "capabilities": [
+      "reflects"
+    ],
+    "catalog_id": "mirror_standard_1in",
+    "category": "mirrors",
+    "interfaces": [
+      {
+        "element_type": "mirror",
+        "subtype": null
+      }
+    ],
+    "name": "Standard Mirror (1\")",
+    "object_height_mm": 49.4
+  },
+  {
+    "capabilities": [
+      "reflects"
+    ],
+    "catalog_id": "mirror_standard_2in",
+    "category": "mirrors",
+    "interfaces": [
+      {
+        "element_type": "mirror",
+        "subtype": null
+      }
+    ],
+    "name": "Standard Mirror (2\")",
+    "object_height_mm": 68.6
+  },
+  {
+    "capabilities": [
+      "focuses",
+      "pass_through"
+    ],
+    "catalog_id": "objective_standard",
+    "category": "objectives",
+    "interfaces": [
+      {
+        "efl_mm": 4.5,
+        "element_type": "lens",
+        "subtype": null
+      }
+    ],
+    "name": "Microscope Objective",
+    "object_height_mm": 40.0
+  },
+  {
+    "capabilities": [
+      "pass_through",
+      "polarization_control",
+      "reflects",
+      "splits"
+    ],
+    "catalog_id": "pbs_2in",
+    "category": "beamsplitters",
+    "interfaces": [
+      {
+        "element_type": "beam_splitter",
+        "is_polarizing": true,
+        "pbs_transmission_axis_deg": 0.0,
+        "split_R": 0.0,
+        "split_T": 0.0,
+        "subtype": null
+      }
+    ],
+    "name": "PBS (2\" Polarizing)",
+    "object_height_mm": 50.8
+  },
+  {
+    "capabilities": [
+      "reflects"
+    ],
+    "catalog_id": "slm200",
+    "category": "misc",
+    "interfaces": [
+      {
+        "element_type": "mirror",
+        "subtype": null
+      }
+    ],
+    "name": "Spatial Light Modulator SLM200",
+    "object_height_mm": 77.5
+  },
+  {
+    "capabilities": [
+      "source"
+    ],
+    "catalog_id": "source_standard",
+    "category": "sources",
+    "interfaces": [],
+    "name": "Standard Source",
+    "object_height_mm": 10.0
+  },
+  {
+    "capabilities": [
+      "pass_through",
+      "polarization_control"
+    ],
+    "catalog_id": "waveplate_hwp",
+    "category": "waveplates",
+    "interfaces": [
+      {
+        "element_type": "polarizing_interface",
+        "fast_axis_deg": 0.0,
+        "phase_shift_deg": 180.0,
+        "subtype": "waveplate"
+      }
+    ],
+    "name": "Half Waveplate (HWP)",
+    "object_height_mm": 30.5
+  },
+  {
+    "capabilities": [
+      "pass_through",
+      "polarization_control"
+    ],
+    "catalog_id": "waveplate_qwp",
+    "category": "waveplates",
+    "interfaces": [
+      {
+        "element_type": "polarizing_interface",
+        "fast_axis_deg": 0.0,
+        "phase_shift_deg": 90.0,
+        "subtype": "waveplate"
+      }
+    ],
+    "name": "Quarter Waveplate (QWP)",
+    "object_height_mm": 30.5
+  }
+]

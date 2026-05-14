@@ -1,0 +1,321 @@
+{
+  "benchmark_id": "single_lens_focus",
+  "mode": "direct-placement",
+  "passed": true,
+  "failure_stage": null,
+  "validation": {
+    "passed": true,
+    "error_count": 0,
+    "warning_count": 0,
+    "issues": []
+  },
+  "score": {
+    "target_scores": {},
+    "constraint_scores": [
+      {
+        "name": "path_contains_elements",
+        "kind": "path_contains_elements",
+        "passed": true,
+        "elements": [
+          "L1:iface0"
+        ],
+        "ordered": true,
+        "mode": "all_paths",
+        "matched_paths": 7,
+        "checked_paths": 7
+      },
+      {
+        "name": "spot_centroid_at_plane",
+        "kind": "spot_centroid_at_plane",
+        "passed": true,
+        "axis": "x",
+        "value_mm": 200.0,
+        "sample_count": 7,
+        "centroid_mm": [
+          200.0,
+          0.0
+        ],
+        "centroid_error_mm": 0.0,
+        "tolerance_mm": 0.1
+      },
+      {
+        "name": "spot_rms_radius_at_plane",
+        "kind": "spot_rms_radius_at_plane",
+        "passed": true,
+        "axis": "x",
+        "value_mm": 200.0,
+        "sample_count": 7,
+        "centroid_mm": [
+          200.0,
+          0.0
+        ],
+        "spot_rms_radius_mm": 4.893624750040534e-16
+      }
+    ],
+    "passed": true,
+    "ray_paths": [
+      {
+        "points_mm": [
+          [
+            0.0,
+            -6.0
+          ],
+          [
+            100.0,
+            -6.0
+          ],
+          [
+            249.73172502471226,
+            2.983903501482737
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "path_element_ids": [
+          "L1:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            0.0
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "points_mm": [
+          [
+            0.0,
+            -4.0
+          ],
+          [
+            100.0,
+            -4.0
+          ],
+          [
+            249.88114300922715,
+            1.9952457203690872
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "path_element_ids": [
+          "L1:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            0.0
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "points_mm": [
+          [
+            0.0,
+            -2.0
+          ],
+          [
+            100.0,
+            -2.0
+          ],
+          [
+            249.97100879706105,
+            0.9994201759412202
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "path_element_ids": [
+          "L1:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            0.0
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "points_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            100.0,
+            0.0
+          ],
+          [
+            250.001,
+            0.0
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "path_element_ids": [
+          "L1:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            0.0
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "points_mm": [
+          [
+            0.0,
+            2.0
+          ],
+          [
+            100.0,
+            2.0
+          ],
+          [
+            249.97100879706105,
+            -0.9994201759412202
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "path_element_ids": [
+          "L1:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            0.0
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "points_mm": [
+          [
+            0.0,
+            4.0
+          ],
+          [
+            100.0,
+            4.0
+          ],
+          [
+            249.88114300922715,
+            -1.9952457203690872
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "path_element_ids": [
+          "L1:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            0.0
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      },
+      {
+        "points_mm": [
+          [
+            0.0,
+            6.0
+          ],
+          [
+            100.0,
+            6.0
+          ],
+          [
+            249.73172502471226,
+            -2.983903501482737
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "path_element_ids": [
+          "L1:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            0.0
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      }
+    ]
+  },
+  "unsupported_checks": [],
+  "planner_output": {
+    "metadata": {
+      "producer": "Codex GPT-5 coding agent manual path",
+      "date": "2026-05-14",
+      "note": "Seed planner outputs generated during the implementation run; no external provider credentials were used."
+    },
+    "placements": [
+      {
+        "label": "L1",
+        "catalog_id": "lens_standard_1in",
+        "x_mm": 100.0,
+        "y_mm": 0.0,
+        "angle_deg": 0.0,
+        "interface_overrides": null
+      }
+    ]
+  },
+  "output_files": {
+    "prompt": "examples/output/experiments/single_lens_focus/direct-placement/prompt.txt",
+    "model_output": "examples/output/experiments/single_lens_focus/direct-placement/model_output.json",
+    "scene": "examples/output/experiments/single_lens_focus/direct-placement/scene.json",
+    "report": "examples/output/experiments/single_lens_focus/direct-placement/report.json"
+  }
+}
