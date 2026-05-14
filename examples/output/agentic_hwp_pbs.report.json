@@ -1,0 +1,149 @@
+{
+  "goal": "Take a 780 nm horizontally polarized source, rotate it with an HWP so a PBS splits it 50/50, send H to D1 and V to D2.",
+  "topology": "source -> HWP1 -> PBS1 -> {transmitted: D1, reflected: D2}",
+  "placements": [
+    {
+      "label": "HWP1",
+      "catalog_id": "waveplate_hwp",
+      "x_mm": 60.0,
+      "y_mm": 0.0,
+      "angle_deg": 0.0,
+      "interface_overrides": {
+        "0": {
+          "fast_axis_deg": 22.5
+        }
+      }
+    },
+    {
+      "label": "PBS1",
+      "catalog_id": "pbs_2in",
+      "x_mm": 145.0,
+      "y_mm": 0.0,
+      "angle_deg": 0.0,
+      "interface_overrides": null
+    }
+  ],
+  "targets": [
+    {
+      "name": "D1_transmitted_H",
+      "x_mm": 300.0,
+      "y_mm": 0.0,
+      "radius_mm": 2.0,
+      "polarization": "horizontal",
+      "expected_power_fraction": 0.5
+    },
+    {
+      "name": "D2_reflected_V",
+      "x_mm": 145.0,
+      "y_mm": -250.0,
+      "radius_mm": 2.0,
+      "polarization": "vertical",
+      "expected_power_fraction": 0.5
+    }
+  ],
+  "score": {
+    "target_scores": {
+      "D1_transmitted_H": {
+        "hit": true,
+        "closest_distance_mm": 0.0,
+        "closest_point_mm": [
+          300.0,
+          0.0
+        ],
+        "power_fraction": 0.4999999999999999,
+        "expected_power_fraction": 0.5,
+        "power_error": 1.1102230246251565e-16,
+        "polarization": "horizontal",
+        "polarization_overlap": 1.0
+      },
+      "D2_reflected_V": {
+        "hit": true,
+        "closest_distance_mm": 5.684341886080802e-14,
+        "closest_point_mm": [
+          145.00000000000006,
+          -250.0
+        ],
+        "power_fraction": 0.5000000000000001,
+        "expected_power_fraction": 0.5,
+        "power_error": 1.1102230246251565e-16,
+        "polarization": "vertical",
+        "polarization_overlap": 1.0
+      }
+    },
+    "passed": true,
+    "ray_paths": [
+      {
+        "points_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            60.0,
+            0.0
+          ],
+          [
+            145.0,
+            0.0
+          ],
+          [
+            145.00000000000009,
+            -355.00199999999995
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          0.5000000000000001,
+          0.5000000000000001
+        ],
+        "final_polarization": {
+          "Ex": [
+            0.0,
+            -0.0
+          ],
+          "Ey": [
+            -1.0,
+            6.123233995736765e-17
+          ]
+        }
+      },
+      {
+        "points_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            60.0,
+            0.0
+          ],
+          [
+            145.0,
+            0.0
+          ],
+          [
+            500.00199999999995,
+            0.0
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          0.4999999999999999,
+          0.4999999999999999
+        ],
+        "final_polarization": {
+          "Ex": [
+            1.0,
+            2.536326566618167e-17
+          ],
+          "Ey": [
+            0.0,
+            0.0
+          ]
+        }
+      }
+    ]
+  }
+}

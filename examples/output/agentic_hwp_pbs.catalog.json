@@ -1,0 +1,240 @@
+[
+  {
+    "catalog_id": "beam_block",
+    "name": "Beam Block",
+    "category": "misc",
+    "object_height_mm": 22.9,
+    "interfaces": [
+      {
+        "element_type": "beam_block",
+        "subtype": null,
+        "efl_mm": null,
+        "phase_shift_deg": null,
+        "is_polarizing": null
+      },
+      {
+        "element_type": "beam_block",
+        "subtype": null,
+        "efl_mm": null,
+        "phase_shift_deg": null,
+        "is_polarizing": null
+      }
+    ]
+  },
+  {
+    "catalog_id": "beamsplitter_50_50_1in",
+    "name": "Standard Beamsplitter (50/50 1\")",
+    "category": "beamsplitters",
+    "object_height_mm": 25.4,
+    "interfaces": [
+      {
+        "element_type": "beam_splitter",
+        "subtype": null,
+        "efl_mm": null,
+        "phase_shift_deg": null,
+        "is_polarizing": null
+      }
+    ]
+  },
+  {
+    "catalog_id": "breadboard_mbh24",
+    "name": "MBH24 Breadboard",
+    "category": "background",
+    "object_height_mm": 609.6,
+    "interfaces": []
+  },
+  {
+    "catalog_id": "dichroic_550nm",
+    "name": "Dichroic Mirror (550nm cutoff)",
+    "category": "dichroics",
+    "object_height_mm": 25.4,
+    "interfaces": [
+      {
+        "element_type": "dichroic",
+        "subtype": null,
+        "efl_mm": null,
+        "phase_shift_deg": null,
+        "is_polarizing": null
+      }
+    ]
+  },
+  {
+    "catalog_id": "faraday_rotator",
+    "name": "Faraday Rotator (45\u00b0)",
+    "category": "waveplates",
+    "object_height_mm": 30.5,
+    "interfaces": [
+      {
+        "element_type": "polarizing_interface",
+        "subtype": "faraday_rotator",
+        "efl_mm": null,
+        "phase_shift_deg": null,
+        "is_polarizing": null
+      }
+    ]
+  },
+  {
+    "catalog_id": "laser_table",
+    "name": "Laser Table",
+    "category": "background",
+    "object_height_mm": 1500.0,
+    "interfaces": []
+  },
+  {
+    "catalog_id": "lens_standard_1in",
+    "name": "Standard Lens (1\" mounted)",
+    "category": "lenses",
+    "object_height_mm": 30.5,
+    "interfaces": [
+      {
+        "element_type": "lens",
+        "subtype": null,
+        "efl_mm": 100.0,
+        "phase_shift_deg": null,
+        "is_polarizing": null
+      }
+    ]
+  },
+  {
+    "catalog_id": "lens_standard_2in",
+    "name": "Standard Lens (2\" mounted)",
+    "category": "lenses",
+    "object_height_mm": 55.9,
+    "interfaces": [
+      {
+        "element_type": "lens",
+        "subtype": null,
+        "efl_mm": 100.0,
+        "phase_shift_deg": null,
+        "is_polarizing": null
+      }
+    ]
+  },
+  {
+    "catalog_id": "linear_polarizer",
+    "name": "Linear Polarizer",
+    "category": "waveplates",
+    "object_height_mm": 30.5,
+    "interfaces": [
+      {
+        "element_type": "polarizing_interface",
+        "subtype": "linear_polarizer",
+        "efl_mm": null,
+        "phase_shift_deg": null,
+        "is_polarizing": null
+      }
+    ]
+  },
+  {
+    "catalog_id": "mirror_standard_1in",
+    "name": "Standard Mirror (1\")",
+    "category": "mirrors",
+    "object_height_mm": 49.4,
+    "interfaces": [
+      {
+        "element_type": "mirror",
+        "subtype": null,
+        "efl_mm": null,
+        "phase_shift_deg": null,
+        "is_polarizing": null
+      }
+    ]
+  },
+  {
+    "catalog_id": "mirror_standard_2in",
+    "name": "Standard Mirror (2\")",
+    "category": "mirrors",
+    "object_height_mm": 68.6,
+    "interfaces": [
+      {
+        "element_type": "mirror",
+        "subtype": null,
+        "efl_mm": null,
+        "phase_shift_deg": null,
+        "is_polarizing": null
+      }
+    ]
+  },
+  {
+    "catalog_id": "objective_standard",
+    "name": "Microscope Objective",
+    "category": "objectives",
+    "object_height_mm": 40.0,
+    "interfaces": [
+      {
+        "element_type": "lens",
+        "subtype": null,
+        "efl_mm": 4.5,
+        "phase_shift_deg": null,
+        "is_polarizing": null
+      }
+    ]
+  },
+  {
+    "catalog_id": "pbs_2in",
+    "name": "PBS (2\" Polarizing)",
+    "category": "beamsplitters",
+    "object_height_mm": 50.8,
+    "interfaces": [
+      {
+        "element_type": "beam_splitter",
+        "subtype": null,
+        "efl_mm": null,
+        "phase_shift_deg": null,
+        "is_polarizing": true
+      }
+    ]
+  },
+  {
+    "catalog_id": "slm200",
+    "name": "Spatial Light Modulator SLM200",
+    "category": "misc",
+    "object_height_mm": 77.5,
+    "interfaces": [
+      {
+        "element_type": "mirror",
+        "subtype": null,
+        "efl_mm": null,
+        "phase_shift_deg": null,
+        "is_polarizing": null
+      }
+    ]
+  },
+  {
+    "catalog_id": "source_standard",
+    "name": "Standard Source",
+    "category": "sources",
+    "object_height_mm": 10.0,
+    "interfaces": []
+  },
+  {
+    "catalog_id": "waveplate_hwp",
+    "name": "Half Waveplate (HWP)",
+    "category": "waveplates",
+    "object_height_mm": 30.5,
+    "interfaces": [
+      {
+        "element_type": "polarizing_interface",
+        "subtype": "waveplate",
+        "efl_mm": null,
+        "phase_shift_deg": 180.0,
+        "is_polarizing": null
+      }
+    ]
+  },
+  {
+    "catalog_id": "waveplate_qwp",
+    "name": "Quarter Waveplate (QWP)",
+    "category": "waveplates",
+    "object_height_mm": 30.5,
+    "interfaces": [
+      {
+        "element_type": "polarizing_interface",
+        "subtype": "waveplate",
+        "efl_mm": null,
+        "phase_shift_deg": 90.0,
+        "is_polarizing": null
+      }
+    ]
+  }
+]
