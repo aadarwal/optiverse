@@ -15,13 +15,36 @@ pytestmark = pytest.mark.skipif(not HAVE_PYQT6, reason="PyQt6 not available")
 
 
 @pytest.fixture()
-def editor(qtbot, tmp_path):
+def editor(qtbot, tmp_path, monkeypatch):
     """Create a ComponentEditor backed by a temporary library directory."""
     from optiverse.services.storage_service import StorageService
     from optiverse.ui.views.component_editor_dialog import ComponentEditor
 
+    def accept_close(self, event):
+        self._modified = False
+        event.accept()
+
+    monkeypatch.setattr(ComponentEditor, "closeEvent", accept_close)
     storage = StorageService(library_path=str(tmp_path))
     ed = ComponentEditor(storage=storage)
+    ed.save_to_combo.insertItem(0, tmp_path.name, str(tmp_path))
+    ed.save_to_combo.setCurrentIndex(0)
+    ed._save_to_last_path = str(tmp_path)
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        "information",
+        lambda *args, **kwargs: QtWidgets.QMessageBox.StandardButton.Ok,
+    )
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        "warning",
+        lambda *args, **kwargs: QtWidgets.QMessageBox.StandardButton.Ok,
+    )
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        "critical",
+        lambda *args, **kwargs: QtWidgets.QMessageBox.StandardButton.Ok,
+    )
     qtbot.addWidget(ed)
     return ed
 

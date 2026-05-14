@@ -26,6 +26,8 @@ from optiverse.integration import create_polymorphic_element
 from optiverse.objects import ComponentItem
 from optiverse.raytracing import trace_rays_polymorphic
 
+pytestmark = pytest.mark.usefixtures("qapp")
+
 
 def _create_refractive_element(p1: np.ndarray, p2: np.ndarray, n1: float, n2: float):
     """Helper to create a refractive interface element."""

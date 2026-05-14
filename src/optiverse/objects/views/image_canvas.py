@@ -77,13 +77,19 @@ class ImageCanvas(QtWidgets.QLabel):
         return self._pt1, self._pt2
 
     def set_points(self, p1: tuple[float, float] | None, p2: tuple[float, float] | None):
+        changed = self._pt1 != p1 or self._pt2 != p2
         self._pt1 = p1
         self._pt2 = p2
+        if changed:
+            self.pointsChanged.emit()
         self.update()
 
     def clear_points(self):
+        changed = self._pt1 is not None or self._pt2 is not None
         self._pt1 = None
         self._pt2 = None
+        if changed:
+            self.pointsChanged.emit()
         self.update()
 
     def image_pixel_size(self) -> tuple[int, int]:

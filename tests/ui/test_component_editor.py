@@ -4,59 +4,81 @@ import pytest
 
 # Note: These tests require PyQt6 to be properly installed
 try:
-    from PyQt6 import QtCore, QtGui
+    from PyQt6 import QtCore, QtWidgets
 
     HAVE_PYQT6 = True
 except ImportError:
     HAVE_PYQT6 = False
 
 
+def _suppress_message_boxes(monkeypatch):
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        "information",
+        lambda *args, **kwargs: QtWidgets.QMessageBox.StandardButton.Ok,
+    )
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        "warning",
+        lambda *args, **kwargs: QtWidgets.QMessageBox.StandardButton.Ok,
+    )
+    monkeypatch.setattr(
+        QtWidgets.QMessageBox,
+        "critical",
+        lambda *args, **kwargs: QtWidgets.QMessageBox.StandardButton.Ok,
+    )
+
+
+def _select_save_library(editor, library_root):
+    editor.save_to_combo.insertItem(0, library_root.name, str(library_root))
+    editor.save_to_combo.setCurrentIndex(0)
+    editor._save_to_last_path = str(library_root)
+
+
 @pytest.mark.skipif(not HAVE_PYQT6, reason="PyQt6 not available")
 def test_component_editor_saves_to_library(qtbot, tmp_path, monkeypatch):
     """Test component editor saves to library with new structure."""
-    # force library path to temp file
-    lib_path = tmp_path / "components_library.json"
-    monkeypatch.setattr(
-        "optiverse.platform.paths.get_library_path",
-        lambda: str(lib_path),
-        raising=True,
-    )
+    _suppress_message_boxes(monkeypatch)
 
+    from optiverse.core.interface_definition import InterfaceDefinition
     from optiverse.services.storage_service import StorageService
     from optiverse.ui.views.component_editor_dialog import ComponentEditor
 
-    editor = ComponentEditor(storage=StorageService())
+    library_root = tmp_path / "component_library"
+    library_root.mkdir()
+    storage = StorageService(library_path=str(library_root))
+    editor = ComponentEditor(storage=storage)
+    _select_save_library(editor, library_root)
+    monkeypatch.setattr(editor, "_get_all_component_names", lambda: set())
+    monkeypatch.setattr(editor, "_get_builtin_names", lambda: set())
     qtbot.addWidget(editor)
 
     # set fields
     editor.name_edit.setText("TestLens")
-    # Component editor now uses interface-based system
-    # For testing, we'll just verify the component can be saved
-    # In real usage, interfaces are added via the interface panel UI
-
-    # prepare a dummy 100x100 image
-    img = QtGui.QImage(100, 100, QtGui.QImage.Format.Format_ARGB32)
-    img.fill(0)
-    pix = QtGui.QPixmap.fromImage(img)
-    editor.canvas.set_pixmap(pix)
-
-    # set height 50mm => mm_per_px = 0.5
     editor.object_height_mm.setValue(50.0)
-    # pick a 80px line
-    editor.canvas.set_points((10.0, 50.0), (90.0, 50.0))
+    editor.interface_panel.add_interface(
+        InterfaceDefinition(
+            x1_mm=-20.0,
+            y1_mm=0.0,
+            x2_mm=20.0,
+            y2_mm=0.0,
+            element_type="lens",
+            efl_mm=100.0,
+        )
+    )
 
     # save
     editor.save_component()
 
-    rows = StorageService().load_library()
+    rows = storage.load_library()
     assert any(r.get("name") == "TestLens" for r in rows)
     rec = next(r for r in rows if r.get("name") == "TestLens")
-    # length should be ~80px * 0.5 = 40mm
-    assert abs(float(rec.get("length_mm", 0.0)) - 40.0) < 0.5
     # Component editor now uses interface-based system
     # Check that component was saved with interfaces
     assert "interfaces" in rec
     assert len(rec.get("interfaces", [])) > 0
+    iface = rec["interfaces"][0]
+    assert abs(float(iface["x2_mm"]) - float(iface["x1_mm"]) - 40.0) < 0.5
 
 
 # NOTE: This test removed - component editor now uses interface-based system
@@ -119,32 +141,40 @@ def test_component_editor_has_notes_field(qtbot):
     # Test notes can be set
     editor.notes.setPlainText("Test notes")
     assert editor.notes.toPlainText() == "Test notes"
+    editor._modified = False
 
 
 @pytest.mark.skipif(not HAVE_PYQT6, reason="PyQt6 not available")
 def test_component_editor_emits_saved_signal(qtbot, tmp_path, monkeypatch):
     """Test that component editor emits saved signal."""
-    lib_path = tmp_path / "components_library.json"
-    monkeypatch.setattr(
-        "optiverse.platform.paths.get_library_path",
-        lambda: str(lib_path),
-        raising=True,
-    )
+    _suppress_message_boxes(monkeypatch)
 
+    from optiverse.core.interface_definition import InterfaceDefinition
     from optiverse.services.storage_service import StorageService
     from optiverse.ui.views.component_editor_dialog import ComponentEditor
 
-    editor = ComponentEditor(storage=StorageService())
+    library_root = tmp_path / "component_library"
+    library_root.mkdir()
+    storage = StorageService(library_path=str(library_root))
+    editor = ComponentEditor(storage=storage)
+    _select_save_library(editor, library_root)
+    monkeypatch.setattr(editor, "_get_all_component_names", lambda: set())
+    monkeypatch.setattr(editor, "_get_builtin_names", lambda: set())
     qtbot.addWidget(editor)
 
     # Setup component
     editor.name_edit.setText("SignalTest")
-    img = QtGui.QImage(100, 100, QtGui.QImage.Format.Format_ARGB32)
-    img.fill(0)
-    pix = QtGui.QPixmap.fromImage(img)
-    editor.canvas.set_pixmap(pix)
     editor.object_height_mm.setValue(50.0)
-    editor.canvas.set_points((10.0, 50.0), (90.0, 50.0))
+    editor.interface_panel.add_interface(
+        InterfaceDefinition(
+            x1_mm=-20.0,
+            y1_mm=0.0,
+            x2_mm=20.0,
+            y2_mm=0.0,
+            element_type="lens",
+            efl_mm=100.0,
+        )
+    )
 
     # Listen for saved signal
     with qtbot.waitSignal(editor.saved, timeout=1000):
