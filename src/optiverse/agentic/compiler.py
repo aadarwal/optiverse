@@ -50,8 +50,10 @@ def compile_elements(catalog: Catalog, placements: list[Placement]) -> list[Any]
     """Compile selected catalog components into polymorphic raytracing elements."""
     elements = []
     for placement in placements:
-        for iface_data in interfaces_for_placement(catalog, placement):
+        for interface_index, iface_data in enumerate(interfaces_for_placement(catalog, placement)):
             scene_iface = placed_interface(iface_data, placement)
             optical_iface = convert_legacy_interface_to_optical(scene_iface)
-            elements.append(create_polymorphic_element(optical_iface))
+            element = create_polymorphic_element(optical_iface)
+            element.element_id = f"{placement.label}:iface{interface_index}"
+            elements.append(element)
     return elements

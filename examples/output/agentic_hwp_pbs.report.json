@@ -42,6 +42,37 @@
       "expected_power_fraction": 0.5
     }
   ],
+  "constraints": [
+    {
+      "kind": "branch_count",
+      "params": {
+        "expected": 2
+      },
+      "name": "two_output_branches"
+    },
+    {
+      "kind": "path_contains_elements",
+      "params": {
+        "target": "D1_transmitted_H",
+        "elements": [
+          "HWP1:iface0",
+          "PBS1:iface0"
+        ]
+      },
+      "name": "D1_goes_through_HWP_and_PBS"
+    },
+    {
+      "kind": "path_contains_elements",
+      "params": {
+        "target": "D2_reflected_V",
+        "elements": [
+          "HWP1:iface0",
+          "PBS1:iface0"
+        ]
+      },
+      "name": "D2_goes_through_HWP_and_PBS"
+    }
+  ],
   "score": {
     "target_scores": {
       "D1_transmitted_H": {
@@ -71,6 +102,42 @@
         "polarization_overlap": 1.0
       }
     },
+    "constraint_scores": [
+      {
+        "name": "two_output_branches",
+        "kind": "branch_count",
+        "passed": true,
+        "diagnostic": true,
+        "branch_count": 2,
+        "expected": 2
+      },
+      {
+        "name": "D1_goes_through_HWP_and_PBS",
+        "kind": "path_contains_elements",
+        "passed": true,
+        "elements": [
+          "HWP1:iface0",
+          "PBS1:iface0"
+        ],
+        "ordered": true,
+        "mode": "any_path",
+        "matched_paths": 1,
+        "checked_paths": 1
+      },
+      {
+        "name": "D2_goes_through_HWP_and_PBS",
+        "kind": "path_contains_elements",
+        "passed": true,
+        "elements": [
+          "HWP1:iface0",
+          "PBS1:iface0"
+        ],
+        "ordered": true,
+        "mode": "any_path",
+        "matched_paths": 1,
+        "checked_paths": 1
+      }
+    ],
     "passed": true,
     "ray_paths": [
       {
@@ -97,6 +164,10 @@
           1.0,
           0.5000000000000001,
           0.5000000000000001
+        ],
+        "path_element_ids": [
+          "HWP1:iface0",
+          "PBS1:iface0"
         ],
         "final_polarization": {
           "Ex": [
@@ -133,6 +204,10 @@
           1.0,
           0.4999999999999999,
           0.4999999999999999
+        ],
+        "path_element_ids": [
+          "HWP1:iface0",
+          "PBS1:iface0"
         ],
         "final_polarization": {
           "Ex": [

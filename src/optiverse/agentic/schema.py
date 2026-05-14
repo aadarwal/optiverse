@@ -126,6 +126,14 @@ class ConstraintSpec:
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ConstraintSpec:
+        return cls(
+            kind=str(data["kind"]),
+            params=dict(data.get("params", {})),
+            name=data.get("name"),
+        )
+
 
 @dataclass(frozen=True)
 class GoalSpec:
@@ -158,14 +166,7 @@ class GoalSpec:
             source=SourceSpec.from_dict(data["source"]),
             placements=[Placement.from_dict(item) for item in data.get("placements", [])],
             targets=[TargetSpec.from_dict(item) for item in data.get("targets", [])],
-            constraints=[
-                ConstraintSpec(
-                    kind=str(item["kind"]),
-                    params=dict(item.get("params", {})),
-                    name=item.get("name"),
-                )
-                for item in data.get("constraints", [])
-            ],
+            constraints=[ConstraintSpec.from_dict(item) for item in data.get("constraints", [])],
             topology=str(data.get("topology", "")),
         )
 
@@ -223,6 +224,29 @@ def demo_goal_spec() -> GoalSpec:
                 radius_mm=2.0,
                 polarization="vertical",
                 expected_power_fraction=0.5,
+            ),
+        ],
+        constraints=[
+            ConstraintSpec(
+                kind="branch_count",
+                name="two_output_branches",
+                params={"expected": 2},
+            ),
+            ConstraintSpec(
+                kind="path_contains_elements",
+                name="D1_goes_through_HWP_and_PBS",
+                params={
+                    "target": "D1_transmitted_H",
+                    "elements": ["HWP1:iface0", "PBS1:iface0"],
+                },
+            ),
+            ConstraintSpec(
+                kind="path_contains_elements",
+                name="D2_goes_through_HWP_and_PBS",
+                params={
+                    "target": "D2_reflected_V",
+                    "elements": ["HWP1:iface0", "PBS1:iface0"],
+                },
             ),
         ],
     )

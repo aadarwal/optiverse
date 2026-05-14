@@ -37,6 +37,14 @@ _GAUSSIAN_SUBSAMPLE_MAX = 200
 _GAUSSIAN_ADAPT_REL_DW = 0.06  # extra subdivisions when |Δw|/max(w) exceeds this per segment
 
 
+def _element_trace_id(element: IOpticalElement, element_index: int) -> str:
+    """Return a stable trace label for an element within one trace call."""
+    element_id = getattr(element, "element_id", None)
+    if element_id:
+        return str(element_id)
+    return f"{type(element).__name__}:{element_index}"
+
+
 def _effective_half_aperture_mm(element: IOpticalElement, segment_length_mm: float) -> float:
     """Half-width for Gaussian clipping: segment half-length, optionally capped by clear aperture.
 
@@ -374,6 +382,7 @@ def _trace_single_ray(
                         polarizations=current_ray.path_polarizations,
                         intensities=current_ray.path_intensities,
                         beam_radii=current_ray.path_beam_radii,
+                        path_element_ids=current_ray.path_element_ids,
                     )
                 )
             continue
@@ -385,7 +394,8 @@ def _trace_single_ray(
         nearest_intersection: RayIntersection | None = None
         last_elem = last_element_for_ray.get(id(current_ray))
 
-        for element in elements:
+        nearest_element_id = ""
+        for element_index, element in enumerate(elements):
             # Skip the last element this ray interacted with
             if element is last_elem:
                 continue
@@ -445,6 +455,7 @@ def _trace_single_ray(
                         length=length,
                         interface=getattr(element, "interface", None),
                     )
+                    nearest_element_id = _element_trace_id(element, element_index)
 
         # No intersection - ray escapes
         if nearest_element is None:
@@ -482,6 +493,7 @@ def _trace_single_ray(
                     polarizations=current_ray.path_polarizations,
                     intensities=current_ray.path_intensities,
                     beam_radii=current_ray.path_beam_radii,
+                    path_element_ids=current_ray.path_element_ids,
                 )
             )
             continue
@@ -536,6 +548,8 @@ def _trace_single_ray(
             current_ray.path_polarizations.append(current_ray.polarization)
             current_ray.path_intensities.append(current_ray.intensity)
 
+        current_ray.path_element_ids.append(nearest_element_id)
+
         # Interact with element - POLYMORPHIC DISPATCH!
         output_rays = nearest_element.interact(
             current_ray,
@@ -557,6 +571,7 @@ def _trace_single_ray(
                     polarizations=current_ray.path_polarizations,
                     intensities=current_ray.path_intensities,
                     beam_radii=current_ray.path_beam_radii,
+                    path_element_ids=current_ray.path_element_ids,
                 )
             )
             continue
@@ -576,6 +591,8 @@ def _trace_single_ray(
                 out_ray.path_polarizations = current_ray.path_polarizations.copy()
             if len(out_ray.path_intensities) == 0:
                 out_ray.path_intensities = current_ray.path_intensities.copy()
+            if len(out_ray.path_element_ids) == 0:
+                out_ray.path_element_ids = current_ray.path_element_ids.copy()
             # Update last entries to post-interaction state
             if len(out_ray.path_polarizations) > 0:
                 out_ray.path_polarizations[-1] = out_ray.polarization

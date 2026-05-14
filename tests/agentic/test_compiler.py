@@ -40,4 +40,6 @@ def test_compile_demo_elements_traces_two_split_paths():
     paths = trace_rays_polymorphic(elements, [goal.source.to_source_params()], parallel=False)
 
     assert len(elements) == 2
+    assert [element.element_id for element in elements] == ["HWP1:iface0", "PBS1:iface0"]
     assert len(paths) == 2
+    assert all(path.path_element_ids == ["HWP1:iface0", "PBS1:iface0"] for path in paths)

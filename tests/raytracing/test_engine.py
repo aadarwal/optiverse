@@ -46,6 +46,7 @@ class TestPolymorphicEngine:
         props = MirrorProperties(reflectivity=99.0)
         iface = OpticalInterface(geometry=geom, properties=props, name="Test Mirror")
         mirror = create_polymorphic_element(iface)
+        mirror.element_id = "M1"
 
         # Create source shooting rays to the right
         source = SourceParams(
@@ -79,6 +80,7 @@ class TestPolymorphicEngine:
                 break
 
         assert hit_point is not None, "Ray should hit the mirror"
+        assert path.path_element_ids == ["M1"]
 
     def test_single_lens(self):
         """Test ray refraction through a single lens."""

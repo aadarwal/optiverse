@@ -21,7 +21,7 @@ def run_demo(output_dir: Path) -> dict:
     goal = demo_goal_spec()
     elements = compile_elements(catalog, goal.placements)
     paths = trace_rays_polymorphic(elements, [goal.source.to_source_params()], parallel=False)
-    score = score_paths(paths, goal.targets)
+    score = score_paths(paths, goal.targets, goal.constraints)
 
     scene_data = build_scene_data(catalog, goal)
     report = {
@@ -30,6 +30,7 @@ def run_demo(output_dir: Path) -> dict:
         "topology": goal.topology,
         "placements": [placement.to_dict() for placement in goal.placements],
         "targets": [target.to_dict() for target in goal.targets],
+        "constraints": [constraint.to_dict() for constraint in goal.constraints],
         "score": score,
     }
 

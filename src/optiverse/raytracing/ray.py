@@ -39,6 +39,7 @@ class RayState:
     path_intensities: list[float] = field(default_factory=list)  # Intensity at each path point
     q_parameter: complex | None = None  # Gaussian beam parameter (None = geometric)
     path_beam_radii: list[float] = field(default_factory=list)  # Beam radius per point (mm)
+    path_element_ids: list[str] = field(default_factory=list)  # Element IDs hit by this ray
 
     def _copy_with(self, **overrides) -> RayState:
         """Create a copy of this RayState with specified field overrides."""
@@ -57,6 +58,7 @@ class RayState:
             path_intensities=overrides.get("path_intensities", self.path_intensities),
             q_parameter=overrides.get("q_parameter", self.q_parameter),
             path_beam_radii=overrides.get("path_beam_radii", self.path_beam_radii),
+            path_element_ids=overrides.get("path_element_ids", self.path_element_ids),
         )
 
     def advance(self, distance: float) -> RayState:
@@ -108,6 +110,7 @@ class RayPath:
     polarizations: list = field(default_factory=list)  # Per-point polarization states
     intensities: list[float] = field(default_factory=list)  # Per-point intensities (0.0 to 1.0)
     beam_radii: list[float] = field(default_factory=list)  # 1/e^2 beam radius in mm per point
+    path_element_ids: list[str] = field(default_factory=list)  # Ordered element IDs hit by the ray
 
 
 # Alias for backward compatibility and simpler imports
