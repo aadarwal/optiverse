@@ -1,5 +1,6 @@
 {
   "goal": "Take a 780 nm horizontally polarized source, rotate it with an HWP so a PBS splits it 50/50, send H to D1 and V to D2.",
+  "goal_id": "agentic_hwp_pbs",
   "topology": "source -> HWP1 -> PBS1 -> {transmitted: D1, reflected: D2}",
   "placements": [
     {
