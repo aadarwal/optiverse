@@ -100,9 +100,14 @@ def _best_path_for_target(
             "power_error": abs(target.expected_power_fraction),
             "polarization": target.polarization,
             "polarization_overlap": 0.0,
+            "path_index": None,
         }
-    scored = [(path, score_target(path, target)) for path in paths]
-    return min(scored, key=lambda item: item[1]["closest_distance_mm"])
+    scored = [(index, path, score_target(path, target)) for index, path in enumerate(paths)]
+    best_index, best_path, best_score = min(
+        scored, key=lambda item: item[2]["closest_distance_mm"]
+    )
+    best_score["path_index"] = best_index
+    return best_path, best_score
 
 
 def serialize_ray_path(path: RayPath) -> dict[str, Any]:
@@ -248,8 +253,15 @@ def _score_constraint(
 
     if kind == "target_hit":
         target = _target_name(params)
-        passed = bool(target and target_scores.get(target, {}).get("hit", False))
-        return {"name": name, "kind": kind, "passed": passed, "target": target}
+        score = target_scores.get(target or "", {})
+        passed = bool(target and score.get("hit", False))
+        return {
+            "name": name,
+            "kind": kind,
+            "passed": passed,
+            "target": target,
+            "path_index": score.get("path_index"),
+        }
 
     if kind == "power_at_target":
         target = _target_name(params)
@@ -268,6 +280,7 @@ def _score_constraint(
             "kind": kind,
             "passed": abs(power - expected) <= tolerance,
             "target": target,
+            "path_index": score.get("path_index"),
             "power_fraction": power,
             "expected_power_fraction": expected,
             "power_error": abs(power - expected),
@@ -277,7 +290,7 @@ def _score_constraint(
     if kind == "polarization_at_target":
         target = _target_name(params)
         target_spec = targets_by_name.get(target or "")
-        path, _score = (
+        path, selected_score = (
             _best_path_for_target(paths, target_spec)
             if target_spec is not None
             else (None, {})
@@ -292,6 +305,7 @@ def _score_constraint(
             "kind": kind,
             "passed": overlap >= min_overlap,
             "target": target,
+            "path_index": selected_score.get("path_index"),
             "polarization": polarization,
             "polarization_overlap": overlap,
             "min_overlap": min_overlap,
@@ -357,7 +371,7 @@ def _score_constraint(
     if kind == "beam_radius_at_target":
         target = _target_name(params)
         target_spec = targets_by_name.get(target or "")
-        path, _score = (
+        path, selected_score = (
             _best_path_for_target(paths, target_spec)
             if target_spec is not None
             else (None, {})
@@ -373,7 +387,12 @@ def _score_constraint(
             "kind": kind,
             "passed": passed,
             "target": target,
+            "path_index": selected_score.get("path_index"),
             "beam_radius_mm": radius,
+            "unsupported": radius is None,
+            "warnings": (
+                ["No Gaussian beam radius data on selected path"] if radius is None else []
+            ),
         }
 
     if kind in {"spot_centroid_at_plane", "spot_rms_radius_at_plane"}:

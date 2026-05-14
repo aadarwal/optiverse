@@ -73,6 +73,12 @@
       "name": "D2_goes_through_HWP_and_PBS"
     }
   ],
+  "validation": {
+    "passed": true,
+    "error_count": 0,
+    "warning_count": 0,
+    "issues": []
+  },
   "score": {
     "target_scores": {
       "D1_transmitted_H": {
@@ -86,7 +92,8 @@
         "expected_power_fraction": 0.5,
         "power_error": 1.1102230246251565e-16,
         "polarization": "horizontal",
-        "polarization_overlap": 1.0
+        "polarization_overlap": 1.0,
+        "path_index": 1
       },
       "D2_reflected_V": {
         "hit": true,
@@ -99,7 +106,8 @@
         "expected_power_fraction": 0.5,
         "power_error": 1.1102230246251565e-16,
         "polarization": "vertical",
-        "polarization_overlap": 1.0
+        "polarization_overlap": 1.0,
+        "path_index": 0
       }
     },
     "constraint_scores": [

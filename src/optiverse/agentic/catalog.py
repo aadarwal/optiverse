@@ -10,6 +10,22 @@ from typing import Any
 from optiverse.platform.paths import get_builtin_library_root
 
 Catalog = dict[str, dict[str, Any]]
+OPTICAL_PARAMETER_KEYS = (
+    "efl_mm",
+    "clear_aperture_mm",
+    "phase_shift_deg",
+    "fast_axis_deg",
+    "split_T",
+    "split_R",
+    "is_polarizing",
+    "pbs_transmission_axis_deg",
+    "cutoff_wavelength_nm",
+    "transition_width_nm",
+    "pass_type",
+    "transmission_axis_deg",
+    "extinction_ratio_db",
+    "rotation_angle_deg",
+)
 
 
 def load_builtin_catalog(root: Path | None = None) -> Catalog:
@@ -41,6 +57,64 @@ def clone_component(catalog: Catalog, catalog_id: str) -> dict[str, Any]:
     return copy.deepcopy(catalog[catalog_id])
 
 
+def interface_summary(iface: dict[str, Any]) -> dict[str, Any]:
+    """Return deterministic, prompt-facing interface metadata."""
+    return {
+        "element_type": iface.get("element_type"),
+        "subtype": iface.get("polarizer_subtype"),
+        **{key: iface[key] for key in OPTICAL_PARAMETER_KEYS if key in iface},
+    }
+
+
+def infer_capabilities(component: dict[str, Any]) -> list[str]:
+    """Infer coarse component capabilities from built-in catalog metadata."""
+    capabilities: set[str] = set()
+    category = str(component.get("category", "")).lower()
+    catalog_id = str(component.get("_catalog_id", "")).lower()
+    interfaces = component.get("interfaces", []) or []
+
+    if category == "sources" or catalog_id.startswith("source"):
+        capabilities.add("source")
+
+    for iface in interfaces:
+        element_type = str(iface.get("element_type", "")).lower()
+        subtype = str(iface.get("polarizer_subtype", "")).lower()
+
+        if element_type in {
+            "lens",
+            "refractive",
+            "refractive_interface",
+            "beam_splitter",
+            "beamsplitter",
+            "dichroic",
+            "polarizing_interface",
+            "faraday_rotator",
+            "linear_polarizer",
+        }:
+            capabilities.add("pass_through")
+
+        if element_type in {"mirror", "beam_splitter", "beamsplitter", "dichroic"}:
+            capabilities.add("reflects")
+
+        if element_type in {"beam_splitter", "beamsplitter", "dichroic"}:
+            capabilities.add("splits")
+
+        if (
+            element_type in {"polarizing_interface", "faraday_rotator", "linear_polarizer"}
+            or subtype in {"waveplate", "linear_polarizer"}
+            or bool(iface.get("is_polarizing"))
+        ):
+            capabilities.add("polarization_control")
+
+        if element_type == "beam_block":
+            capabilities.add("absorbs")
+
+        if element_type == "lens" or "efl_mm" in iface:
+            capabilities.add("focuses")
+
+    return sorted(capabilities)
+
+
 def catalog_summary(catalog: Catalog) -> list[dict[str, Any]]:
     """Return a compact summary suitable for prompts and reports."""
     summary = []
@@ -52,16 +126,8 @@ def catalog_summary(catalog: Catalog) -> list[dict[str, Any]]:
                 "name": data.get("name", catalog_id),
                 "category": data.get("category", ""),
                 "object_height_mm": data.get("object_height_mm", 0.0),
-                "interfaces": [
-                    {
-                        "element_type": iface.get("element_type"),
-                        "subtype": iface.get("polarizer_subtype"),
-                        "efl_mm": iface.get("efl_mm"),
-                        "phase_shift_deg": iface.get("phase_shift_deg"),
-                        "is_polarizing": iface.get("is_polarizing"),
-                    }
-                    for iface in interfaces
-                ],
+                "interfaces": [interface_summary(iface) for iface in interfaces],
+                "capabilities": infer_capabilities(data),
             }
         )
     return summary

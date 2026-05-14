@@ -92,6 +92,39 @@ def test_demo_constraint_kinds_pass_for_expected_values():
     assert [item["passed"] for item in score["constraint_scores"]] == [True] * 5
 
 
+def test_power_and_polarization_constraints_fail_for_wrong_expectations():
+    goal, paths = _demo_paths()
+    constraints = [
+        ConstraintSpec(
+            kind="power_at_target",
+            params={"target": "D1_transmitted_H", "expected_power_fraction": 0.25},
+        ),
+        ConstraintSpec(
+            kind="polarization_at_target",
+            params={"target": "D1_transmitted_H", "polarization": "vertical"},
+        ),
+    ]
+
+    score = score_paths(paths, goal.targets, constraints)
+
+    assert score["passed"] is False
+    assert [item["passed"] for item in score["constraint_scores"]] == [False, False]
+
+
+def test_beam_radius_constraint_reports_missing_gaussian_data():
+    goal, paths = _demo_paths()
+    constraint = ConstraintSpec(
+        kind="beam_radius_at_target",
+        params={"target": "D1_transmitted_H", "max_mm": 1.0},
+    )
+
+    score = score_paths(paths, goal.targets, [constraint])
+
+    assert score["passed"] is False
+    assert score["constraint_scores"][0]["beam_radius_mm"] is None
+    assert score["constraint_scores"][0]["unsupported"] is True
+
+
 def test_multi_ray_spot_constraints_measure_centroid_and_rms():
     source = SourceSpec(
         x_mm=0,

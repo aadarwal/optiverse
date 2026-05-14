@@ -13,12 +13,17 @@ from .compiler import compile_elements
 from .scene_writer import build_scene_data, write_json
 from .schema import demo_goal_spec
 from .scorer import score_paths
+from .validator import validate_goal
 
 
 def run_demo(output_dir: Path) -> dict:
     """Run the HWP/PBS splitter demo and write scene/report/catalog outputs."""
     catalog = load_builtin_catalog()
     goal = demo_goal_spec()
+    validation = validate_goal(goal, catalog)
+    if not validation.passed:
+        raise ValueError(f"Invalid demo goal: {validation.to_dict()}")
+
     elements = compile_elements(catalog, goal.placements)
     paths = trace_rays_polymorphic(elements, [goal.source.to_source_params()], parallel=False)
     score = score_paths(paths, goal.targets, goal.constraints)
@@ -31,6 +36,7 @@ def run_demo(output_dir: Path) -> dict:
         "placements": [placement.to_dict() for placement in goal.placements],
         "targets": [target.to_dict() for target in goal.targets],
         "constraints": [constraint.to_dict() for constraint in goal.constraints],
+        "validation": validation.to_dict(),
         "score": score,
     }
 
