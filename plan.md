@@ -169,7 +169,8 @@ Responsibilities:
 
 - `scorer.py`
   - Initially move the demo scorer here.
-  - Score `RayPath` outputs without modifying the raytracer.
+  - Score `RayPath` outputs.
+  - Expect Milestone 2 to add minimal trace metadata to `RayPath`; do not design around branch counting alone.
 
 - `cli.py`
   - Provide a small CLI for catalog export, running a goal, and writing scene/report files.
@@ -220,11 +221,23 @@ git push
 
 Stage `pyproject.toml` only if it actually changed.
 
-## Milestone 2: Constraint-Oriented Goal Schema And TraceScorer
+## Milestone 2: Minimal Trace Metadata, Constraint Goal Schema, And TraceScorer
 
 Purpose: make the verifier real before making the planner smart.
 
 Design the goal schema around constraints, not just destinations.
+
+Before adding harder scoring, make one small additive raytracing metadata change. `branch_count` alone is not a sufficient routing signal. It works for a toy HWP/PBS split, but it cannot distinguish which arm a cascaded branch actually took.
+
+Add minimal path identity:
+
+- Add `path_element_ids: list[str]` to `RayState` and `RayPath`.
+- When a ray hits an optical element, append a stable element/interface ID to the path.
+- In the agentic compiler, assign stable IDs such as `HWP1:iface0`, `PBS1:iface0`, `M1:iface0`.
+- For non-agentic elements, fall back to a deterministic best-effort ID such as element class plus interface name when available.
+- Keep this backward-compatible: existing code that ignores the new field should continue to work.
+
+Do not attempt a full interaction ledger yet. This milestone only needs enough metadata for path-topology checks. Rich transmitted/reflected labels, parent branch IDs, termination reasons, and optical path length remain later work.
 
 Implement constraint types for v1:
 
@@ -242,6 +255,15 @@ Implement constraint types for v1:
 
 - `branch_count`
   - expected number of output ray paths above intensity threshold.
+  - Treat this as a diagnostic or coarse check, not a replacement for path identity.
+
+- `path_contains_elements`
+  - expected ordered or unordered element IDs in a traced path.
+  - Used to distinguish branches that hit different mirrors/arms.
+
+- `path_avoids_elements`
+  - element IDs that no successful path should hit.
+  - Useful for catching stray reflections or unexpected beam blocks.
 
 - `path_length`
   - geometric path length for now.
@@ -250,6 +272,15 @@ Implement constraint types for v1:
 - `beam_radius_at_target`
   - use `RayPath.beam_radii` if present.
   - return `unsupported` if no Gaussian beam data exists.
+
+- `spot_centroid_at_plane`
+  - for multi-ray geometric bundles.
+  - intersect traced rays with a target plane/line and compute the power-weighted centroid.
+
+- `spot_rms_radius_at_plane`
+  - for multi-ray geometric bundles.
+  - intersect traced rays with a target plane/line and compute RMS spot radius around the centroid.
+  - Required for lens-focus and 4f-style benchmarks; these benchmarks are not meaningful with `n_rays=1`.
 
 Scoring result should include:
 
@@ -260,7 +291,7 @@ Scoring result should include:
 - unsupported checks
 - aggregate pass/fail
 
-Do not modify the raytracing engine yet. Work from current `RayPath`:
+After the minimal metadata addition, the scorer should work from `RayPath`:
 
 - `points`
 - `intensities`
@@ -268,27 +299,33 @@ Do not modify the raytracing engine yet. Work from current `RayPath`:
 - `polarizations`
 - `beam_radii`
 - `source_index`
+- `path_element_ids`
 
 Document limitations:
 
-- No branch identity.
+- Only minimal element-hit identity.
 - No transmitted/reflected labels.
-- No interaction ledger.
+- No rich interaction ledger.
 - No termination reason.
 - No optical path length.
 
 Acceptance criteria:
 
+- `RayPath` exposes `path_element_ids` and existing raytracing tests still pass.
+- Agentic-compiled elements produce stable IDs in `path_element_ids`.
 - The HWP/PBS demo is expressed as a `GoalSpec` with constraints.
 - The scorer reproduces the current result:
   - D1 hit true, power 0.5, horizontal overlap 1.
   - D2 hit true, power 0.5, vertical overlap 1.
+  - successful paths include `HWP1:iface0` and `PBS1:iface0`.
 - Tests include at least:
   - exact hit
   - near miss
   - wrong power
   - wrong polarization
   - missing Gaussian data for beam-radius constraint
+  - missing expected path element
+  - multi-ray spot centroid/RMS at a plane
 
 Suggested verification:
 
@@ -392,25 +429,33 @@ Required benchmark cases:
 
 1. `hwp_pbs_splitter`
    - Goal: H input, HWP 22.5 deg, PBS split into H/V arms.
+   - Source: `n_rays=1` is acceptable because this is a polarization/routing benchmark.
    - Checks: two branches, 50/50 power, correct polarizations, detector hits.
+   - Path-topology checks should verify successful paths include `HWP1:iface0` and `PBS1:iface0`.
 
 2. `two_mirror_steering`
    - Goal: steer a beam around a corner to a target.
+   - Source: `n_rays=1` is acceptable for the basic steering case.
    - Checks: target hit, no extra branch, sufficient power.
+   - Path-topology checks should verify the successful path hits the expected mirrors in order.
 
 3. `single_lens_focus`
    - Goal: focus/cross optical axis at a target plane.
-   - Checks: ray bundle narrows or crosses near expected target.
+   - Source: geometric bundle with `n_rays >= 7`, finite `size_mm`, and `spread_deg=0` unless a different case is explicitly documented.
+   - Checks: ray bundle narrows or crosses near expected target plane.
+   - Required constraints: `spot_centroid_at_plane` and `spot_rms_radius_at_plane`.
    - Be explicit about approximation limits.
 
 4. `four_f_telescope`
    - Goal: two lenses separated by `f1 + f2`.
+   - Source: geometric bundle with `n_rays >= 7`; include at least one off-axis or finite-height bundle case so telescope behavior is measurable.
    - Checks: component spacing, output ray geometry, target plane behavior.
+   - Required constraints: `path_contains_elements`, `spot_centroid_at_plane`, and `spot_rms_radius_at_plane`.
 
 5. `mach_zehnder_skeleton`
    - Goal: beamsplitter -> two arms -> recombination/targets.
-   - Checks: branch count, approximate arm geometry, equal geometric path length if possible.
-   - This may expose current engine/scorer limitations. That is acceptable and useful.
+   - Checks: branch count as a coarse diagnostic, arm-specific path element IDs, approximate arm geometry, equal geometric path length if possible.
+   - If minimal `path_element_ids` is still insufficient to score recombination cleanly, mark the unsupported checks explicitly in `expected_limitations`; do not silently pass a weak branch-count-only score.
 
 Each benchmark should have:
 
@@ -445,7 +490,9 @@ git push
 
 Purpose: empirically discover what schema the model naturally emits and what failures the compiler must compensate for.
 
-Do not hardwire a specific LLM provider as a required dependency yet. The first version can use saved JSON files as planner outputs. Provider integrations can be optional.
+This milestone must make the experiment actually runnable. Saved JSON planner outputs are acceptable, but the manual LLM step must be explicit. Prefer adding a thin optional provider adapter so benchmark runs can call a model end-to-end when credentials are present.
+
+Do not add a required LLM dependency to the base package. Use optional imports and clear error messages.
 
 Create:
 
@@ -453,6 +500,7 @@ Create:
 docs/agentic_layout/prompts/
 docs/agentic_layout/experiment_protocol.md
 examples/agentic_experiments/
+src/optiverse/agentic/llm_client.py
 ```
 
 Prompt modes:
@@ -483,19 +531,44 @@ The harness should support:
 
 For topology/intent mode, initially only validate and archive the output. Do not build a full topology compiler yet. The point is to inspect the data.
 
-If an LLM API is available, add an optional command such as:
+Required prompt-generation/manual path:
 
 ```bash
 .venv313/bin/python -m optiverse.agentic.cli make-prompt --benchmark hwp_pbs_splitter --mode topology
 ```
 
-Then the user or another process can call the model. Avoid adding a required network dependency until the project explicitly chooses one.
+The experiment protocol must state exactly where a human or external process should paste model outputs:
+
+```text
+examples/agentic_experiments/{benchmark}/{mode}/model_output.json
+```
+
+Optional provider path:
+
+- Add a minimal provider abstraction in `llm_client.py`.
+- Implement at least one optional provider adapter if practical.
+- Preferred first provider: Anthropic via optional `anthropic` import and `ANTHROPIC_API_KEY`.
+- Do not list `anthropic` as a required dependency. If missing, fail with an instruction such as `pip install anthropic` or use manual mode.
+- Keep the generated prompt, raw response, parsed JSON, and evaluation report.
+- Provider support should be a convenience layer over the same saved-output evaluator, not a separate experiment path.
+
+Example optional command:
+
+```bash
+.venv313/bin/python -m optiverse.agentic.cli run-llm-benchmark \
+  --benchmark hwp_pbs_splitter \
+  --mode direct-placement \
+  --provider anthropic \
+  --output-dir examples/output/experiments
+```
 
 Acceptance criteria:
 
 - Prompts exist and are versioned.
 - The harness can evaluate saved direct-placement JSON against benchmarks.
 - The harness can archive topology/intent JSON and run structural validation.
+- The manual execution protocol is explicit enough that another agent/person can run the LLM calls and save outputs without guessing filenames or schema.
+- If provider credentials/package are available, at least one benchmark can be run end-to-end through the optional provider path.
 - Reports distinguish:
   - schema errors
   - invalid catalog selections
@@ -521,6 +594,30 @@ Run each benchmark through both prompt modes where possible:
 
 - direct placement
 - topology/intent
+
+This milestone is not complete until planner outputs actually exist. Use one of these two execution paths:
+
+1. Provider path:
+   - Run the optional provider command for each benchmark/mode in the required matrix.
+   - Save prompt, raw response, parsed output, and evaluation report.
+
+2. Manual path:
+   - Generate prompts with `make-prompt`.
+   - Call the LLM externally.
+   - Paste the model output into `examples/agentic_experiments/{benchmark}/{mode}/model_output.json`.
+   - Run `evaluate-planner-output`.
+   - Record who/what model produced the output, model name/version if known, and date.
+
+Minimum experiment matrix:
+
+- `hwp_pbs_splitter`: direct placement and topology/intent.
+- `two_mirror_steering`: direct placement and topology/intent.
+- `single_lens_focus`: direct placement and topology/intent.
+
+Stretch matrix:
+
+- `four_f_telescope`: direct placement and topology/intent.
+- `mach_zehnder_skeleton`: topology/intent required; direct placement optional if scoring support is still limited.
 
 For each output, record:
 
@@ -651,7 +748,7 @@ Do not implement these unless explicitly re-scoped:
 - Live Thorlabs/vendor catalog fetching.
 - Required OpenAI/Anthropic/other LLM dependency.
 - Full optical path length through refractive media.
-- Complete interaction ledger in the raytracing engine.
+- Rich interaction ledger in the raytracing engine beyond minimal `path_element_ids`.
 - Full mechanical breadboard/hole constraint solver.
 
 ## Risk Register
@@ -666,7 +763,7 @@ Mitigation: derive temporary ports from interface geometry for experiments. Reco
 
 ### Risk: TraceScorer Is Blind To Branch Semantics
 
-Mitigation: start with `RayPath` scoring but document missing metadata. Do not pretend reflected/transmitted labels are known unless inferred.
+Mitigation: Milestone 2 now requires minimal `path_element_ids` on `RayPath`. Use branch count only as a coarse diagnostic. Do not pretend reflected/transmitted labels are known unless inferred from validated path metadata.
 
 ### Risk: LLM Output Does Not Match Imagined Schema
 
