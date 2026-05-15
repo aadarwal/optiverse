@@ -118,9 +118,9 @@ def _is_finite(value: object) -> bool:
 
 
 def _numeric_field_valid(value: object, *, minimum: float | None = None) -> bool:
-    if not _is_finite(value):
+    if not isinstance(value, int | float) or not math.isfinite(value):
         return False
-    return minimum is None or float(value) >= minimum
+    return minimum is None or value >= minimum
 
 
 def _placement_footprint(

@@ -41,6 +41,11 @@ class IOpticalElement(ABC):
     - get_bounding_box() for spatial indexing (Phase 4)
     """
 
+    #: Optional stable identifier. Set by callers such as the agentic layout
+    #: compiler so the raytracer's path-element ledger can record which
+    #: element each ray hit.
+    element_id: str | None = None
+
     @abstractmethod
     def get_geometry(self) -> tuple[np.ndarray, np.ndarray]:
         """

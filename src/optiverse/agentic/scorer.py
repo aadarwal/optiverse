@@ -147,16 +147,24 @@ def _selected_paths(
     return [best_path] if best_path is not None else []
 
 
+def _first_present(params: dict[str, Any], *keys: str) -> Any:
+    """Return the first present key's value. Caller guarantees one key exists."""
+    for key in keys:
+        if key in params:
+            return params[key]
+    raise KeyError(f"expected one of {keys} in params")
+
+
 def _metric_pass(value: float, params: dict[str, Any], *, default_tolerance: float) -> bool:
     passed = True
     if "expected_mm" in params or "expected" in params:
-        expected = float(params.get("expected_mm", params.get("expected")))
+        expected = float(_first_present(params, "expected_mm", "expected"))
         tolerance = float(params.get("tolerance_mm", params.get("tolerance", default_tolerance)))
         passed = passed and abs(value - expected) <= tolerance
     if "min_mm" in params or "min" in params:
-        passed = passed and value >= float(params.get("min_mm", params.get("min")))
+        passed = passed and value >= float(_first_present(params, "min_mm", "min"))
     if "max_mm" in params or "max" in params:
-        passed = passed and value <= float(params.get("max_mm", params.get("max")))
+        passed = passed and value <= float(_first_present(params, "max_mm", "max"))
     return passed
 
 
@@ -313,15 +321,15 @@ def _score_constraint(
 
     if kind == "branch_count":
         branch_count = len(paths)
-        expected = params.get("expected", params.get("count"))
-        passed = True if expected is None else branch_count == int(expected)
+        expected_count = params.get("expected", params.get("count"))
+        passed = True if expected_count is None else branch_count == int(expected_count)
         return {
             "name": name,
             "kind": kind,
             "passed": passed,
             "diagnostic": True,
             "branch_count": branch_count,
-            "expected": expected,
+            "expected": expected_count,
         }
 
     if kind == "path_contains_elements":
@@ -399,7 +407,7 @@ def _score_constraint(
         axis = str(params.get("axis", "x")).lower()
         if axis not in {"x", "y"}:
             raise ValueError(f"Unsupported plane axis: {axis}")
-        value_mm = float(params.get("value_mm", params.get(f"{axis}_mm")))
+        value_mm = float(_first_present(params, "value_mm", f"{axis}_mm"))
         selected = _selected_paths(paths, targets_by_name, params)
         samples, weights = _spot_samples_at_plane(selected, axis=axis, value_mm=value_mm)
         centroid = _weighted_centroid(samples, weights)
