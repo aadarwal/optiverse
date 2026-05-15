@@ -246,7 +246,7 @@ def _weighted_centroid(points: list[np.ndarray], weights: list[float]) -> np.nda
     weight_array = np.asarray(weights, dtype=float)
     if np.sum(weight_array) <= 1e-12:
         weight_array = np.ones(len(points), dtype=float)
-    return np.average(point_array, axis=0, weights=weight_array)
+    return np.asarray(np.average(point_array, axis=0, weights=weight_array), dtype=float)
 
 
 def _score_constraint(
