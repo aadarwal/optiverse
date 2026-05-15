@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Agentic CLI and plugin workflow**: Added `optiverse-agent` commands for catalog export, natural-language goal parsing, layout compilation, validation, ray tracing, scoring, rendering, GUI hand-off, deterministic design orchestration, and benchmark execution. Added a Claude Code/Codex-compatible agent skill for driving the same CLI workflow.
+- **Agentic layout compiler primitives**: Added interface-hit anchors, path interaction ledgers, multi-ray/spot scoring constraints, and focal-length spacing support for headless optical-layout experiments.
 - **Live cursor coordinates** (#78): Status bar displays real-time X/Y scene coordinates as the cursor moves over the canvas, with units (mm, µm, nm) adapting automatically to the current zoom level
 - **Dynamic scale bar units** (#79): Scale bar automatically switches between mm, µm, and nm at high zoom levels, with a dynamically sized bar representing a clean round number
 - **Arrow key nudging** (#89): Move selected items with arrow keys (0.1 mm step) or Shift+Arrow (1.0 mm step); both step sizes are configurable in Preferences → Canvas & Editing
@@ -233,4 +235,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.x] - Previous Releases
 
 Prior versions did not maintain a changelog. See git history for details.
-

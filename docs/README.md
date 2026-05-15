@@ -16,6 +16,10 @@ Welcome to the Optiverse documentation! This directory contains comprehensive gu
 
 ### 👥 User Guides
 
+#### Agentic Layout
+- **[Agentic CLI and Plugin](agentic_layout/cli_and_plugin.md)**:
+  Headless `optiverse-agent` command workflow, natural-language design loop, and Claude Code plugin install steps.
+
 #### Component Editor
 - **[Component Editor: Interface Color Guide](INTERFACE_COLOR_GUIDE.md)**  
   Learn how optical interfaces are color-coded in the component editor for easy identification.
@@ -107,6 +111,9 @@ Welcome to the Optiverse documentation! This directory contains comprehensive gu
 **Import/Export**
 - [ZEMAX_IMPORT_UI_GUIDE.md](ZEMAX_IMPORT_UI_GUIDE.md)
 
+**Agentic Layout**
+- [agentic_layout/cli_and_plugin.md](agentic_layout/cli_and_plugin.md)
+
 **Collaboration**
 - [COLLABORATION.md](COLLABORATION.md)
 
@@ -143,4 +150,3 @@ When adding new documentation:
 ---
 
 *Last updated: Documentation organized and cleaned up for GitHub Pages*
-
