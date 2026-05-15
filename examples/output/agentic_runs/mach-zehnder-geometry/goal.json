@@ -1,0 +1,135 @@
+{
+  "goal_id": "mach_zehnder_geometry",
+  "description": "Geometry-only Mach-Zehnder-style two-arm layout. A 780 nm horizontally polarized beam is rotated by an HWP at 22.5 degrees and split by a PBS into a transmitted horizontal arm and a reflected vertical arm. Each arm is steered by its own mirror to a separate detector. No interference or fringes are modeled; this is a topology, layout, and scoring benchmark only.",
+  "source": {
+    "x_mm": 0.0,
+    "y_mm": 0.0,
+    "angle_deg": 0.0,
+    "size_mm": 0.0,
+    "n_rays": 1,
+    "ray_length_mm": 700.0,
+    "spread_deg": 0.0,
+    "color_hex": "#DC143C",
+    "wavelength_nm": 780.0,
+    "polarization_type": "horizontal",
+    "polarization_angle_deg": 0.0,
+    "use_custom_jones": false,
+    "source_type": "ray",
+    "beam_waist_mm": 0.5
+  },
+  "placements": [
+    {
+      "label": "HWP1",
+      "catalog_id": "waveplate_hwp",
+      "angle_deg": 0.0,
+      "anchor": {
+        "kind": "interface_midpoint",
+        "x_mm": 60.0,
+        "y_mm": 0.0,
+        "interface_index": 0
+      },
+      "interface_overrides": {
+        "0": { "fast_axis_deg": 22.5 }
+      }
+    },
+    {
+      "label": "PBS1",
+      "catalog_id": "pbs_2in",
+      "angle_deg": 0.0,
+      "anchor": {
+        "kind": "interface_midpoint",
+        "x_mm": 145.0,
+        "y_mm": 0.0,
+        "interface_index": 0
+      },
+      "interface_overrides": null
+    },
+    {
+      "label": "MT",
+      "catalog_id": "mirror_standard_1in",
+      "angle_deg": 45.0,
+      "anchor": {
+        "kind": "interface_midpoint",
+        "x_mm": 400.0,
+        "y_mm": 0.0,
+        "interface_index": 0
+      },
+      "interface_overrides": null
+    },
+    {
+      "label": "MR",
+      "catalog_id": "mirror_standard_1in",
+      "angle_deg": 135.0,
+      "anchor": {
+        "kind": "interface_midpoint",
+        "x_mm": 145.0,
+        "y_mm": -150.0,
+        "interface_index": 0
+      },
+      "interface_overrides": null
+    }
+  ],
+  "targets": [
+    {
+      "name": "DT_transmitted_arm",
+      "x_mm": 400.0,
+      "y_mm": 150.0,
+      "radius_mm": 2.0,
+      "polarization": "horizontal",
+      "expected_power_fraction": 0.5
+    },
+    {
+      "name": "DR_reflected_arm",
+      "x_mm": 400.0,
+      "y_mm": -150.0,
+      "radius_mm": 2.0,
+      "polarization": "vertical",
+      "expected_power_fraction": 0.5
+    }
+  ],
+  "constraints": [
+    {
+      "kind": "branch_count",
+      "params": { "expected": 2 }
+    },
+    {
+      "kind": "path_contains_elements",
+      "params": {
+        "target": "DT_transmitted_arm",
+        "elements": ["HWP1:iface0", "PBS1:iface0", "MT:iface0"],
+        "ordered": true
+      }
+    },
+    {
+      "kind": "path_contains_elements",
+      "params": {
+        "target": "DR_reflected_arm",
+        "elements": ["HWP1:iface0", "PBS1:iface0", "MR:iface0"],
+        "ordered": true
+      }
+    },
+    {
+      "kind": "path_avoids_elements",
+      "params": {
+        "target": "DT_transmitted_arm",
+        "elements": ["MR:iface0"]
+      }
+    },
+    {
+      "kind": "path_avoids_elements",
+      "params": {
+        "target": "DR_reflected_arm",
+        "elements": ["MT:iface0"]
+      }
+    },
+    {
+      "kind": "target_hit_count",
+      "params": { "target": "DT_transmitted_arm", "expected": 1 }
+    },
+    {
+      "kind": "target_hit_count",
+      "params": { "target": "DR_reflected_arm", "expected": 1 }
+    }
+  ],
+  "topology": "source -> HWP1 -> PBS1 -> {transmitted: MT -> DT_transmitted_arm, reflected: MR -> DR_reflected_arm}"
+}

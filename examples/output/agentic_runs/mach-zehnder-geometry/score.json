@@ -1,0 +1,217 @@
+{
+  "goal_id": "mach_zehnder_geometry",
+  "validation": {
+    "passed": true,
+    "error_count": 0,
+    "warning_count": 0,
+    "issues": []
+  },
+  "path_count": 2,
+  "score": {
+    "target_scores": {
+      "DT_transmitted_arm": {
+        "hit": true,
+        "closest_distance_mm": 1.1368683772161603e-13,
+        "closest_point_mm": [
+          400.0000000000001,
+          150.0
+        ],
+        "power_fraction": 0.4999999999999999,
+        "expected_power_fraction": 0.5,
+        "power_error": 1.1102230246251565e-16,
+        "polarization": "horizontal",
+        "polarization_overlap": 1.0,
+        "path_index": 1
+      },
+      "DR_reflected_arm": {
+        "hit": true,
+        "closest_distance_mm": 1.1368683772161603e-13,
+        "closest_point_mm": [
+          400.0,
+          -150.0000000000001
+        ],
+        "power_fraction": 0.5000000000000001,
+        "expected_power_fraction": 0.5,
+        "power_error": 1.1102230246251565e-16,
+        "polarization": "vertical",
+        "polarization_overlap": 1.0,
+        "path_index": 0
+      }
+    },
+    "constraint_scores": [
+      {
+        "name": "branch_count",
+        "kind": "branch_count",
+        "passed": true,
+        "diagnostic": true,
+        "branch_count": 2,
+        "expected": 2
+      },
+      {
+        "name": "path_contains_elements",
+        "kind": "path_contains_elements",
+        "passed": true,
+        "elements": [
+          "HWP1:iface0",
+          "PBS1:iface0",
+          "MT:iface0"
+        ],
+        "ordered": true,
+        "mode": "any_path",
+        "matched_paths": 1,
+        "checked_paths": 1
+      },
+      {
+        "name": "path_contains_elements",
+        "kind": "path_contains_elements",
+        "passed": true,
+        "elements": [
+          "HWP1:iface0",
+          "PBS1:iface0",
+          "MR:iface0"
+        ],
+        "ordered": true,
+        "mode": "any_path",
+        "matched_paths": 1,
+        "checked_paths": 1
+      },
+      {
+        "name": "path_avoids_elements",
+        "kind": "path_avoids_elements",
+        "passed": true,
+        "elements": [
+          "MR:iface0"
+        ],
+        "checked_paths": 1
+      },
+      {
+        "name": "path_avoids_elements",
+        "kind": "path_avoids_elements",
+        "passed": true,
+        "elements": [
+          "MT:iface0"
+        ],
+        "checked_paths": 1
+      },
+      {
+        "name": "target_hit_count",
+        "kind": "target_hit_count",
+        "passed": true,
+        "diagnostic": false,
+        "target": "DT_transmitted_arm",
+        "hit_count": 1,
+        "hit_path_indices": [
+          1
+        ],
+        "expected": 1
+      },
+      {
+        "name": "target_hit_count",
+        "kind": "target_hit_count",
+        "passed": true,
+        "diagnostic": false,
+        "target": "DR_reflected_arm",
+        "hit_count": 1,
+        "hit_path_indices": [
+          0
+        ],
+        "expected": 1
+      }
+    ],
+    "passed": true,
+    "ray_paths": [
+      {
+        "points_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            60.0,
+            0.0
+          ],
+          [
+            145.0,
+            0.0
+          ],
+          [
+            145.00000000000003,
+            -150.00000000000003
+          ],
+          [
+            550.0029999999999,
+            -150.00000000000017
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          0.5000000000000001,
+          0.5000000000000001,
+          0.5000000000000001
+        ],
+        "path_element_ids": [
+          "HWP1:iface0",
+          "PBS1:iface0",
+          "MR:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            -0.0,
+            0.0
+          ],
+          "Ey": [
+            1.0,
+            -6.123233995736765e-17
+          ]
+        }
+      },
+      {
+        "points_mm": [
+          [
+            0.0,
+            0.0
+          ],
+          [
+            60.0,
+            0.0
+          ],
+          [
+            145.0,
+            0.0
+          ],
+          [
+            400.0,
+            0.0
+          ],
+          [
+            400.0000000000002,
+            300.00299999999993
+          ]
+        ],
+        "intensities": [
+          1.0,
+          1.0,
+          0.4999999999999999,
+          0.4999999999999999,
+          0.4999999999999999
+        ],
+        "path_element_ids": [
+          "HWP1:iface0",
+          "PBS1:iface0",
+          "MT:iface0"
+        ],
+        "final_polarization": {
+          "Ex": [
+            -1.0,
+            -2.536326566618167e-17
+          ],
+          "Ey": [
+            -0.0,
+            -0.0
+          ]
+        }
+      }
+    ]
+  }
+}
