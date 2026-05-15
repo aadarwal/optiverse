@@ -6,7 +6,7 @@ import pytest
 
 from optiverse.agentic.benchmarks import benchmark_specs
 from optiverse.agentic.cli import main
-from optiverse.agentic.schema import demo_goal_spec
+from optiverse.agentic.schema import GoalSpec, demo_goal_spec
 
 
 def _run_json_command(args, stdin_data, monkeypatch, capsys):
@@ -24,6 +24,7 @@ def _run_json_command(args, stdin_data, monkeypatch, capsys):
         "demo",
         "catalog",
         "parse-goal",
+        "design",
         "compile",
         "validate",
         "trace",
@@ -116,6 +117,108 @@ def test_parse_goal_cli_anthropic_without_key_fails_cleanly(monkeypatch, capsys)
     assert exit_code == 1
     assert captured.out == ""
     assert "provider_error: Set ANTHROPIC_API_KEY" in captured.err
+
+
+def test_design_cli_mock_no_open_writes_scene_render_and_report(tmp_path, capsys):
+    exit_code = main(
+        [
+            "design",
+            "Take a 780 nm horizontally polarized beam and split it 50/50 with a HWP/PBS.",
+            "--provider",
+            "mock",
+            "--no-open",
+            "--output-dir",
+            str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["passed"] is True
+    assert report["opened"] is None
+    assert (tmp_path / "design.scene.json").exists()
+    assert (tmp_path / "design.png").read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+    assert (tmp_path / "design.report.json").exists()
+
+
+def test_design_cli_opens_gui_on_success(tmp_path, monkeypatch, capsys):
+    popen_calls = []
+
+    class FakeProcess:
+        pid = 6789
+
+    def fake_popen(command):
+        popen_calls.append(command)
+        return FakeProcess()
+
+    monkeypatch.setattr("optiverse.agentic.cli.subprocess.Popen", fake_popen)
+
+    exit_code = main(
+        [
+            "design",
+            "split 50/50 with HWP PBS",
+            "--provider",
+            "mock",
+            "--output-dir",
+            str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["opened"]["pid"] == 6789
+    assert popen_calls == [
+        [
+            sys.executable,
+            "-m",
+            "optiverse.app.main",
+            str((tmp_path / "design.scene.json").resolve()),
+        ]
+    ]
+
+
+def test_design_cli_retries_after_failed_round(tmp_path, monkeypatch, capsys):
+    good_goal = demo_goal_spec()
+    bad_goal = GoalSpec(
+        goal_id=good_goal.goal_id,
+        description=good_goal.description,
+        source=good_goal.source,
+        placements=[],
+        targets=good_goal.targets,
+        constraints=good_goal.constraints,
+        topology=good_goal.topology,
+    )
+    calls = []
+
+    def fake_parse_goal_with_provider(request, catalog, **kwargs):
+        del catalog, kwargs
+        calls.append(request)
+        return (bad_goal if len(calls) == 1 else good_goal), None
+
+    monkeypatch.setattr(
+        "optiverse.agentic.cli.parse_goal_with_provider",
+        fake_parse_goal_with_provider,
+    )
+
+    exit_code = main(
+        [
+            "design",
+            "split 50/50 with HWP PBS",
+            "--provider",
+            "mock",
+            "--no-open",
+            "--max-rounds",
+            "2",
+            "--output-dir",
+            str(tmp_path),
+        ]
+    )
+
+    assert exit_code == 0
+    report = json.loads(capsys.readouterr().out)
+    assert [attempt["passed"] for attempt in report["attempts"]] == [False, True]
+    assert len(calls) == 2
+    assert "Previous Optiverse attempt failed" in calls[1]
 
 
 def test_composable_compile_validate_trace_score_pipeline(tmp_path, monkeypatch, capsys):

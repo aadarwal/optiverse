@@ -280,14 +280,17 @@ def _cmd_render(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_open(args: argparse.Namespace) -> int:
-    scene_path = Path(args.input)
+def _launch_gui(scene_path: Path) -> dict[str, Any]:
     if not scene_path.exists():
         raise ValueError(f"scene file does not exist: {scene_path}")
     process = subprocess.Popen(  # noqa: S603
         [sys.executable, "-m", "optiverse.app.main", str(scene_path.resolve())]
     )
-    _emit_json({"opened": str(scene_path), "pid": process.pid})
+    return {"opened": str(scene_path), "pid": process.pid}
+
+
+def _cmd_open(args: argparse.Namespace) -> int:
+    _emit_json(_launch_gui(Path(args.input)))
     return 0
 
 
@@ -312,6 +315,103 @@ def _cmd_parse_goal(args: argparse.Namespace) -> int:
         return 1
     _emit_json(goal.to_dict(), args.output)
     return 0
+
+
+def _failure_feedback(validation: dict[str, Any], score: dict[str, Any]) -> str:
+    failed_constraints = [
+        item.get("name", item.get("kind"))
+        for item in score.get("constraint_scores", [])
+        if not item.get("passed", False)
+    ]
+    missed_targets = [
+        name
+        for name, target_score in score.get("target_scores", {}).items()
+        if not target_score.get("hit", False)
+    ]
+    return json.dumps(
+        {
+            "validation_passed": validation.get("passed", False),
+            "missed_targets": missed_targets,
+            "failed_constraints": failed_constraints,
+        },
+        sort_keys=True,
+    )
+
+
+def _cmd_design(args: argparse.Namespace) -> int:
+    catalog = load_builtin_catalog()
+    output_dir = args.output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+    base_request = args.request
+    request = base_request
+    attempts = []
+    final_report: dict[str, Any] | None = None
+
+    for round_index in range(1, args.max_rounds + 1):
+        try:
+            goal, _response = parse_goal_with_provider(
+                request,
+                catalog,
+                provider=args.provider,
+                model=args.model,
+                max_tokens=args.max_tokens,
+                prompt_version=args.prompt_version,
+            )
+        except LLMProviderError as exc:
+            print(f"provider_error: {exc}", file=sys.stderr)
+            return 1
+
+        document = _build_agentic_scene(catalog, goal)
+        validation, paths = _trace_goal(catalog, goal)
+        _attach_validation(document, validation)
+        _attach_trace(document, paths)
+        score = score_paths(paths, goal.targets, goal.constraints)
+        _metadata_for(document)["score"] = score
+        passed = validation.passed and bool(score["passed"])
+        attempts.append(
+            {
+                "round": round_index,
+                "goal_id": goal.goal_id,
+                "validation_passed": validation.passed,
+                "score_passed": bool(score["passed"]),
+                "passed": passed,
+            }
+        )
+
+        if passed:
+            scene_path = output_dir / "design.scene.json"
+            render_path = output_dir / "design.png"
+            report_path = output_dir / "design.report.json"
+            render_goal_png(goal, score["ray_paths"], render_path)
+            write_json(scene_path, document)
+            opened = None if args.no_open else _launch_gui(scene_path)
+            final_report = {
+                "passed": True,
+                "attempts": attempts,
+                "goal": goal.to_dict(),
+                "scene": str(scene_path),
+                "render": str(render_path),
+                "opened": opened,
+                "score": score,
+            }
+            write_json(report_path, final_report)
+            _emit_json(final_report, args.output)
+            return 0
+
+        request = (
+            f"{base_request}\n\nPrevious Optiverse attempt failed. "
+            f"Use this machine-readable feedback to revise the GoalSpec: "
+            f"{_failure_feedback(validation.to_dict(), score)}"
+        )
+
+    final_report = {
+        "passed": False,
+        "attempts": attempts,
+        "error": f"no passing design after {args.max_rounds} rounds",
+    }
+    write_json(output_dir / "design.report.json", final_report)
+    _emit_json(final_report, args.output)
+    return 1
 
 
 def _cmd_demo(args: argparse.Namespace) -> int:
@@ -450,6 +550,45 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_output_argument(parse_goal_parser, "Optional path to write GoalSpec JSON.")
     parse_goal_parser.set_defaults(handler=_cmd_parse_goal)
+
+    design_parser = subparsers.add_parser(
+        "design",
+        help="Parse, compile, validate, trace, score, render, and optionally open a layout.",
+        description=(
+            "Run the thin agentic design loop. The command retries failed designs "
+            "up to --max-rounds and opens the Optiverse GUI on success unless "
+            "--no-open is set."
+        ),
+    )
+    design_parser.add_argument("request", help="Natural-language experiment request.")
+    design_parser.add_argument("--provider", default="mock", help="Provider name.")
+    design_parser.add_argument("--model", default=None, help="Provider model name.")
+    design_parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=4000,
+        help="Maximum provider response tokens.",
+    )
+    design_parser.add_argument(
+        "--prompt-version",
+        default=PARSE_GOAL_PROMPT_VERSION,
+        help="Versioned prompt template to use.",
+    )
+    design_parser.add_argument(
+        "--max-rounds",
+        type=int,
+        default=3,
+        help="Maximum parse/score refinement rounds.",
+    )
+    design_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("examples/output/designs"),
+        help="Directory for generated scene/render/report files.",
+    )
+    design_parser.add_argument("--no-open", action="store_true", help="Do not launch the GUI.")
+    _add_output_argument(design_parser, "Optional path to write design report JSON.")
+    design_parser.set_defaults(handler=_cmd_design)
 
     compile_parser = subparsers.add_parser(
         "compile",
