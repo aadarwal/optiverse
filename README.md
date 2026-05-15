@@ -29,6 +29,7 @@ Optiverse is a powerful, interactive tool for designing and simulating optical s
 - **Collaboration Mode**: Real-time multi-user editing via WebSocket server
 - **Zemax Import**: Import optical designs from Zemax (.zmx) files
 - **Polarization Support**: Jones vector formalism for polarization-dependent optics
+- **Agentic CLI**: Headless `optiverse-agent` commands for catalog export, layout compilation, validation, ray tracing, scoring, rendering, and natural-language design loops
 - **Platform-Native UI**: macOS trackpad gestures, native menu bars, dark mode support
 
 See [CHANGELOG.md](CHANGELOG.md) for the full list of changes between releases.
@@ -145,6 +146,21 @@ python -m optiverse.app.main
 3. **Add Light Sources**: Place sources and configure wavelength, polarization
 4. **Trace Rays**: Real-time visualization updates automatically
 5. **Save/Load**: Save your optical systems as JSON files
+
+### Agentic CLI Workflow
+
+Optiverse also ships a headless `optiverse-agent` command surface for coding agents, scripts, and CI. The commands compose through JSON:
+
+```bash
+optiverse-agent catalog --output /tmp/catalog.json
+optiverse-agent design \
+  "50/50 split a 780 nm horizontally polarized beam with a HWP and PBS" \
+  --provider mock \
+  --no-open \
+  --output-dir /tmp/optiverse-design
+```
+
+For the full command surface, layout-compiler primitives, plugin install steps, and verification workflow, see [docs/agentic_layout/cli_and_plugin.md](docs/agentic_layout/cli_and_plugin.md).
 
 ### Keyboard Shortcuts
 

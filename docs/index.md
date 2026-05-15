@@ -23,6 +23,9 @@ Welcome to the Optiverse documentation! This site provides comprehensive guides 
 
 ## User Guides
 
+### Agentic Layout
+- [Agentic CLI and Plugin](agentic_layout/cli_and_plugin.md) - Headless layout design, scoring, rendering, and plugin usage
+
 ### Component Editor
 - [Interface Color Guide](INTERFACE_COLOR_GUIDE.md) - Understanding interface colors
 - [Refractive Index Labels](REFRACTIVE_INDEX_LABELS.md) - Working with n₁ and n₂
@@ -59,4 +62,3 @@ See the [complete documentation index](README.md) for a full list of all availab
 ## Contributing
 
 Found an error or want to improve the documentation? Please open an issue or submit a pull request on [GitHub](https://github.com/QPG-MIT/optiverse).
-

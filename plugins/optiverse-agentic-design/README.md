@@ -2,6 +2,8 @@
 
 This plugin packages one skill, `optiverse-design`, for agents that need to design and verify Optiverse optical layouts through the composable `optiverse-agent` CLI.
 
+See `docs/agentic_layout/cli_and_plugin.md` for the full command surface and handoff workflow.
+
 ## Prerequisites
 
 From the Optiverse repository root:
