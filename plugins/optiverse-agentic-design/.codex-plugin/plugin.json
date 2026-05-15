@@ -1,0 +1,37 @@
+{
+  "name": "optiverse-agentic-design",
+  "version": "0.1.0",
+  "description": "Agent skill for designing and verifying Optiverse optical layouts through the optiverse-agent CLI.",
+  "author": {
+    "name": "QPG-MIT",
+    "url": "https://github.com/QPG-MIT/optiverse"
+  },
+  "homepage": "https://github.com/QPG-MIT/optiverse",
+  "repository": "https://github.com/aadarwal/optiverse",
+  "license": "MIT",
+  "keywords": [
+    "optics",
+    "ray-tracing",
+    "agentic-layout",
+    "optiverse"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Optiverse Agentic Design",
+    "shortDescription": "Design and verify Optiverse optical layouts.",
+    "longDescription": "A workflow skill that teaches an agent to use the composable optiverse-agent CLI for catalog inspection, layout compilation, validation, ray tracing, scoring, rendering, iteration, and GUI hand-off.",
+    "developerName": "QPG-MIT",
+    "category": "Science",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://github.com/QPG-MIT/optiverse",
+    "defaultPrompt": [
+      "Design a HWP/PBS splitter in Optiverse.",
+      "Trace and score this optical layout.",
+      "Render this Optiverse scene and open the GUI."
+    ],
+    "brandColor": "#0F766E"
+  }
+}

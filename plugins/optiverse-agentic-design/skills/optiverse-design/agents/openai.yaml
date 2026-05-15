@@ -1,0 +1,4 @@
+interface:
+  display_name: "Optiverse Design"
+  short_description: "Drive Optiverse CLI layout workflows."
+  default_prompt: "Design a HWP/PBS splitter in Optiverse."

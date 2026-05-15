@@ -1,0 +1,20 @@
+{
+  "name": "optiverse-local",
+  "interface": {
+    "displayName": "Optiverse Local Plugins"
+  },
+  "plugins": [
+    {
+      "name": "optiverse-agentic-design",
+      "source": {
+        "source": "local",
+        "path": "./plugins/optiverse-agentic-design"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
