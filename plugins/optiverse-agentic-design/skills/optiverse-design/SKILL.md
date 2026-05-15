@@ -85,10 +85,13 @@ Use relative focal spacing for lens relays instead of guessing coordinates:
   "label": "L2",
   "catalog_id": "lens_standard_1in",
   "angle_deg": 0.0,
-  "relative_to": "L1",
-  "axis": "x",
-  "direction": 1,
-  "spacing": "f1_plus_f2"
+  "anchor": {
+    "kind": "interface_midpoint",
+    "relative_to": "L1",
+    "axis": "x",
+    "direction": 1,
+    "spacing": "f1_plus_f2"
+  }
 }
 ```
 
