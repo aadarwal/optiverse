@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 from PyQt6 import QtCore, QtGui, QtWidgets
@@ -69,7 +70,19 @@ def _configure_macos_activation() -> None:
         _logger.debug("Failed to configure NSApp: %s", e)
 
 
-def main() -> int:
+def _extract_initial_scene_path(argv: Sequence[str]) -> tuple[list[str], Path | None]:
+    """Split a positional scene path from Qt/application arguments."""
+    qt_argv = [argv[0]]
+    initial_scene_path: Path | None = None
+    for arg in argv[1:]:
+        if initial_scene_path is None and not arg.startswith("-") and arg.endswith(".json"):
+            initial_scene_path = Path(arg)
+        else:
+            qt_argv.append(arg)
+    return qt_argv, initial_scene_path
+
+
+def main(argv: Sequence[str] | None = None) -> int:
     """
     Application entry point.
 
@@ -79,6 +92,9 @@ def main() -> int:
     Returns:
         Exit code (0 for success, 1 for error)
     """
+    raw_argv = list(sys.argv if argv is None else argv)
+    qt_argv, initial_scene_path = _extract_initial_scene_path(raw_argv)
+
     # Install stderr filter to suppress harmless macOS warnings (TSM errors)
     from ..platform.macos import install_macos_stderr_filter
 
@@ -107,7 +123,7 @@ def main() -> int:
     original_argv0 = _configure_macos_app_name()
 
     # Create QApplication (Qt6 enables high DPI by default)
-    app = QtWidgets.QApplication(sys.argv)
+    app = QtWidgets.QApplication(qt_argv)
 
     # Force period as decimal separator program-wide (regardless of system locale)
     QtCore.QLocale.setDefault(QtCore.QLocale.c())
@@ -145,6 +161,14 @@ def main() -> int:
     try:
         window = MainWindow()
         window.show()
+        if initial_scene_path is not None:
+            scene_path = initial_scene_path.resolve()
+
+            def load_initial_scene() -> None:
+                if not window.open_recent_file(str(scene_path)):
+                    _logger.warning("Failed to open initial scene: %s", scene_path)
+
+            QtCore.QTimer.singleShot(0, load_initial_scene)
     except Exception as e:
         error_handler.handle_error(e, "during application startup")
         return 1
