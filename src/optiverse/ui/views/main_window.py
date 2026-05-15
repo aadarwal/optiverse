@@ -685,6 +685,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     item.edited.connect(self._maybe_retrace)  # type: ignore[attr-defined]
             # Refresh layer panel
             self.layer_panel.refresh()
+            return True
+        return False
 
     def close_assembly(self):
         """Close current assembly (delegated to file controller)."""
