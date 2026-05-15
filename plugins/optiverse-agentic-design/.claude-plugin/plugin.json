@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "optiverse-agentic-design",
+  "version": "0.1.0",
+  "description": "Agent skill for designing and verifying Optiverse optical layouts through the optiverse-agent CLI.",
+  "author": {
+    "name": "QPG-MIT",
+    "url": "https://github.com/QPG-MIT/optiverse"
+  },
+  "homepage": "https://github.com/QPG-MIT/optiverse",
+  "repository": "https://github.com/aadarwal/optiverse",
+  "license": "MIT",
+  "keywords": [
+    "optics",
+    "ray-tracing",
+    "agentic-layout",
+    "optiverse"
+  ],
+  "skills": "./skills/"
+}
