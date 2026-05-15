@@ -18,6 +18,7 @@ from .benchmarks import export_benchmark_fixtures, run_all_benchmarks, run_bench
 from .catalog import Catalog, catalog_summary, load_builtin_catalog
 from .compiler import compile_elements
 from .experiments import evaluate_planner_output, make_prompt
+from .goal_parser import PARSE_GOAL_PROMPT_VERSION, parse_goal_with_provider
 from .layout_compiler import goal_from_planner_data
 from .llm_client import LLMProviderError, call_provider
 from .render import render_goal_png
@@ -295,6 +296,24 @@ def _cmd_catalog(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_parse_goal(args: argparse.Namespace) -> int:
+    catalog = load_builtin_catalog()
+    try:
+        goal, _response = parse_goal_with_provider(
+            args.request,
+            catalog,
+            provider=args.provider,
+            model=args.model,
+            max_tokens=args.max_tokens,
+            prompt_version=args.prompt_version,
+        )
+    except LLMProviderError as exc:
+        print(f"provider_error: {exc}", file=sys.stderr)
+        return 1
+    _emit_json(goal.to_dict(), args.output)
+    return 0
+
+
 def _cmd_demo(args: argparse.Namespace) -> int:
     result = run_demo(args.output_dir)
     print_demo_result(result)
@@ -406,6 +425,31 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     _add_output_argument(catalog_parser, "Optional path to write the catalog JSON.")
     catalog_parser.set_defaults(handler=_cmd_catalog)
+
+    parse_goal_parser = subparsers.add_parser(
+        "parse-goal",
+        help="Parse a natural-language experiment request into GoalSpec JSON.",
+        description=(
+            "Parse natural language into GoalSpec JSON through a provider. The "
+            "mock provider is deterministic and requires no network."
+        ),
+    )
+    parse_goal_parser.add_argument("request", help="Natural-language experiment request.")
+    parse_goal_parser.add_argument("--provider", default="mock", help="Provider name.")
+    parse_goal_parser.add_argument("--model", default=None, help="Provider model name.")
+    parse_goal_parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=4000,
+        help="Maximum provider response tokens.",
+    )
+    parse_goal_parser.add_argument(
+        "--prompt-version",
+        default=PARSE_GOAL_PROMPT_VERSION,
+        help="Versioned prompt template to use.",
+    )
+    _add_output_argument(parse_goal_parser, "Optional path to write GoalSpec JSON.")
+    parse_goal_parser.set_defaults(handler=_cmd_parse_goal)
 
     compile_parser = subparsers.add_parser(
         "compile",

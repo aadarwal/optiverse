@@ -10,6 +10,12 @@ from .benchmarks import (
 from .catalog import catalog_summary, load_builtin_catalog
 from .compiler import compile_elements
 from .experiments import evaluate_planner_output, make_prompt
+from .goal_parser import (
+    PARSE_GOAL_PROMPT_VERSION,
+    make_parse_goal_prompt,
+    parse_goal_response,
+    parse_goal_with_provider,
+)
 from .layout_compiler import (
     goal_from_planner_data,
     placement_from_planner_data,
@@ -24,6 +30,7 @@ __all__ = [
     "BenchmarkSpec",
     "ConstraintSpec",
     "GoalSpec",
+    "PARSE_GOAL_PROMPT_VERSION",
     "Placement",
     "RunResult",
     "SourceSpec",
@@ -40,6 +47,9 @@ __all__ = [
     "goal_from_planner_data",
     "load_builtin_catalog",
     "make_prompt",
+    "make_parse_goal_prompt",
+    "parse_goal_response",
+    "parse_goal_with_provider",
     "placement_from_planner_data",
     "placements_from_planner_data",
     "run_all_benchmarks",
