@@ -4,6 +4,7 @@ import sys
 
 import pytest
 
+from optiverse.agentic.benchmarks import benchmark_specs
 from optiverse.agentic.cli import main
 from optiverse.agentic.schema import demo_goal_spec
 
@@ -150,3 +151,68 @@ def test_open_cli_launches_gui_with_scene_path(tmp_path, monkeypatch, capsys):
     assert popen_calls == [
         [sys.executable, "-m", "optiverse.app.main", str(scene_path.resolve())]
     ]
+
+
+def test_anchor_form_two_mirror_compile_scores_pass(monkeypatch, capsys):
+    goal = benchmark_specs()["two_mirror_steering"].goal.to_dict()
+    goal["placements"] = [
+        {
+            "label": "M1",
+            "catalog_id": "mirror_standard_1in",
+            "angle_deg": 45.0,
+            "anchor": {
+                "kind": "interface_midpoint",
+                "x_mm": 50.0,
+                "y_mm": 0.0,
+            },
+        },
+        {
+            "label": "M2",
+            "catalog_id": "mirror_standard_1in",
+            "angle_deg": 45.0,
+            "anchor": {
+                "kind": "interface_midpoint",
+                "x_mm": 50.0,
+                "y_mm": 100.0,
+            },
+        },
+    ]
+
+    exit_code, traced = _run_json_command(["trace", "-"], goal, monkeypatch, capsys)
+    assert exit_code == 0
+    exit_code, score = _run_json_command(["score", "-"], traced, monkeypatch, capsys)
+
+    assert exit_code == 0
+    assert score["score"]["passed"] is True
+
+
+def test_anchor_form_four_f_telescope_focal_spacing_scores_pass(monkeypatch, capsys):
+    goal = benchmark_specs()["four_f_telescope"].goal.to_dict()
+    goal["placements"] = [
+        {
+            "label": "L1",
+            "catalog_id": "lens_standard_1in",
+            "anchor": {
+                "kind": "interface_midpoint",
+                "x_mm": 100.0,
+                "y_mm": 0.0,
+            },
+        },
+        {
+            "label": "L2",
+            "catalog_id": "lens_standard_1in",
+            "anchor": {
+                "kind": "interface_midpoint",
+                "relative_to": "L1",
+                "spacing": "f1_plus_f2",
+                "axis": "x",
+            },
+        },
+    ]
+
+    exit_code, traced = _run_json_command(["trace", "-"], goal, monkeypatch, capsys)
+    assert exit_code == 0
+    exit_code, score = _run_json_command(["score", "-"], traced, monkeypatch, capsys)
+
+    assert exit_code == 0
+    assert score["score"]["passed"] is True

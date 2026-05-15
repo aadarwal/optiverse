@@ -18,6 +18,7 @@ from .benchmarks import export_benchmark_fixtures, run_all_benchmarks, run_bench
 from .catalog import Catalog, catalog_summary, load_builtin_catalog
 from .compiler import compile_elements
 from .experiments import evaluate_planner_output, make_prompt
+from .layout_compiler import goal_from_planner_data
 from .llm_client import LLMProviderError, call_provider
 from .render import render_goal_png
 from .scene_writer import build_scene_data, write_json
@@ -129,14 +130,14 @@ def _emit_json(data: Any, output: Path | None = None) -> None:
     output.write_text(text, encoding="utf-8")
 
 
-def _goal_from_data(data: dict[str, Any]) -> GoalSpec:
+def _goal_from_data(catalog: Catalog, data: dict[str, Any]) -> GoalSpec:
     metadata = data.get(AGENTIC_METADATA_KEY)
     if isinstance(metadata, dict) and isinstance(metadata.get("goal"), dict):
-        return GoalSpec.from_dict(metadata["goal"])
+        return goal_from_planner_data(catalog, metadata["goal"])
     if isinstance(data.get("goal"), dict):
-        return GoalSpec.from_dict(data["goal"])
+        return goal_from_planner_data(catalog, data["goal"])
     if "goal_id" in data and "source" in data:
-        return GoalSpec.from_dict(data)
+        return goal_from_planner_data(catalog, data)
     raise ValueError(
         "input must be a GoalSpec JSON object, a benchmark wrapper with a "
         "'goal' object, or a scene JSON object with _agentic.goal"
@@ -167,9 +168,9 @@ def _scene_document_from_data(catalog: Catalog, data: dict[str, Any]) -> dict[st
         document = copy.deepcopy(data)
         metadata = _metadata_for(document)
         if "goal" not in metadata:
-            metadata["goal"] = _goal_from_data(data).to_dict()
+            metadata["goal"] = _goal_from_data(catalog, data).to_dict()
         return document
-    return _build_agentic_scene(catalog, _goal_from_data(data))
+    return _build_agentic_scene(catalog, _goal_from_data(catalog, data))
 
 
 def _trace_goal(catalog: Catalog, goal: GoalSpec) -> tuple[ValidationResult, list[RayPath]]:
@@ -207,7 +208,7 @@ def _cmd_compile(args: argparse.Namespace) -> int:
 def _cmd_validate(args: argparse.Namespace) -> int:
     catalog = load_builtin_catalog()
     document = _scene_document_from_data(catalog, _read_json_argument(args.input))
-    validation = validate_goal(_goal_from_data(document), catalog)
+    validation = validate_goal(_goal_from_data(catalog, document), catalog)
     _attach_validation(document, validation)
     _emit_json(document, args.output)
     return 0 if validation.passed else 1
@@ -216,7 +217,7 @@ def _cmd_validate(args: argparse.Namespace) -> int:
 def _cmd_trace(args: argparse.Namespace) -> int:
     catalog = load_builtin_catalog()
     document = _scene_document_from_data(catalog, _read_json_argument(args.input))
-    validation, paths = _trace_goal(catalog, _goal_from_data(document))
+    validation, paths = _trace_goal(catalog, _goal_from_data(catalog, document))
     _attach_validation(document, validation)
     _attach_trace(document, paths)
     _emit_json(document, args.output)
@@ -228,9 +229,9 @@ def _cmd_score(args: argparse.Namespace) -> int:
     scene_data = _read_json_argument(args.input)
     document = _scene_document_from_data(catalog, scene_data)
     goal = (
-        _goal_from_data(_read_json_argument(args.goal))
+        _goal_from_data(catalog, _read_json_argument(args.goal))
         if args.goal
-        else _goal_from_data(document)
+        else _goal_from_data(catalog, document)
     )
     validation, paths = _trace_goal(catalog, goal)
     score = score_paths(paths, goal.targets, goal.constraints)
@@ -255,7 +256,7 @@ def _render_output_path(input_value: str, output: Path | None) -> Path:
 def _cmd_render(args: argparse.Namespace) -> int:
     catalog = load_builtin_catalog()
     document = _scene_document_from_data(catalog, _read_json_argument(args.input))
-    goal = _goal_from_data(document)
+    goal = _goal_from_data(catalog, document)
     metadata = _metadata_for(document)
     trace = metadata.get("trace")
     if isinstance(trace, dict) and isinstance(trace.get("ray_paths"), list):
@@ -412,7 +413,8 @@ def _build_parser() -> argparse.ArgumentParser:
         description=(
             "Read GoalSpec JSON, a benchmark wrapper, or '-' from stdin and emit "
             "GUI-loadable scene JSON. The scene carries _agentic metadata so it "
-            "can be piped into validate and trace."
+            "can be piped into validate and trace. Placements may use existing "
+            "origin x_mm/y_mm fields or planner-friendly interface anchors."
         ),
     )
     compile_parser.add_argument("input", help="Input GoalSpec/benchmark JSON path, or '-'.")
