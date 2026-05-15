@@ -10,6 +10,7 @@ from optiverse.raytracing.engine import trace_rays_polymorphic
 
 from .catalog import Catalog, load_builtin_catalog
 from .compiler import compile_elements, interfaces_for_placement, placed_interface
+from .layout_compiler import placements_from_planner_data
 from .scene_writer import build_scene_data, write_json
 from .schema import ConstraintSpec, GoalSpec, Placement, SourceSpec, TargetSpec
 from .scorer import score_paths
@@ -130,24 +131,23 @@ def _hwp_pbs_splitter(_catalog: Catalog) -> BenchmarkSpec:
 
 
 def _two_mirror_steering(catalog: Catalog) -> BenchmarkSpec:
-    placements = [
-        _placement_with_interface_midpoint(
-            catalog,
-            label="M1",
-            catalog_id="mirror_standard_1in",
-            midpoint_x_mm=50.0,
-            midpoint_y_mm=0.0,
-            angle_deg=45.0,
-        ),
-        _placement_with_interface_midpoint(
-            catalog,
-            label="M2",
-            catalog_id="mirror_standard_1in",
-            midpoint_x_mm=50.0,
-            midpoint_y_mm=100.0,
-            angle_deg=45.0,
-        ),
-    ]
+    placements = placements_from_planner_data(
+        catalog,
+        [
+            {
+                "label": "M1",
+                "catalog_id": "mirror_standard_1in",
+                "angle_deg": 45.0,
+                "anchor": {"kind": "interface_midpoint", "x_mm": 50.0, "y_mm": 0.0},
+            },
+            {
+                "label": "M2",
+                "catalog_id": "mirror_standard_1in",
+                "angle_deg": 45.0,
+                "anchor": {"kind": "interface_midpoint", "x_mm": 50.0, "y_mm": 100.0},
+            },
+        ],
+    )
     goal = GoalSpec(
         goal_id="two_mirror_steering",
         description="Two mirrors steer a single horizontal beam around a 90 degree corner.",
@@ -228,7 +228,27 @@ def _single_lens_focus(_catalog: Catalog) -> BenchmarkSpec:
     )
 
 
-def _four_f_telescope(_catalog: Catalog) -> BenchmarkSpec:
+def _four_f_telescope(catalog: Catalog) -> BenchmarkSpec:
+    placements = placements_from_planner_data(
+        catalog,
+        [
+            {
+                "label": "L1",
+                "catalog_id": "lens_standard_1in",
+                "anchor": {"kind": "interface_midpoint", "x_mm": 100.0, "y_mm": 0.0},
+            },
+            {
+                "label": "L2",
+                "catalog_id": "lens_standard_1in",
+                "anchor": {
+                    "kind": "interface_midpoint",
+                    "relative_to": "L1",
+                    "spacing": "f1_plus_f2",
+                    "axis": "x",
+                },
+            },
+        ],
+    )
     goal = GoalSpec(
         goal_id="four_f_telescope",
         description=(
@@ -237,10 +257,7 @@ def _four_f_telescope(_catalog: Catalog) -> BenchmarkSpec:
         ),
         topology="parallel bundle -> L1 -> shared focus -> L2 -> collimated output",
         source=SourceSpec(size_mm=12.0, n_rays=7, ray_length_mm=500.0, spread_deg=0.0),
-        placements=[
-            Placement(label="L1", catalog_id="lens_standard_1in", x_mm=100.0, y_mm=0.0),
-            Placement(label="L2", catalog_id="lens_standard_1in", x_mm=300.0, y_mm=0.0),
-        ],
+        placements=placements,
         targets=[],
         constraints=[
             ConstraintSpec(
