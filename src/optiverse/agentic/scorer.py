@@ -271,6 +271,36 @@ def _score_constraint(
             "path_index": score.get("path_index"),
         }
 
+    if kind == "target_hit_count":
+        target = _target_name(params)
+        target_spec = targets_by_name.get(target or "")
+        if target_spec is None:
+            return {
+                "name": name,
+                "kind": kind,
+                "passed": False,
+                "target": target,
+                "error": f"Unknown target for target_hit_count: {target!r}",
+            }
+        hit_path_indices = [
+            index
+            for index, path in enumerate(paths)
+            if score_target(path, target_spec)["hit"]
+        ]
+        hit_count = len(hit_path_indices)
+        expected = params.get("expected", params.get("count"))
+        passed = True if expected is None else hit_count == int(expected)
+        return {
+            "name": name,
+            "kind": kind,
+            "passed": passed,
+            "diagnostic": expected is None,
+            "target": target,
+            "hit_count": hit_count,
+            "hit_path_indices": hit_path_indices,
+            "expected": expected,
+        }
+
     if kind == "power_at_target":
         target = _target_name(params)
         target_spec = targets_by_name.get(target or "")

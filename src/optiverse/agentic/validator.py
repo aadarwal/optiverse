@@ -73,6 +73,7 @@ class ValidationResult:
 
 KNOWN_CONSTRAINT_KINDS = {
     "target_hit",
+    "target_hit_count",
     "power_at_target",
     "polarization_at_target",
     "branch_count",

@@ -92,6 +92,78 @@ def test_demo_constraint_kinds_pass_for_expected_values():
     assert [item["passed"] for item in score["constraint_scores"]] == [True] * 5
 
 
+def test_target_hit_count_counts_one_path_per_detector():
+    goal, paths = _demo_paths()
+    constraints = [
+        ConstraintSpec(
+            kind="target_hit_count",
+            params={"target": "D1_transmitted_H", "expected": 1},
+        ),
+        ConstraintSpec(
+            kind="target_hit_count",
+            params={"target": "D2_reflected_V", "expected": 1},
+        ),
+    ]
+
+    score = score_paths(paths, goal.targets, constraints)
+
+    assert score["passed"] is True
+    assert [item["passed"] for item in score["constraint_scores"]] == [True, True]
+    assert score["constraint_scores"][0]["hit_count"] == 1
+    assert score["constraint_scores"][1]["hit_count"] == 1
+
+
+def test_target_hit_count_diagnostic_mode_reports_without_expected():
+    goal, paths = _demo_paths()
+    constraint = ConstraintSpec(
+        kind="target_hit_count", params={"target": "D1_transmitted_H"}
+    )
+
+    score = score_paths(paths, goal.targets, [constraint])
+
+    result = score["constraint_scores"][0]
+    assert result["passed"] is True
+    assert result["diagnostic"] is True
+    assert result["hit_count"] == 1
+
+
+def test_target_hit_count_catches_unexpected_extra_hit():
+    _goal, paths = _demo_paths()
+    # Both the transmitted and reflected paths share the source -> HWP -> PBS
+    # leg, so a target on that shared segment is hit by both branches.
+    shared_target = TargetSpec(
+        name="shared_leg",
+        x_mm=100,
+        y_mm=0,
+        radius_mm=2,
+        polarization="horizontal",
+        expected_power_fraction=1.0,
+    )
+    constraint = ConstraintSpec(
+        kind="target_hit_count", params={"target": "shared_leg", "expected": 1}
+    )
+
+    score = score_paths(paths, [shared_target], [constraint])
+
+    result = score["constraint_scores"][0]
+    assert result["passed"] is False
+    assert result["hit_count"] == 2
+    assert result["hit_path_indices"] == [0, 1]
+
+
+def test_target_hit_count_unknown_target_fails():
+    goal, paths = _demo_paths()
+    constraint = ConstraintSpec(
+        kind="target_hit_count", params={"target": "no_such_detector", "expected": 1}
+    )
+
+    score = score_paths(paths, goal.targets, [constraint])
+
+    result = score["constraint_scores"][0]
+    assert result["passed"] is False
+    assert "error" in result
+
+
 def test_power_and_polarization_constraints_fail_for_wrong_expectations():
     goal, paths = _demo_paths()
     constraints = [
