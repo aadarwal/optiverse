@@ -23,6 +23,7 @@ def _run_json_command(args, stdin_data, monkeypatch, capsys):
     [
         "demo",
         "catalog",
+        "parse-goal",
         "compile",
         "validate",
         "trace",
@@ -75,6 +76,46 @@ def test_catalog_cli_defaults_to_stdout(capsys):
     assert exit_code == 0
     data = json.loads(capsys.readouterr().out)
     assert any(item["catalog_id"] == "pbs_2in" for item in data)
+
+
+def test_parse_goal_cli_mock_outputs_valid_goal(capsys):
+    exit_code = main(
+        [
+            "parse-goal",
+            "Take a 780 nm horizontally polarized beam and split it 50/50 with a HWP/PBS.",
+            "--provider",
+            "mock",
+        ]
+    )
+
+    assert exit_code == 0
+    goal = json.loads(capsys.readouterr().out)
+    assert goal["source"]["wavelength_nm"] == 780.0
+    assert [placement["catalog_id"] for placement in goal["placements"]] == [
+        "waveplate_hwp",
+        "pbs_2in",
+    ]
+    assert len(goal["targets"]) == 2
+
+
+def test_parse_goal_cli_anthropic_without_key_fails_cleanly(monkeypatch, capsys):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    exit_code = main(
+        [
+            "parse-goal",
+            "split a beam",
+            "--provider",
+            "anthropic",
+            "--model",
+            "claude-test",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "provider_error: Set ANTHROPIC_API_KEY" in captured.err
 
 
 def test_composable_compile_validate_trace_score_pipeline(tmp_path, monkeypatch, capsys):
